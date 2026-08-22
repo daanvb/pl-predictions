@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Signal{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">
+ADMIN · SIGNAL
+</div>
+<h1>📣 Signal Notifications</h1>
+<p>Automatic Gameweek messages to {{ signal.group_name }}.</p>
+</div>
+
+<div class="nav">
+<a href="/admin">← Admin</a>
+<a href="/dashboard">🏠 Dashboard</a>
+</div>
+
+<div class="card">
+
+<h2>🔌 Connection</h2>
+
+{% if signal_status.ok %}
+<p>✅ Signal REST API connected</p>
+<p class="muted">
+Version {{ signal_status.version }}
+· {{ signal_status.mode }}
+· build {{ signal_status.build }}
+</p>
+{% else %}
+<p>❌ Signal REST API unavailable</p>
+<p class="muted">{{ signal_status.error }}</p>
+{% endif %}
+
+</div>
+
+<div class="card">
+
+<h2>⚙️ Configuration & automation</h2>
+
+<form method="POST">
+
+<label style="display:flex;gap:10px;align-items:center;margin:8px 0 18px">
+
+<input
+    type="checkbox"
+    name="enabled"
+    value="1"
+    style="width:auto"
+    {% if signal.enabled %}checked{% endif %}
+>
+
+<strong>Enable Signal notifications</strong>
+
+</label>
+
+<label><strong>Signal REST API URL</strong></label>
+
+<input
+    name="api_url"
+    value="{{ signal.api_url }}"
+    style="width:100%;margin:7px 0 18px"
+    required
+>
+
+<label><strong>Sending number</strong></label>
+
+<input
+    name="number"
+    value="{{ signal.number }}"
+    style="width:100%;margin:7px 0 18px"
+    required
+>
+
+<label><strong>Group name</strong></label>
+
+<input
+    name="group_name"
+    value="{{ signal.group_name }}"
+    style="width:100%;margin:7px 0 18px"
+>
+
+<label><strong>Group ID</strong></label>
+
+<input
+    name="group_id"
+    value="{{ signal.group_id }}"
+    style="width:100%;margin:7px 0 18px"
+    required
+>
+
+<hr style="margin:24px 0;border:0;border-top:1px solid #e2e8f0">
+
+<h3>🤖 Automatic messages</h3>
+
+<label style="display:flex;gap:10px;align-items:flex-start;margin:16px 0">
+
+<input
+    type="checkbox"
+    name="notify_gw_open"
+    value="1"
+    style="width:auto;margin-top:3px"
+    {% if signal.notify_gw_open %}checked{% endif %}
+>
+
+<div>
+<strong>⚽ Gameweek Open</strong>
+<div class="small">
+Sent once when the next current Gameweek is detected.
+</div>
+</div>
+
+</label>
+
+<label style="display:flex;gap:10px;align-items:flex-start;margin:16px 0">
+
+<input
+    type="checkbox"
+    name="notify_reminder"
+    value="1"
+    style="width:auto;margin-top:3px"
+    {% if signal.notify_reminder %}checked{% endif %}
+>
+
+<div>
+<strong>⏰ Prediction Reminder</strong>
+<div class="small">
+Sent twice if needed: once around 24 hours before the first kick-off, then a final reminder around 2 hours before. The 2-hour reminder also flags anyone who has not selected their DP match.
+</div>
+</div>
+
+</label>
+
+<label style="display:flex;gap:10px;align-items:flex-start;margin:16px 0">
+
+<input
+    type="checkbox"
+    name="notify_results"
+    value="1"
+    style="width:auto;margin-top:3px"
+    {% if signal.notify_results %}checked{% endif %}
+>
+
+<div>
+<strong>🏆 Gameweek Results</strong>
+<div class="small">
+Sent once the previous Gameweek is complete.
+Includes GW and overall standings.
+</div>
+</div>
+
+</label>
+
+<button class="primary">
+💾 Save Signal Settings
+</button>
+
+</form>
+
+</div>
+
+<div class="card">
+
+<h2>🧪 Test / preview</h2>
+
+<p>
+Target:
+<strong>{{ signal.group_name }}</strong>
+</p>
+
+{% if signal.enabled %}
+
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+
+<form method="POST" action="/admin/signal/test">
+<button>📨 Test</button>
+</form>
+
+<form method="POST" action="/admin/signal/send-open">
+<button>⚽ GW Open</button>
+</form>
+
+<form method="POST" action="/admin/signal/send-reminder">
+<button>⏰ Reminder</button>
+</form>
+
+<form method="POST" action="/admin/signal/send-results">
+<button>🏆 Results</button>
+</form>
+
+</div>
+
+{% else %}
+
+<p class="muted">
+Enable Signal notifications and save before sending messages.
+</p>
+
+{% endif %}
+
+</div>
+
+<div class="card">
+
+<h2>ℹ️ Timing</h2>
+
+<p>
+The Predictor checks notification conditions every
+<strong>15 minutes</strong>.
+</p>
+
+<p>
+Reminders are sent around <strong>24 hours</strong> and <strong>2 hours</strong> before the first fixture. The final 2-hour reminder also checks DP selection. If everyone is complete and has a DP, no reminder is sent.
+</p>
+
+<p class="muted">
+Sent Gameweek events are stored in the Predictor database,
+so an app restart won't repeatedly send the same automatic notification.
+</p>
+
+{% if last_notification_error %}
+
+<div class="flash error">
+Last automatic notification error:
+{{ last_notification_error }}
+</div>
+
+{% endif %}
+
+</div>
+
+{% endblock %}

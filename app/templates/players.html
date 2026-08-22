@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Players{% endblock %}
+{% block content %}
+
+<div class="hero">
+<h1>👥 Players</h1>
+<p>Manage names, PINs and roles.</p>
+</div>
+
+<div class="nav">
+<a href="/admin">← Admin</a>
+<a href="/dashboard">🏠 Dashboard</a>
+</div>
+
+<div class="card">
+
+<table>
+
+<tr>
+<th>Name</th>
+<th>Role</th>
+<th>Actions</th>
+</tr>
+
+{% for player in players %}
+
+<tr>
+
+<td>
+<strong>{{ player.name }}</strong>
+{% if player.id == session.player_id %}
+<span class="small"> · You</span>
+{% endif %}
+</td>
+
+<td>
+{% if player.admin %}
+👑 Admin
+{% else %}
+Player
+{% endif %}
+</td>
+
+<td>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+
+<a href="/admin/players/edit/{{ player.id }}">
+<button>
+✏️ Edit
+</button>
+</a>
+
+{% if player.id != session.player_id %}
+
+<form
+    method="POST"
+    action="/admin/players/delete/{{ player.id }}"
+    onsubmit="return confirm('Delete this player? Their predictions will also be removed.')"
+>
+
+<button class="danger">
+Delete
+</button>
+
+</form>
+
+{% endif %}
+
+</div>
+
+</td>
+
+</tr>
+
+{% endfor %}
+
+</table>
+
+</div>
+
+<div class="card">
+
+<h2>➕ Add player</h2>
+
+<form
+    method="POST"
+    action="/admin/players/add"
+>
+
+<label><strong>Name</strong></label>
+<input
+    style="width:100%;margin:7px 0 15px"
+    name="name"
+    maxlength="30"
+    required
+>
+
+<label><strong>PIN</strong></label>
+<input
+    style="width:100%;margin:7px 0 18px"
+    name="pin"
+    inputmode="numeric"
+    minlength="4"
+    maxlength="8"
+    required
+>
+
+<button>
+Add Player
+</button>
+
+</form>
+
+</div>
+
+{% endblock %}

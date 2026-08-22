@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Google Drive Connection{% endblock %}
+{% block content %}
+
+<div style="max-width:650px;margin:45px auto">
+
+<div class="hero">
+<div style="font-size:48px">
+{% if success %}☁️✅{% else %}☁️❌{% endif %}
+</div>
+
+<h1>
+{% if success %}
+Google Drive connected
+{% else %}
+Google Drive connection failed
+{% endif %}
+</h1>
+
+<p>
+OAuth callback result
+</p>
+</div>
+
+<div class="card">
+
+{% if success %}
+
+<div class="flash success">
+{{ message }}
+</div>
+
+<p>
+The Predictor can now upload automatic backups to Google Drive.
+</p>
+
+<a href="/admin/backup">
+<button class="primary">
+Continue to Backup & Restore
+</button>
+</a>
+
+{% else %}
+
+<div class="flash error">
+{{ message }}
+</div>
+
+<p class="muted">
+This error has also been written to the Predictor addon log.
+</p>
+
+<a href="/admin/backup">
+<button>
+Back to Backup & Restore
+</button>
+</a>
+
+{% endif %}
+
+</div>
+
+</div>
+
+{% endblock %}

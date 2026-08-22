@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}GW {{ matchday }} Predictions{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">YOUR PICKS</div>
+<h1>Gameweek {{ matchday }}</h1>
+<p>Each fixture locks individually at its own kick-off. Pick one match as your 🔥 DP for double points.</p>
+</div>
+
+<div class="nav">
+<a href="/dashboard">← Dashboard</a>
+<a href="/gameweek/{{ matchday }}">📊 Live GW{{ matchday }}</a>
+</div>
+
+<div class="card">
+<h2>🔥 Double Points (DP)</h2>
+<p>
+Choose <strong>one match per Gameweek</strong> as your DP.
+Whatever that prediction scores is doubled.
+</p>
+{% if locked_dp_fixture_id %}
+<p class="muted">
+🔒 Your DP match has kicked off, so your DP choice is now locked for this Gameweek.
+</p>
+{% else %}
+<p class="muted">
+You can move your DP to another open fixture until your selected DP match kicks off.
+</p>
+{% endif %}
+</div>
+
+<form method="POST">
+
+{% for fixture in fixtures %}
+
+<div class="card fixture-set">
+
+<div class="fixture-row-grid" style="margin-bottom:12px">
+
+<div class="fixture-match">
+<div class="fixture-home"><strong>{{ short_team_name(fixture.home_team) }}</strong></div>
+<div class="fixture-centre">v</div>
+<div class="fixture-away"><strong>{{ short_team_name(fixture.away_team) }}</strong></div>
+</div>
+
+<div class="fixture-submeta">
+{{ status_label(fixture) }}
+</div>
+
+<div class="fixture-broadcaster"></div>
+
+<div class="fixture-status">
+{% if kickoff_passed(fixture.utc_date) %}
+<span class="badge">🔒 Locked</span>
+{% else %}
+<span class="badge open">● Open</span>
+{% endif %}
+</div>
+
+</div>
+
+<div class="scoreline">
+
+<div class="team">{{ short_team_name(fixture.home_team) }}</div>
+
+{% if kickoff_passed(fixture.utc_date) %}
+<div class="locked-score">
+{{ fixture.predicted_home if fixture.predicted_home is not none else "—" }}
+</div>
+{% else %}
+<input
+    class="score-input"
+    type="number"
+    min="0"
+    max="30"
+    name="home_{{ fixture.id }}"
+    value="{{ fixture.predicted_home if fixture.predicted_home is not none else '' }}"
+>
+{% endif %}
+
+<div class="dash">–</div>
+
+{% if kickoff_passed(fixture.utc_date) %}
+<div class="locked-score">
+{{ fixture.predicted_away if fixture.predicted_away is not none else "—" }}
+</div>
+{% else %}
+<input
+    class="score-input"
+    type="number"
+    min="0"
+    max="30"
+    name="away_{{ fixture.id }}"
+    value="{{ fixture.predicted_away if fixture.predicted_away is not none else '' }}"
+>
+{% endif %}
+
+<div class="team away fixture-team">{{ short_team_name(fixture.away_team) }}</div>
+
+</div>
+
+<div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0">
+
+{% if fixture.predicted_dp %}
+
+{% if kickoff_passed(fixture.utc_date) %}
+<span class="badge live">🔥 DP · LOCKED</span>
+{% else %}
+<label style="display:flex;gap:9px;align-items:center;font-weight:900">
+<input
+    type="radio"
+    name="dp_fixture_id"
+    value="{{ fixture.id }}"
+    style="width:auto"
+    checked
+    {% if locked_dp_fixture_id %}disabled{% endif %}
+>
+🔥 DP this match
+</label>
+{% endif %}
+
+{% elif not kickoff_passed(fixture.utc_date) and not locked_dp_fixture_id %}
+
+<label style="display:flex;gap:9px;align-items:center;font-weight:800">
+<input
+    type="radio"
+    name="dp_fixture_id"
+    value="{{ fixture.id }}"
+    style="width:auto"
+>
+🔥 DP this match
+</label>
+
+{% endif %}
+
+</div>
+
+{% set stats = fixture_stats.get(fixture.id) %}
+{% include "_match_stats.html" %}
+
+</div>
+
+{% endfor %}
+
+<div class="save-bar">
+<button type="submit">💾 Save predictions</button>
+</div>
+
+</form>
+
+{% endblock %}

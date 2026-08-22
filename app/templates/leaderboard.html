@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Season Leaderboard{% endblock %}
+{% block content %}
+
+<div class="hero">
+<h1>🏆 Season leaderboard</h1>
+<p>Official points from completed matches.</p>
+</div>
+
+<div class="nav">
+<a href="/dashboard">← Dashboard</a>
+</div>
+
+<div class="card">
+
+{% for player in players %}
+
+<div class="leader-row">
+
+<div class="rank">
+{% if player.position == 1 %}🥇
+{% elif player.position == 2 %}🥈
+{% elif player.position == 3 %}🥉
+{% elif player.position == 4 %}💩
+{% else %}{{ player.position }}
+{% endif %}
+</div>
+
+<div>
+{% if player.position_change > 0 %}
+<span
+    class="position-move position-up"
+    title="Up {{ player.position_change }} place(s)"
+>
+▲{% if player.position_change > 1 %}{{ player.position_change }}{% endif %}
+</span>
+{% elif player.position_change < 0 %}
+<span
+    class="position-move position-down"
+    title="Down {{ -player.position_change }} place(s)"
+>
+▼{% if player.position_change < -1 %}{{ -player.position_change }}{% endif %}
+</span>
+{% else %}
+<span
+    class="position-move position-flat"
+    title="No positional change"
+>–</span>
+{% endif %}
+</div>
+
+<div>
+
+<strong>{{ player.name }}</strong>
+
+<div class="small">
+{{ player.exact_draws }} exact draws ·
+{{ player.exact_scores }} exact winning scores ·
+{{ player.correct_results }} other correct results
+</div>
+
+</div>
+
+<div class="leader-points">
+{{ player.points }}
+</div>
+
+</div>
+
+{% endfor %}
+
+</div>
+
+{% endblock %}

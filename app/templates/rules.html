@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Rules{% endblock %}
+{% block content %}
+
+<div class="hero">
+<h1>📜 Rules & Scoring</h1>
+<p>Predict the result. Nail the score for a bonus. Use your DP wisely.</p>
+</div>
+
+<div class="nav">
+<a href="/dashboard">← Dashboard</a>
+</div>
+
+<div class="card">
+
+<h2>🏆 How points work</h2>
+
+<div class="grid">
+
+<div class="stat">
+<div class="small">CORRECT DRAW</div>
+<div class="stat-number">4</div>
+<p>Correctly predict that the match finishes as a draw.</p>
+</div>
+
+<div class="stat">
+<div class="small">CORRECT WINNER</div>
+<div class="stat-number">3</div>
+<p>Correctly predict which team wins.</p>
+</div>
+
+<div class="stat">
+<div class="small">EXACT SCORE BONUS</div>
+<div class="stat-number">+2</div>
+<p>Get the exact score as well and add another 2 points.</p>
+</div>
+
+<div class="stat">
+<div class="small">WRONG RESULT</div>
+<div class="stat-number">0</div>
+<p>Anything else.</p>
+</div>
+
+</div>
+
+</div>
+
+<div class="card">
+
+<h2>🔥 Double Points (DP)</h2>
+
+<p>
+Every Gameweek, each player can select <strong>one fixture</strong> as their
+<strong>DP (Double Points)</strong> match.
+</p>
+
+<p>
+Only that one selected match is doubled — your total Gameweek score is not doubled. Your normal score for the DP prediction is simply doubled:
+</p>
+
+<div class="grid">
+
+<div class="stat">
+<div class="small">CORRECT WINNER + DP</div>
+<div class="stat-number">6</div>
+<div class="muted">3 × 2</div>
+</div>
+
+<div class="stat">
+<div class="small">CORRECT DRAW + DP</div>
+<div class="stat-number">8</div>
+<div class="muted">4 × 2</div>
+</div>
+
+<div class="stat">
+<div class="small">EXACT WINNER + DP</div>
+<div class="stat-number">10</div>
+<div class="muted">5 × 2</div>
+</div>
+
+<div class="stat">
+<div class="small">EXACT DRAW + DP</div>
+<div class="stat-number">12</div>
+<div class="muted">6 × 2</div>
+</div>
+
+</div>
+
+<p class="muted">
+A wrong DP prediction still scores 0. You can change your DP selection while
+the selected fixture is still open. Once your DP match kicks off, the DP is
+locked for that Gameweek.
+</p>
+
+</div>
+
+<div class="card">
+
+<h2>⚽ Draw example</h2>
+
+<div class="fixture">
+
+<strong>Actual: Liverpool 1–1 Chelsea</strong><br><br>
+
+Predict 1–1 → <strong>6 pts</strong><br>
+Predict 2–2 → <strong>4 pts</strong><br>
+Predict 0–0 → <strong>4 pts</strong><br>
+Predict Liverpool 2–1 → <strong>0 pts</strong>
+
+</div>
+
+</div>
+
+<div class="card">
+
+<h2>⚽ Winner example</h2>
+
+<div class="fixture">
+
+<strong>Actual: Liverpool 2–1 Chelsea</strong><br><br>
+
+Predict Liverpool 2–1 → <strong>5 pts</strong><br>
+Predict Liverpool 3–1 → <strong>3 pts</strong><br>
+Predict Liverpool 1–0 → <strong>3 pts</strong><br>
+Predict 1–1 → <strong>0 pts</strong>
+
+</div>
+
+</div>
+
+<div class="card">
+
+<h2>🔒 Reveal rule</h2>
+
+<p>
+Predictions remain private until that individual fixture kicks off.
+At kick-off, everyone's predictions for that match become visible.
+</p>
+
+</div>
+
+{% endblock %}

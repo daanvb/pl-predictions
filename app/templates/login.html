@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Login
+{% endblock %}
+{% block content %}
+
+<div style="max-width:430px;margin:55px auto">
+
+<div class="hero">
+<div style="font-size:50px">⚽</div>
+<h1>Premier League Predictor</h1>
+<p>Predict. Compete. Win.</p>
+</div>
+
+<div class="card">
+
+<h2>Who's playing?</h2>
+
+<form method="POST">
+
+<label><strong>Name</strong></label>
+<input style="width:100%;margin:7px 0 15px" name="name" required>
+
+<label><strong>PIN</strong></label>
+<input style="width:100%;margin:7px 0 18px" name="pin" type="password" inputmode="numeric" maxlength="8" required>
+
+<button class="primary" style="width:100%">LOG IN</button>
+
+</form>
+
+{% if registration_enabled %}
+<p style="text-align:center">
+<a href="/register">Create account</a>
+</p>
+{% endif %}
+
+</div>
+
+</div>
+
+{% endblock %}

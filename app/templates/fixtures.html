@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Fixtures{% endblock %}
+{% block content %}
+
+<div class="hero">
+<h1>⚽ Fixtures</h1>
+<p>2026/27 Premier League season.</p>
+</div>
+
+<div class="nav">
+<a href="/admin">← Admin</a>
+<a href="/dashboard">🏠 Dashboard</a>
+</div>
+
+<div class="card">
+
+<p>
+Automatic refresh is enabled.
+</p>
+
+<form
+    method="POST"
+    action="/admin/fixtures/import"
+>
+
+<button class="primary">
+Refresh now
+</button>
+
+</form>
+
+<form
+    method="POST"
+    action="/admin/fixtures/tv"
+    style="margin-top:10px"
+>
+<button>📺 Refresh UK TV listings</button>
+</form>
+
+<p class="small">
+UK broadcaster data is matched against the official Premier League fixture listing.
+</p>
+
+</div>
+
+<div class="card">
+
+{% for fixture in fixtures %}
+
+<div class="fixture">
+
+<strong>
+GW{{ fixture.matchday }}
+</strong>
+
+·
+
+{{ short_team_name(fixture.home_team) }}
+
+{{ fixture.home_score if fixture.home_score is not none else "–" }}
+
+–
+
+{{ fixture.away_score if fixture.away_score is not none else "–" }}
+
+{{ short_team_name(fixture.away_team) }}
+
+·
+
+{{ status_label(fixture) }}
+
+{% if fixture.broadcaster %}
+·
+<span class="tv-logo-wrap" title="{{ fixture.broadcaster }}">
+<img class="tv-logo" src="{{ broadcaster_logo_url(fixture.broadcaster) }}" alt="{{ fixture.broadcaster }}">
+</span>
+{% endif %}
+
+</div>
+
+{% endfor %}
+
+</div>
+
+{% endblock %}

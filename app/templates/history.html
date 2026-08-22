@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Gameweek History{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">SEASON ARCHIVE</div>
+<h1>🕘 Gameweek History</h1>
+<p>Revisit predictions, results and gameweek tables.</p>
+</div>
+
+<div class="nav">
+<a href="/dashboard">← Dashboard</a>
+</div>
+
+<div class="card">
+
+{% for gw in gameweeks %}
+
+<div class="fixture">
+
+<div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap">
+
+<div>
+<div style="font-size:19px;font-weight:900">
+Gameweek {{ gw.matchday }}
+</div>
+
+<div class="small">
+{{ gw.finished_count }} of {{ gw.fixture_count }} matches finished
+</div>
+</div>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+
+<a href="/predict/{{ gw.matchday }}">
+<button>My Picks</button>
+</a>
+
+<a href="/gameweek/{{ gw.matchday }}">
+<button class="primary">Results / Table</button>
+</a>
+
+</div>
+
+</div>
+
+</div>
+
+{% else %}
+
+<p class="muted">No gameweeks available yet.</p>
+
+{% endfor %}
+
+</div>
+
+{% endblock %}

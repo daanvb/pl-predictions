@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Stats{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">NUMBERS DON'T LIE</div>
+<h1>📈 Stats</h1>
+<p>Your season at a glance, plus league records.</p>
+</div>
+
+<div class="nav">
+<a href="/dashboard">← Dashboard</a>
+</div>
+
+<div class="card">
+
+<h2>👤 Your stats</h2>
+
+<div class="grid">
+
+<div class="stat">
+<div class="small">TOTAL POINTS</div>
+<div class="stat-number">{{ personal.total_points }}</div>
+</div>
+
+<div class="stat">
+<div class="small">PREDICTIONS SCORED</div>
+<div class="stat-number">{{ personal.predictions_made }}</div>
+</div>
+
+<div class="stat">
+<div class="small">AVG POINTS / MATCH</div>
+<div class="stat-number">{{ avg_points }}</div>
+</div>
+
+<div class="stat">
+<div class="small">EXACT DRAWS</div>
+<div class="stat-number">{{ personal.exact_draws }}</div>
+<div class="muted">6-point hits</div>
+</div>
+
+<div class="stat">
+<div class="small">EXACT WINNING SCORES</div>
+<div class="stat-number">{{ personal.exact_scores }}</div>
+<div class="muted">5-point hits</div>
+</div>
+
+<div class="stat">
+<div class="small">OTHER CORRECT RESULTS</div>
+<div class="stat-number">{{ personal.correct_results }}</div>
+<div class="muted">3/4-point results</div>
+</div>
+
+<div class="stat">
+<div class="small">DPs USED</div>
+<div class="stat-number">{{ personal.dp_used }}</div>
+<div class="muted">completed Double Points picks</div>
+</div>
+
+</div>
+
+{% if best_gameweek %}
+
+<div style="margin-top:16px">
+<strong>Best gameweek:</strong>
+GW{{ best_gameweek.matchday }} — {{ best_gameweek.points }} pts
+</div>
+
+{% endif %}
+
+</div>
+
+<div class="card">
+
+<h2>🏅 League records</h2>
+
+<div class="grid">
+
+<div class="stat">
+<div class="small">CURRENT LEADER</div>
+
+<div style="font-size:20px;font-weight:900;margin-top:6px;line-height:1.3">
+{% if top_scorers %}
+{% for player in top_scorers %}
+{{ player.name }}{% if not loop.last %}<br>{% endif %}
+{% endfor %}
+{% else %}
+—
+{% endif %}
+</div>
+
+<div class="muted">
+{{ leader_value }} pts
+{% if top_scorers|length > 1 %}
+· tied
+{% endif %}
+</div>
+</div>
+
+<div class="stat">
+<div class="small">MOST EXACT DRAWS</div>
+
+<div style="font-size:20px;font-weight:900;margin-top:6px;line-height:1.3">
+{% if most_exact_draws %}
+{% for player in most_exact_draws %}
+{{ player.name }}{% if not loop.last %}<br>{% endif %}
+{% endfor %}
+{% else %}
+—
+{% endif %}
+</div>
+
+<div class="muted">
+{{ exact_draw_value }}
+{% if most_exact_draws|length > 1 %}
+· tied
+{% endif %}
+</div>
+</div>
+
+<div class="stat">
+<div class="small">MOST EXACT WINNING SCORES</div>
+
+<div style="font-size:20px;font-weight:900;margin-top:6px;line-height:1.3">
+{% if most_exact_scores %}
+{% for player in most_exact_scores %}
+{{ player.name }}{% if not loop.last %}<br>{% endif %}
+{% endfor %}
+{% else %}
+—
+{% endif %}
+</div>
+
+<div class="muted">
+{{ exact_score_value }}
+{% if most_exact_scores|length > 1 %}
+· tied
+{% endif %}
+</div>
+</div>
+
+<div class="stat">
+<div class="small">BEST SINGLE GW</div>
+
+<div style="font-size:20px;font-weight:900;margin-top:6px;line-height:1.35">
+{% if best_gameweeks_overall %}
+{% for record in best_gameweeks_overall %}
+<div>
+{{ record.name }}
+<span class="muted" style="font-size:13px;font-weight:700">
+GW{{ record.matchday }}
+</span>
+</div>
+{% endfor %}
+{% else %}
+—
+{% endif %}
+</div>
+
+<div class="muted">
+{% if best_gameweeks_overall %}
+{{ best_gameweek_value }} pts
+{% if best_gameweeks_overall|length > 1 %}
+· tied record
+{% endif %}
+{% else %}
+—
+{% endif %}
+</div>
+</div>
+
+</div>
+
+</div>
+
+<div class="card">
+<h2>⚽ Season progress</h2>
+<p>
+<strong>{{ completed_matches }}</strong>
+Premier League matches completed.
+</p>
+</div>
+
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+
+<div style="max-width:430px;margin:55px auto">
+
+<div class="hero">
+<h1>Create account</h1>
+<p>Join the league.</p>
+</div>
+
+<div class="card">
+
+{% if not registration_enabled %}
+
+<h2>Registration closed</h2>
+<p class="muted">Ask the admin to enable it.</p>
+
+{% else %}
+
+<form method="POST">
+
+<label>Name</label>
+<input style="width:100%;margin:7px 0 15px" name="name" required>
+
+<label>PIN</label>
+<input style="width:100%;margin:7px 0 15px" name="pin" type="password" required>
+
+<label>Confirm PIN</label>
+<input style="width:100%;margin:7px 0 18px" name="pin_confirm" type="password" required>
+
+<button class="primary" style="width:100%">CREATE ACCOUNT</button>
+
+</form>
+
+{% endif %}
+
+<p><a href="/">Back to login</a></p>
+
+</div>
+
+</div>
+
+{% endblock %}

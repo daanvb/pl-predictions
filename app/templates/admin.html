@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">
+ADMIN · v{{ app_version }}
+</div>
+<h1>⚙️ League control</h1>
+<p>Players, fixtures, settings and backups.</p>
+</div>
+
+<div class="nav">
+<a href="/dashboard">← Dashboard</a>
+</div>
+
+<div class="grid">
+
+<div class="stat">
+<div class="small">PLAYERS</div>
+<div class="stat-number">{{ player_count }}</div>
+</div>
+
+<div class="stat">
+<div class="small">FIXTURES</div>
+<div class="stat-number">{{ fixture_count }}</div>
+</div>
+
+<div class="stat">
+<div class="small">PREDICTIONS</div>
+<div class="stat-number">{{ prediction_count }}</div>
+</div>
+
+<div class="stat">
+<div class="small">APP VERSION</div>
+<div style="font-size:26px;font-weight:900;margin-top:6px">
+v{{ app_version }}
+</div>
+</div>
+
+</div>
+
+<div class="card">
+<h2>🧪 Test Mode</h2>
+<p>Let normal players use the safe Test Mode. Each player predicts all <strong>5</strong> fake fixtures.</p>
+<form method="POST" action="/admin/test-mode/toggle">
+<label style="display:flex;gap:10px;align-items:center;font-weight:800">
+<input type="checkbox" name="test_mode_enabled" value="1" style="width:auto" {% if test_mode_enabled %}checked{% endif %}>
+Allow all players to use Test Mode
+</label><br>
+<button>Save Test Mode Access</button>
+</form><br>
+<a href="/test-mode"><button class="primary">Open Test Mode</button></a>
+</div>
+
+<div class="card">
+<h2>📣 Signal</h2>
+{% if signal.enabled %}
+<p>{% if signal_status.ok %}✅ Connected and enabled{% else %}⚠️ Enabled, but API unavailable{% endif %}</p>
+{% else %}
+<p>⏸ Signal notifications are disabled.</p>
+{% endif %}
+<p class="muted">Group: <strong>{{ signal.group_name }}</strong></p>
+<a href="/admin/signal"><button class="primary">Open Signal Settings</button></a>
+</div>
+
+<div class="card">
+
+<h2>💾 Automatic backup</h2>
+<p class="muted">Local + optional Google Drive protection.</p>
+
+{% if last_auto_backup %}
+
+<p>
+✅ Last automatic backup:
+<strong>{{ last_auto_backup }}</strong>
+</p>
+
+{% else %}
+
+<p>
+⏳ No automatic backup has been recorded yet.
+</p>
+
+{% endif %}
+
+<p class="muted">
+Automatic backups run every 6 hours and are stored in persistent <code>/data/backups</code>.
+</p>
+
+<a href="/admin/backup">
+<button class="primary">
+Open Backup & Restore
+</button>
+</a>
+
+</div>
+
+<div class="card">
+
+<h2>📊 Match Stats History</h2>
+
+<p>
+Match Stats are calculated locally from stored completed results.
+The app will try to download the previous five Premier League seasons once
+when historical data is first enabled.
+</p>
+
+<form method="POST" action="/admin/match-stats/refresh">
+<button class="primary">
+📥 Refresh Historical Results
+</button>
+</form>
+
+<p class="muted">
+Older seasons are tried through football-data.org first, with a deterministic
+football-data.co.uk results fallback if the API plan does not expose them.
+No AI is used.
+</p>
+
+{% if historical_results_last_refresh %}
+<p class="small">
+✅ Last historical refresh:
+<strong>{{ historical_results_last_refresh }}</strong>
+</p>
+{% endif %}
+
+{% if historical_results_last_sources %}
+<p class="small">
+Sources: {{ historical_results_last_sources }}
+</p>
+{% endif %}
+
+{% if historical_results_last_error %}
+<p class="small" style="color:#b91c1c">
+Some seasons could not be loaded:
+{{ historical_results_last_error }}
+</p>
+{% endif %}
+
+</div>
+
+<div class="card">
+
+<h2>🔄 Football data</h2>
+
+{% if last_api_refresh %}
+<p>
+Last API refresh:
+<strong>{{ last_api_refresh }}</strong>
+</p>
+{% else %}
+<p>No API refresh recorded yet.</p>
+{% endif %}
+
+{% if last_api_error %}
+<p style="color:#b91c1c">
+⚠️ Last API error:
+<strong>{{ last_api_error }}</strong>
+{% if last_api_error_at %}
+<br><span class="small">{{ last_api_error_at }}</span>
+{% endif %}
+</p>
+{% else %}
+<p class="small">✅ No current API refresh error recorded.</p>
+{% endif %}
+
+</div>
+
+{% endblock %}

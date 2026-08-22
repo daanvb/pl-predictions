@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Changelog{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">
+PREMIER LEAGUE PREDICTOR
+</div>
+<h1>📝 Changelog</h1>
+<p>
+What's new, changed and fixed in the Predictor.
+Opening this page marks v{{ app_version }} as seen for your account.
+</p>
+</div>
+
+<div class="nav">
+<a href="/dashboard">← Dashboard</a>
+</div>
+
+{% if releases %}
+
+{% for release in releases %}
+
+<div class="card">
+
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+
+<h2 style="margin:0">
+v{{ release['version'] }}
+{% if release['version'] == app_version %}
+<span class="badge live" style="margin-left:8px">CURRENT</span>
+{% endif %}
+</h2>
+
+{% if release['date'] %}
+<div class="muted">{{ release['date'] }}</div>
+{% endif %}
+
+</div>
+
+{% for section in release['sections'] %}
+
+<h3 style="margin-top:22px">{{ section['title'] }}</h3>
+
+<ul style="line-height:1.7">
+{% for item in section['items'] %}
+<li>{{ item }}</li>
+{% endfor %}
+</ul>
+
+{% endfor %}
+
+</div>
+
+{% endfor %}
+
+{% else %}
+
+<div class="card">
+<h2>No changelog found</h2>
+<p class="muted">CHANGELOG.md could not be read from the app package.</p>
+</div>
+
+{% endif %}
+
+{% endblock %}

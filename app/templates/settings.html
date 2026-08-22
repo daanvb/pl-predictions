@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+
+<div class="hero">
+<h1>⚙️ Settings</h1>
+<p>Registration and football API.</p>
+</div>
+
+<div class="nav">
+<a href="/admin">← Admin</a>
+<a href="/dashboard">🏠 Dashboard</a>
+</div>
+
+<div class="card">
+
+<h2>Player registration</h2>
+
+<form method="POST">
+
+<input
+    type="hidden"
+    name="action"
+    value="registration"
+>
+
+<label>
+
+<input
+    type="checkbox"
+    style="width:auto"
+    name="registration_enabled"
+    value="1"
+    {% if registration_enabled %}checked{% endif %}
+>
+
+Allow registration
+
+</label>
+
+<br><br>
+
+<button>
+Save
+</button>
+
+</form>
+
+</div>
+
+<div class="card">
+
+<h2>Football API</h2>
+
+<p>
+{% if configured %}
+✅ Token stored persistently.
+{% else %}
+⚠️ No token configured.
+{% endif %}
+</p>
+
+<form method="POST">
+
+<input
+    type="hidden"
+    name="action"
+    value="api"
+>
+
+<input
+    type="password"
+    name="api_token"
+    placeholder="API token"
+    style="width:100%;margin-bottom:10px"
+    required
+>
+
+<button>
+Save token
+</button>
+
+</form>
+
+</div>
+
+<div class="card">
+
+<h2>Automatic API refresh</h2>
+
+<p>
+Every 6 hours normally; every 5 minutes around live matches.
+</p>
+
+{% if last_api_refresh %}
+
+<p class="small">
+Last refresh:
+{{ last_api_refresh }}
+</p>
+
+{% endif %}
+
+<form
+    method="POST"
+    action="/admin/settings/test"
+>
+
+<button class="primary">
+Test API connection
+</button>
+
+</form>
+
+</div>
+
+{% endblock %}

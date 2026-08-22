@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}My Account{% endblock %}
+{% block content %}
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">PLAYER ACCOUNT</div>
+<h1>👤 My Account</h1>
+<p>Update your display name or change your PIN.</p>
+</div>
+<div class="nav">
+<a href="/dashboard">← Dashboard</a>
+</div>
+<div class="card">
+<form method="POST">
+<label><strong>Display name</strong></label>
+<input style="width:100%;margin:7px 0 18px" name="name" value="{{ player.name }}" maxlength="30" required>
+<label><strong>New PIN</strong></label>
+<input style="width:100%;margin:7px 0 6px" name="pin" type="password" inputmode="numeric" minlength="4" maxlength="8" placeholder="Leave blank to keep current PIN">
+<p class="small" style="margin-top:0">Leave blank if you do not want to change your PIN.</p>
+<label><strong>Confirm new PIN</strong></label>
+<input style="width:100%;margin:7px 0 18px" name="pin_confirm" type="password" inputmode="numeric" minlength="4" maxlength="8" placeholder="Repeat new PIN">
+<button class="primary">💾 Save Changes</button>
+</form>
+</div>
+<div class="card">
+<h2>🔒 Your league data</h2>
+<p>Changing your name or PIN does not affect your predictions, points, stats or history.</p>
+</div>
+{% endblock %}

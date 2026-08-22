@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Live GW {{ matchday }}{% endblock %}
+{% block content %}
+
+<meta http-equiv="refresh" content="60">
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">GAMEWEEK HUB</div>
+<h1>📊 Live GW {{ matchday }}</h1>
+<p>Each fixture reveals its predictions at its own kick-off. Live points are provisional until full-time.</p>
+</div>
+
+<div class="nav">
+<a href="/dashboard">← Dashboard</a>
+<a href="/predict/{{ matchday }}">✍️ My Predictions</a>
+</div>
+
+<div class="card">
+
+<h2>🏆 Live gameweek table</h2>
+
+{% for player in live_table %}
+
+<div class="leader-row">
+
+<div class="rank">
+{% if player.position == 1 %}🥇
+{% elif player.position == 2 %}🥈
+{% elif player.position == 3 %}🥉
+{% elif player.position == 4 %}💩
+{% else %}{{ player.position }}
+{% endif %}
+</div>
+
+<div>
+{% if player.position_change > 0 %}
+<span
+    class="position-move position-up"
+    title="Up {{ player.position_change }} place(s)"
+>
+▲{% if player.position_change > 1 %}{{ player.position_change }}{% endif %}
+</span>
+{% elif player.position_change < 0 %}
+<span
+    class="position-move position-down"
+    title="Down {{ -player.position_change }} place(s)"
+>
+▼{% if player.position_change < -1 %}{{ -player.position_change }}{% endif %}
+</span>
+{% else %}
+<span
+    class="position-move position-flat"
+    title="No positional change"
+>–</span>
+{% endif %}
+</div>
+
+<div>
+
+<strong>{{ player.name }}</strong>
+
+<div class="small">
+{% if player.live_matches %}
+{{ player.live_matches }} live ·
+{% endif %}
+{{ player.finished_matches }} finished
+</div>
+
+</div>
+
+<div class="leader-points">
+{{ player.points }}
+</div>
+
+</div>
+
+{% endfor %}
+
+<p class="small">
+Page refreshes every 60 seconds. API checks every 5 minutes around live matches.
+</p>
+
+</div>
+
+{% for fixture in fixtures %}
+
+<div class="card fixture-set">
+
+<div class="fixture-row-grid">
+
+<div class="fixture-match live-fixture-match">
+
+<div class="fixture-home">
+<strong>{{ short_team_name(fixture.home_team) }}</strong>
+</div>
+
+<div class="fixture-centre live-score live-score-grid">
+<span class="live-score-home">{{ fixture.home_score if fixture.home_score is not none else "–" }}</span>
+<span class="live-score-dash">–</span>
+<span class="live-score-away">{{ fixture.away_score if fixture.away_score is not none else "–" }}</span>
+</div>
+
+<div class="fixture-away">
+<strong>{{ short_team_name(fixture.away_team) }}</strong>
+</div>
+
+</div>
+
+<div class="fixture-submeta">
+{{ status_label(fixture) }}
+</div>
+
+<div class="fixture-broadcaster">
+{% if fixture.broadcaster %}
+<span title="{{ fixture.broadcaster }}">
+<img
+    class="tv-logo"
+    src="{{ broadcaster_logo_url(fixture.broadcaster) }}"
+    alt="{{ fixture.broadcaster }}"
+>
+</span>
+{% endif %}
+</div>
+
+<div class="fixture-status">
+{% set display_status = fixture_display_status(fixture) %}
+{% if display_status in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA') %}
+<span class="badge live">{{ status_label(fixture) }}</span>
+{% elif display_status == 'FINISHED' %}
+<span class="badge">FT</span>
+{% elif display_status == 'AWAITING_RESULT' %}
+<span class="badge">{{ status_label(fixture) }}</span>
+{% else %}
+<span class="badge open">● Upcoming</span>
+{% endif %}
+</div>
+
+</div>
+
+{% if reveal_map.get(fixture.id) %}
+
+<div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:10px">
+
+{% for player in players %}
+
+{% set pred = prediction_map.get((player.id, fixture.id)) %}
+
+<div class="pick-grid">
+
+<strong>{{ player.name }}</strong>
+
+<div>
+{% if pred %}
+{{ pred.home_score }}–{{ pred.away_score }}
+{% if pred.dp %}
+<span class="badge live" style="margin-left:6px">🔥 DP</span>
+{% endif %}
+{% else %}
+—
+{% endif %}
+</div>
+
+<div>
+
+{% if pred and fixture.home_score is not none and fixture.away_score is not none %}
+<span class="points-pill">
+{{ calculate_prediction_points(
+    pred.home_score,
+    pred.away_score,
+    fixture.home_score,
+    fixture.away_score,
+    pred.dp
+) }} pts
+</span>
+{% endif %}
+
+</div>
+
+</div>
+
+{% endfor %}
+
+</div>
+
+{% else %}
+
+<p class="muted" style="margin-top:14px">
+🔒 Everyone else's predictions stay hidden until this fixture kicks off.
+</p>
+
+{% endif %}
+
+</div>
+
+{% endfor %}
+
+{% endblock %}

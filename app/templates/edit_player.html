@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Edit Player{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">
+PLAYER ADMIN
+</div>
+<h1>✏️ Edit {{ player.name }}</h1>
+<p>Change their display name, PIN or role.</p>
+</div>
+
+<div class="nav">
+<a href="/admin">← Admin</a>
+<a href="/dashboard">🏠 Dashboard</a>
+</div>
+
+<div class="card">
+
+<form method="POST">
+
+<label><strong>Name</strong></label>
+
+<input
+    style="width:100%;margin:7px 0 15px"
+    name="name"
+    value="{{ player.name }}"
+    maxlength="30"
+    required
+>
+
+<label><strong>New PIN</strong></label>
+
+<input
+    style="width:100%;margin:7px 0 6px"
+    name="pin"
+    type="password"
+    inputmode="numeric"
+    minlength="4"
+    maxlength="8"
+    placeholder="Leave blank to keep current PIN"
+>
+
+<p class="small" style="margin-top:0">
+Leave this blank if you do not want to change the player's PIN.
+</p>
+
+<div style="margin:18px 0">
+
+<label style="display:flex;gap:10px;align-items:center;font-weight:800">
+
+<input
+    type="checkbox"
+    name="admin"
+    value="1"
+    style="width:auto"
+    {% if player.admin %}checked{% endif %}
+    {% if player.id == session.player_id %}disabled{% endif %}
+>
+
+Administrator
+
+</label>
+
+{% if player.id == session.player_id %}
+
+<p class="small">
+You cannot remove your own administrator access.
+</p>
+
+{% endif %}
+
+</div>
+
+<button class="primary" type="submit">
+💾 Save Changes
+</button>
+
+</form>
+
+</div>
+
+<div class="card">
+
+<h2>ℹ️ What happens to their predictions?</h2>
+
+<p>
+Nothing is lost. Predictions, points and stats stay attached to the same player account.
+</p>
+
+<p class="muted">
+Changing the name or PIN does not create a new player.
+</p>
+
+</div>
+
+{% endblock %}

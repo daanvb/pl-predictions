@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Backup & Restore{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">
+ADMIN · v{{ app_version }}
+</div>
+<h1>💾 Backup & Restore</h1>
+<p>Local restore points plus off-device Google Drive protection.</p>
+</div>
+
+<div class="nav">
+<a href="/admin">← Admin</a>
+<a href="/dashboard">🏠 Dashboard</a>
+</div>
+
+<div class="grid" style="margin-bottom:14px">
+
+<div class="stat">
+<div class="small">LOCAL BACKUPS</div>
+<div class="stat-number">{{ local_backup_limit }}</div>
+<div class="muted">automatic restore points kept</div>
+</div>
+
+<div class="stat">
+<div class="small">GOOGLE DRIVE RETENTION</div>
+<div class="stat-number">{{ cloud_retention_days }}</div>
+<div class="muted">days</div>
+</div>
+
+</div>
+
+<div class="card">
+
+<h2>🤖 Automatic local backup</h2>
+
+{% if last_auto_backup %}
+<p>
+✅ Last local backup:
+<strong>{{ last_auto_backup }}</strong>
+</p>
+{% else %}
+<p>⏳ No automatic local backup recorded yet.</p>
+{% endif %}
+
+<p class="muted">
+A local database backup is created every 6 hours.
+Only the latest {{ local_backup_limit }} automatic backups are retained.
+Manual backups are never pruned automatically.
+</p>
+
+</div>
+
+<div class="card">
+
+<h2>☁️ Google Drive</h2>
+
+{% if google_connected %}
+
+<p>
+<span class="badge open">● CONNECTED</span>
+</p>
+
+{% if last_google_backup %}
+<p>
+Last successful Drive backup:
+<strong>{{ last_google_backup }}</strong>
+</p>
+{% else %}
+<p>No successful Drive backup recorded yet.</p>
+{% endif %}
+
+{% if google_backup_error %}
+<div class="flash error">
+Last cloud error: {{ google_backup_error }}
+</div>
+{% endif %}
+
+<p class="muted">
+Each 6-hour automatic local backup is also uploaded to
+<strong>Premier League Predictor Backups</strong> in Google Drive.
+Cloud backups older than {{ cloud_retention_days }} days are deleted automatically.
+</p>
+
+<form
+    method="POST"
+    action="/admin/backup/google-now"
+    style="display:inline-block;margin-right:8px"
+>
+<button class="primary">
+☁️ Back up to Drive now
+</button>
+</form>
+
+<form
+    method="POST"
+    action="/admin/google/disconnect"
+    style="display:inline-block"
+    onsubmit="return confirm('Disconnect Google Drive? Existing cloud backups will stay in Drive.')"
+>
+<button class="danger">
+Disconnect Drive
+</button>
+</form>
+
+{% else %}
+
+<p>
+Connect your Google account once and the Predictor will upload
+every automatic backup to Drive.
+</p>
+
+<p class="muted">
+The connection token is stored in persistent <code>/data</code>,
+so normal Predictor updates do not require reconnecting.
+</p>
+
+<h3>Google Cloud setup</h3>
+
+<ol>
+<li>Create or select a Google Cloud project.</li>
+<li>Enable the <strong>Google Drive API</strong>.</li>
+<li>Create an <strong>OAuth 2.0 Client ID</strong> of type <strong>Web application</strong>.</li>
+<li>Add this exact Authorized Redirect URI:</li>
+</ol>
+
+<div style="background:#f1f5f9;padding:12px;border-radius:12px;margin-bottom:18px;word-break:break-all">
+<code>{{ google_redirect_uri }}</code>
+</div>
+
+<form
+    method="POST"
+    action="/admin/google/connect"
+>
+
+<label><strong>Public Predictor URL</strong></label>
+
+<input
+    style="width:100%;margin:7px 0 15px"
+    name="public_base_url"
+    value="{{ public_base_url }}"
+    placeholder="https://battleship.live"
+    required
+>
+
+<label><strong>Google OAuth Client ID</strong></label>
+
+<input
+    style="width:100%;margin:7px 0 15px"
+    name="google_client_id"
+    value="{{ google_client_id }}"
+    placeholder="xxxxx.apps.googleusercontent.com"
+    required
+>
+
+<label><strong>Google OAuth Client Secret</strong></label>
+
+<input
+    style="width:100%;margin:7px 0 18px"
+    type="password"
+    name="google_client_secret"
+    placeholder="Google OAuth client secret"
+    required
+>
+
+<button class="primary">
+🔗 Connect Google Drive
+</button>
+
+</form>
+
+{% endif %}
+
+</div>
+
+<div class="card">
+
+<h2>⬇️ Manual backup</h2>
+
+<p>
+Create and download a fresh copy of the complete Predictor database.
+</p>
+
+<a href="/admin/backup/download">
+<button>
+💾 Create & Download Backup
+</button>
+</a>
+
+</div>
+
+<div class="card">
+
+<h2>♻️ Restore backup</h2>
+
+<form
+    method="POST"
+    action="/admin/backup/restore"
+    enctype="multipart/form-data"
+    onsubmit="return confirm('Restore this backup? Current Predictor data will be replaced.')"
+>
+
+<input
+    type="file"
+    name="backup_file"
+    accept=".db,application/octet-stream"
+    required
+    style="width:100%;margin:10px 0 18px"
+>
+
+<button class="danger" type="submit">
+♻️ Restore Database
+</button>
+
+</form>
+
+</div>
+
+<div class="card">
+
+<h2>🗂️ Local backup history</h2>
+
+{% if backups %}
+
+{% for backup in backups %}
+
+<div class="fixture">
+
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+
+<div>
+<strong>{{ backup.name }}</strong>
+<br>
+<small>
+{{ backup.modified }}
+·
+{{ (backup.size / 1024)|round(1) }} KB
+</small>
+</div>
+
+<a href="/admin/backup/download/{{ backup.name }}">
+<button>Download</button>
+</a>
+
+</div>
+
+</div>
+
+{% endfor %}
+
+{% else %}
+
+<p>No local backups have been created yet.</p>
+
+{% endif %}
+
+</div>
+
+{% endblock %}

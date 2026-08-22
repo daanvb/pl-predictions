@@ -1,0 +1,129 @@
+{% if stats %}
+<details class="match-stats">
+
+<summary>
+<span>📊 Match Stats</span>
+<span class="match-stats-chevron">⌄</span>
+</summary>
+
+<div class="match-stats-body">
+
+<div class="match-stats-grid">
+
+<div class="match-stat-panel">
+<div class="small">{{ fixture.home_team|upper }} · HOME</div>
+<div class="match-record">
+<strong>
+{{ stats.home_record.wins }}W
+{{ stats.home_record.draws }}D
+{{ stats.home_record.losses }}L
+</strong>
+</div>
+<div class="muted">
+{{ stats.home_record.gf }} GF ·
+{{ stats.home_record.ga }} GA ·
+{{ stats.home_record.ppg }} PPG
+</div>
+</div>
+
+<div class="match-stat-panel">
+<div class="small">{{ fixture.away_team|upper }} · AWAY</div>
+<div class="match-record">
+<strong>
+{{ stats.away_record.wins }}W
+{{ stats.away_record.draws }}D
+{{ stats.away_record.losses }}L
+</strong>
+</div>
+<div class="muted">
+{{ stats.away_record.gf }} GF ·
+{{ stats.away_record.ga }} GA ·
+{{ stats.away_record.ppg }} PPG
+</div>
+</div>
+
+</div>
+
+<div class="match-stats-section">
+<div class="small">RECENT FORM · LAST 5</div>
+
+<div class="form-row">
+<div class="form-team">{{ short_team_name(fixture.home_team) }}</div>
+<div class="form-badges">
+{% if stats.home_form %}
+{% for result in stats.home_form %}
+<span class="form-pill form-{{ result|lower }}">{{ result }}</span>
+{% endfor %}
+{% else %}
+<span class="muted">No completed matches yet</span>
+{% endif %}
+</div>
+</div>
+
+<div class="form-row">
+<div class="form-team">{{ short_team_name(fixture.away_team) }}</div>
+<div class="form-badges">
+{% if stats.away_form %}
+{% for result in stats.away_form %}
+<span class="form-pill form-{{ result|lower }}">{{ result }}</span>
+{% endfor %}
+{% else %}
+<span class="muted">No completed matches yet</span>
+{% endif %}
+</div>
+</div>
+
+</div>
+
+<div class="match-stats-section">
+<div class="small">HEAD TO HEAD · LAST 5 MEETINGS</div>
+
+{% if stats.head_to_head %}
+
+<div class="h2h-summary">
+<strong>{{ short_team_name(fixture.home_team) }}</strong>
+{{ stats.h2h_home_wins }} wins
+<span>·</span>
+{{ stats.h2h_draws }} draws
+<span>·</span>
+<strong>{{ short_team_name(fixture.away_team) }}</strong>
+{{ stats.h2h_away_wins }} wins
+</div>
+
+<div class="past-results">
+
+{% for result in stats.head_to_head %}
+<div class="past-result">
+<div class="past-result-date">
+{{ result.utc_date[:10] }}
+</div>
+<div class="past-result-score">
+{{ short_team_name(result.home_team) }}
+<strong>
+{{ result.home_score }}–{{ result.away_score }}
+</strong>
+{{ short_team_name(result.away_team) }}
+</div>
+</div>
+{% endfor %}
+
+</div>
+
+{% else %}
+
+<p class="muted" style="margin-bottom:0">
+No previous meeting is stored yet. Ask an admin to run Refresh Historical Results.
+</p>
+
+{% endif %}
+
+</div>
+
+<div class="match-stats-footnote">
+Calculated locally from completed results stored by the Predictor. No AI.
+</div>
+
+</div>
+
+</details>
+{% endif %}

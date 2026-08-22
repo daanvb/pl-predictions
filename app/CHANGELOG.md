@@ -1,0 +1,824 @@
+# Changelog
+
+All notable changes to Premier League Predictor are documented here.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## [1.0.5] - 2026-08-21
+
+### Fixed
+- Fixed the live-data refresh scheduler being able to sleep through a Premier League kickoff.
+- The app now calculates its next wake-up from the next stored fixture kickoff instead of blindly sleeping for six hours.
+- API polling switches to the existing 5-minute interval from 20 minutes before kickoff until three hours after kickoff.
+- Finished results continue to trigger the existing local points recalculation immediately after the API refresh.
+
+### Improved
+- A fixture whose stored kickoff has passed can no longer continue to display `Upcoming` indefinitely while the provider is late updating its status.
+- During a provider delay it displays `LIVE · awaiting score`, then `Awaiting result` after the live window, without fabricating a score or writing an inferred result to the database.
+- Admin Football Data now records the most recent API refresh error for troubleshooting.
+- Added refresh-worker logging showing when the next API check is scheduled.
+
+### Packaging
+- Public Predictor version updated to `1.0.5`.
+- Home Assistant add-on package version updated to `1.21.7`.
+
+## [1.0.4] - 2026-08-21
+
+### Added
+- Added a new `Prize Structure` tab with a placeholder page ready for prize details.
+
+### Packaging
+- Public Predictor version updated to `1.0.4`.
+- Home Assistant add-on package version updated to `1.21.5`.
+
+## [1.0.2] - 2026-08-21
+
+### Added
+- Added current `League Position` to the main Dashboard alongside Season Total and Current Gameweek.
+- Top three positions display medal icons.
+- Dashboard league position uses the same tie-break rules as the main Season Leaderboard: points, exact draws, exact winning scores, then player name.
+
+### Packaging
+- Public Predictor version updated to `1.0.2`.
+- Home Assistant add-on package version updated to `1.21.3`.
+
+## [1.0.1] - 2026-08-21
+
+### Fixed
+- Fixed Live Gameweek score/dash overlap on desktop.
+- Desktop Live Gameweek now reserves a dedicated 84px centre score column between the team names.
+- Home score, dash and away score are aligned in separate fixed cells with tabular numerals.
+- Mobile Live Gameweek layout is intentionally unchanged.
+
+### Packaging
+- Public Predictor version updated to `1.0.1`.
+- Home Assistant add-on package version updated to `1.21.2`.
+
+## [1.0.0] - 2026-08-21
+
+### Packaging
+- Public Predictor version remains `1.0.0`.
+- Home Assistant add-on package version is `1.21.1` so Hassio can upgrade from the previous `1.21.0` package.
+
+
+### Release
+- Renumbered the final audited build as the official `1.0.0` release.
+- Functionality is unchanged from the audited v1.21.0 build.
+
+## [1.21.0] - 2026-08-21
+
+### Audit
+- Completed a final full audit using v1.20.8 as the baseline.
+- Reviewed scoring, DP, kickoff locking, live/main tables, records, Signal, Test Mode, Match Stats/H2H, display names, database migrations, backups, navigation and build-time regression protection.
+- Added an updated `AUDIT_REPORT.md` to the release.
+
+### Fixed
+- Fixed a Season Leaderboard positional-arrow edge case for players tied on points.
+- Historical leaderboard positions now use the same tie-break order as the visible table: points, exact draws, exact winning scores, then player name.
+
+### Reliability
+- Expanded the Docker build-time regression suite for short team names, positional baseline fields, Predictions-only Match Stats, no TV logos on Predictions, 2-hour Signal wording and cancelled-fixture reminder handling.
+- App and Home Assistant version updated to `1.21.0`.
+
+## [1.20.8] - 2026-08-21
+
+### Changed
+- Changed the display name `Newcastle Utd` back to `Newcastle`.
+- `Man Utd` and `Sheffield Utd` remain shortened.
+- App and Home Assistant version updated to `1.20.8`.
+
+## [1.20.7] - 2026-08-21
+
+### Changed
+- Shortened `United` to `Utd` in display names, including `Man Utd`, `Newcastle Utd` and `Sheffield Utd`.
+- This remains display-only; stored/API team names are unchanged.
+- App and Home Assistant version updated to `1.20.7`.
+
+## [1.20.6] - 2026-08-21
+
+### Changed
+- Team names across the app now use concise display names such as `Arsenal`, `Brentford`, `Wolves`, `Man City`, `Man United`, `Spurs`, `Newcastle`, `Nott'm Forest` and `West Ham`.
+- Short names are display-only. Original API/database team names are retained internally so fixture imports, scoring, predictions and Match Stats matching are unaffected.
+- Added sensible short-name fallbacks for test and historical clubs including `Coventry`, `QPR`, `West Brom`, `Norwich` and `Watford`.
+- App and Home Assistant version updated to `1.20.6`.
+
+## [1.20.5] - 2026-08-21
+
+### Fixed
+- Fixed Home/Away records and Recent Form failing when stored results used a different club-name variant.
+- Home record, away record, recent form and H2H now all use the same canonical team-name matching.
+- This fixes cases such as `Arsenal` vs `Arsenal FC`, `Man City` vs `Manchester City FC`, and similar source-name differences.
+
+### Changed
+- Corrected Admin Match Stats History wording to say the previous five Premier League seasons are attempted.
+- App and Home Assistant version updated to `1.20.5`.
+
+### Privacy / Processing
+- Match Stats remain deterministic local Python/SQL calculations.
+- No AI, LLM or OpenAI API is used.
+
+## [1.20.4] - 2026-08-21
+
+### Fixed
+- Fixed Head-to-Head history remaining empty after historical refreshes.
+- Historical seasons are now imported independently, so one inaccessible season cannot abort the entire refresh.
+- Added deterministic football-data.co.uk Premier League result fallback when football-data.org does not expose an older season.
+- Added club-name normalisation across data sources so names such as `Man City` and `Manchester City FC`, or `Wolves` and `Wolverhampton Wanderers FC`, correctly match for H2H.
+- Historical refresh now commits every successful season independently.
+- Admin now shows the historical sources used and any season-specific failures.
+
+### Changed
+- Match Stats now appear only on the Predictions page.
+- Removed Match Stats from Dashboard and Live Gameweek.
+- Removed Sky Sports / TNT Sports logos from the Predictions page.
+- Historical refresh now attempts the previous five Premier League seasons.
+- App and Home Assistant version updated to `1.20.4`.
+
+### Privacy / Processing
+- Match Stats and H2H remain deterministic local Python/SQL processing.
+- No AI, LLM or OpenAI API is used.
+
+## [1.20.3] - 2026-08-21
+
+### Changed
+- Replaced thick fixture separator lines with individual fixture cards.
+- Each match now has its own self-contained visual box containing teams, date/time, broadcaster logo, status and Match Stats.
+- Removed the heavy divider between fixtures.
+- Added a subtle border, light shadow and consistent gap between matches.
+- Match Stats panels remain visually subordinate inside the parent fixture card to avoid a box-within-box cluttered look.
+- Mobile fixture cards use slightly tighter spacing and smaller corner radius for cleaner scrolling.
+- App and Home Assistant version updated to `1.20.3`.
+
+## [1.20.2] - 2026-08-21
+
+### Changed
+- Simplified fixture separation to a single thick grey line between complete fixture + Match Stats sets.
+- Removed the extra lower border that caused the double-line appearance.
+- App and Home Assistant version updated to `1.20.2`.
+
+## [1.20.1] - 2026-08-21
+
+### Changed
+- Added clearer visual separation between each fixture and its Match Stats block.
+- Increased spacing between fixture sets.
+- Added a stronger divider/accent beneath fixture groups on mobile.
+- Fixture cards on Predictions and Live Gameweek now use a more obvious lower border so neighbouring matches do not visually run together.
+- App and Home Assistant version updated to `1.20.1`.
+
+## [1.20.0] - 2026-08-21
+
+### Added
+- Added expandable `📊 Match Stats` panels to fixtures on the Dashboard, Predictions and Live Gameweek pages.
+- Added current-season home record for the home team: W/D/L, goals for, goals against and points per game.
+- Added current-season away record for the away team: W/D/L, goals for, goals against and points per game.
+- Added last-5 recent form for both teams using locally stored completed results.
+- Added head-to-head summary and up to five previous stored meetings.
+- Added a separate `historical_fixtures` database table so historical results can power stats without affecting live fixtures or predictions.
+- Added automatic one-time attempt to import the previous three Premier League seasons using the existing football-data API token.
+- Added Admin → `Refresh Historical Results` for manually refreshing the local historical archive.
+
+### Privacy / Processing
+- Match Stats use deterministic Python/SQL calculations only.
+- No AI, OpenAI API, LLM or AI-generated analysis is used.
+- Once fixture/result data has been downloaded, all Match Stats calculations are performed locally.
+
+### Reliability
+- Historical data is isolated from live Predictor fixtures and cannot affect prediction foreign keys, locking or scoring.
+- Duplicate match IDs are de-duplicated when current and historical data are combined.
+- If the football-data API plan does not allow older seasons, current-season home/away records and recent form continue to work.
+- A failed historical import does not stop the Predictor from starting or refreshing current fixtures.
+
+### Changed
+- App and Home Assistant version updated to `1.20.0`.
+
+## [1.19.1] - 2026-08-21
+
+### Changed
+- League Records are now fully tie-aware.
+- Current Leader shows every player sharing the highest points total.
+- Most Exact Draws shows every player tied for the record.
+- Most Exact Winning Scores shows every player tied for the record.
+- Best Single Gameweek shows every tied record holder and the Gameweek in which each achieved the score.
+- Tied record cards are clearly labelled `tied` / `tied record`.
+- App and Home Assistant version updated to `1.19.1`.
+
+## [1.19.0] - 2026-08-21
+
+### Added
+- Added live positional movement indicators to the Live Gameweek table.
+- Green `▲` shows a player moving up; red `▼` shows a player moving down.
+- Movement of more than one place displays the number of places moved.
+- Live Gameweek movement compares the current provisional table with the same Gameweek using only fully finished fixtures, so the arrows reflect movement caused by matches currently in play.
+- Added the same positional movement indicators to the main Season Leaderboard.
+- Season Leaderboard movement uses the standings at the start of the current Gameweek as its baseline; between rounds it compares with the previous completed Gameweek.
+
+### Changed
+- Rebuilt navigation tabs as a centred responsive grid.
+- Mobile navigation now uses equal-height, centred tabs with consistent spacing.
+- Normal phone widths use a clean two-column layout; very narrow screens fall back to one column.
+- Desktop navigation also receives consistent centring and alignment.
+- App and Home Assistant version updated to `1.19.0`.
+
+## [1.18.1] - 2026-08-21
+
+### Changed
+- Rebuilt fixture rows around a proper responsive grid instead of relying on inline flex wrapping.
+- Home team, centre score/`v`, and away team now align consistently across every fixture.
+- Date/time/status information now has its own dedicated row/column rather than competing with team names.
+- TV broadcaster logos now occupy a fixed, centred slot so Sky/TNT logos line up from fixture to fixture.
+- Mobile fixture status badges now align consistently beneath each match.
+- Applied the same structured fixture header to Dashboard, Live Gameweek and Predictions pages.
+- App and Home Assistant version updated to `1.18.1`.
+
+## [1.18.0] - 2026-08-21
+
+### Changed
+- Added a dedicated mobile layout for screens up to 640px wide.
+- Tightened fixture spacing and typography so match lists are easier to scan on phones.
+- Improved home/away team alignment around the score/prediction area.
+- Reduced broadcaster logo size further on mobile and centred logos beneath fixture information.
+- Made prediction score inputs more compact and touch-friendly.
+- Reduced card, navigation and table spacing on small screens while leaving the desktop layout unchanged.
+- App and Home Assistant version updated to `1.18.0`.
+
+## [1.17.1] - 2026-08-21
+
+### Changed
+- Made the Sky Sports and TNT Sports fixture logos slightly smaller.
+- Improved centring and alignment of broadcaster logos within fixture rows.
+- App and Home Assistant version updated to `1.17.1`.
+
+## [1.17.0] - 2026-08-21
+
+### Added
+- Added UK TV broadcaster logos to Premier League fixtures.
+- Sky Sports and TNT Sports logos are shown on televised fixtures; non-televised fixtures remain uncluttered.
+- Broadcaster data is refreshed from the official Premier League 2026/27 fixture listing when fixtures refresh.
+- Added a conservative fallback for standard UK weekend broadcast slots if the Premier League listing is temporarily unavailable.
+- Added `Refresh UK TV listings` to Admin > Fixtures.
+- Added a persistent `broadcaster` field to fixtures without affecting existing prediction data.
+
+### Changed
+- BT Sport is represented by its current name, TNT Sports.
+- App and Home Assistant version updated to `1.17.0`.
+
+## [1.16.3] - 2026-08-21
+
+### Changed
+- Moved the Signal group shortcut to the first position in the main Dashboard navigation.
+- Renamed the Signal group shortcut to `Get Your Pre-Dicks In`.
+- Changed the 2-hour Signal reminder heading to `Lads. Footy`.
+- The 2-hour reminder still lists incomplete predictions and missing DP selections underneath the new heading.
+- App and Home Assistant version updated to `1.16.3`.
+
+## [1.16.2] - 2026-08-21
+
+### Changed
+- Gameweek Open Signal notification wording changed to `Get Your Pre-Dicks In`.
+- App and Home Assistant version updated to `1.16.2`.
+
+## [1.16.1] - 2026-08-21
+
+### Changed
+- Replaced the generic Signal chat emoji on the Dashboard shortcut with Signal's official logo.
+- Gameweek Open Signal notification now says `Get your predicks in`.
+- App and Home Assistant version updated to `1.16.1`.
+
+## [1.16.0] - 2026-08-21
+
+### Audit
+- Added a build-time regression self-test that runs inside the real add-on image after Flask and production dependencies are installed.
+- Self-test covers scoring, DP, database migrations, core page rendering, kickoff logic, Signal DP reminders, completed-Gameweek detection and the in-app changelog parser.
+- Added `AUDIT_REPORT.md` to the release package.
+
+### Fixed
+- Signal Results could be missed when a Gameweek finished before the next Gameweek had been imported.
+- Manual Signal Results now selects the latest fully completed Gameweek.
+- Signal Gameweek results now retain registered players with zero points/no predictions.
+- Cancelled fixtures no longer count as required predictions in Signal completion reminders.
+
+### Reliability
+- Every future Docker build now compiles the Python modules and executes the regression self-test; a failed test stops the image build.
+
+### Changed
+- App and Home Assistant version updated to `1.16.0`.
+
+## [1.15.2] - 2026-08-21
+
+### Added
+- Added a `Signal Group` shortcut to the main Dashboard.
+- The shortcut opens the Predictor's Signal group link in a new tab/window so mobile devices can hand it off to Signal.
+
+### Changed
+- App and Home Assistant version updated to `1.15.2`.
+
+## [1.15.1] - 2026-08-21
+
+### Added
+- New per-player app update notification on the main Dashboard.
+- Dashboard shows an `APP UPDATED` banner when the installed Predictor version has not yet been viewed by that player.
+- The Changelog navigation link displays a `NEW` badge while release notes are unread.
+- Opening the Changelog marks the current app version as seen for that player's account.
+
+### Reliability
+- Changelog read-state is stored persistently per player, so the update notification stays dismissed after logout, restart or addon rebuild.
+- Each player sees and clears their own update notification independently.
+
+### Changed
+- App and Home Assistant version updated to `1.15.1`.
+
+## [1.15.0] - 2026-08-21
+
+### Changed
+- Streamlined navigation throughout the app.
+- Main Dashboard is now the primary navigation hub.
+- Changelog, Rules, Stats, League and History pages now simply return to Dashboard instead of linking to unrelated pages.
+- Prediction and Live Gameweek pages now use contextual navigation between each other and Dashboard.
+- Test Mode links to Dashboard, plus Admin only when viewed by an administrator.
+- Admin child pages now consistently show `Admin` and `Dashboard` navigation.
+- Removed unnecessary cross-links that had accumulated as features were added.
+- App and Home Assistant version updated to `1.15.0`.
+
+## [1.14.5] - 2026-08-21
+
+### Fixed
+- Fixed `500 Internal Server Error` on the Changelog page caused by Jinja resolving `section.items` as Python's built-in dictionary method.
+- Changelog template now uses explicit dictionary key access such as `section["items"]`.
+- Other changelog dictionary fields were also changed to explicit key access to avoid similar name collisions.
+
+### Changed
+- App and Home Assistant version updated to `1.14.5`.
+
+## [1.14.4] - 2026-08-21
+
+### Fixed
+- Fixed `500 Internal Server Error` when opening the in-app Changelog.
+- Added the missing Python `re` import required by the changelog parser.
+- Added package-time validation of the changelog parser against the bundled `CHANGELOG.md`.
+
+### Changed
+- App and Home Assistant version updated to `1.14.4`.
+
+## [1.14.3] - 2026-08-21
+
+### Fixed
+- Fixed the in-app Changelog page showing `CHANGELOG.md could not be read from the app package`.
+- `CHANGELOG.md` is now copied into the running app container at `/app/CHANGELOG.md`.
+- The in-app changelog reader now checks the container path first.
+
+### Changed
+- App and Home Assistant version updated to `1.14.3`.
+
+## [1.14.2] - 2026-08-21
+
+### Changed
+- Changelog is now accessible from the main Dashboard only.
+- Removed the Changelog link from the login page.
+- Removed the duplicate Changelog shortcut from Admin.
+- Changelog again requires a logged-in player session.
+- App and Home Assistant version updated to `1.14.2`.
+
+## [1.14.1] - 2026-08-21
+
+### Changed
+- The in-app Changelog is now public and can be viewed without logging in.
+- Added a `View app changelog` link to the login page so all players and visitors can access release notes.
+- Logged-in players can still access Changelog from the Dashboard.
+- App and Home Assistant version updated to `1.14.1`.
+
+## [1.14.0] - 2026-08-21
+
+### Added
+- New in-app Changelog page available directly from the Dashboard.
+- The page automatically reads the packaged `CHANGELOG.md`, so future release notes appear in the app without maintaining a second copy.
+- Full version history is shown with Added, Changed, Fixed, Reliability and other release sections.
+- The currently installed release is marked `CURRENT`.
+- Changelog shortcut added to Admin.
+
+### Changed
+- App and Home Assistant version updated to `1.14.0`.
+
+## [1.13.1] - 2026-08-21
+
+### Changed
+- Clarified the DP rule: only the single selected fixture's points are doubled; the player's total Gameweek score is never doubled.
+- The 2-hour Signal reminder now also flags players who have not selected a DP match.
+- A player can therefore appear in the final reminder for:
+  - incomplete predictions
+  - no DP selected
+  - or both
+- The 24-hour reminder remains focused on incomplete prediction cards.
+- Manual reminder preview also shows missing DP status.
+- App and Home Assistant version updated to `1.13.1`.
+
+## [1.13.0] - 2026-08-21
+
+### Added
+- New `DP` (Double Points) rule.
+- Each player can select one prediction per Gameweek as their DP match.
+- The full normal score for the DP fixture is doubled:
+  - correct winner: 3 → 6
+  - correct draw: 4 → 8
+  - exact winning score: 5 → 10
+  - exact draw: 6 → 12
+  - wrong result remains 0
+- DP selector added to the Gameweek prediction page.
+- DP badge added to revealed predictions in the Live Gameweek page.
+- DP support added to Test Mode.
+- Stats now show completed DPs used.
+
+### Locking / Integrity
+- A DP can be moved between open fixtures while the currently selected DP match has not kicked off.
+- Once the selected DP fixture kicks off, the DP is locked for the rest of that Gameweek.
+- DP selection is validated server-side and must belong to a saved prediction in that Gameweek.
+- Database migration adds a persistent `dp` flag to existing live and Test Mode predictions without deleting existing data.
+
+### Fixed
+- Stats and leaderboard accuracy counts are now derived from prediction/result outcomes rather than raw point values, so doubled DP scores do not distort exact-score and correct-result statistics.
+
+### Changed
+- Rules page updated with DP scoring and examples.
+- App and Home Assistant version updated to `1.13.0`.
+
+## [1.12.1] - 2026-08-21
+
+### Changed
+- Prediction reminders now run twice per Gameweek when needed:
+  - first reminder around 24 hours before the first kick-off
+  - final reminder around 2 hours before the first kick-off
+- Each reminder only lists players who still have incomplete predictions.
+- If everyone is complete at either reminder point, no group message is sent.
+- The 24-hour and 2-hour reminders have separate persistent sent-state to prevent duplicates.
+- App and Home Assistant version updated to `1.12.1`.
+
+## [1.12.0] - 2026-08-21
+
+### Added
+- Automatic Signal notification when a new Gameweek opens.
+- Automatic one-time prediction reminder within 24 hours of the first kick-off.
+- Reminder shows incomplete players and their submitted prediction count.
+- Automatic Gameweek Results notification after the previous Gameweek completes.
+- Results message includes Gameweek standings and updated overall standings.
+- Individual Admin toggles for Gameweek Open, Reminder and Results notifications.
+- Manual preview buttons for each notification type.
+- Background notification checker runs every 15 minutes.
+
+### Reliability
+- Sent notification state is persisted in the Predictor database to avoid duplicate automatic messages after restarts.
+- If all players are complete, the reminder is marked handled without sending unnecessary group noise.
+- Automatic Signal errors are stored and displayed on the Signal Admin page.
+
+### Changed
+- App and Home Assistant version updated to `1.12.0`.
+
+## [1.11.0] - 2026-08-21
+
+### Added
+- Admin → Signal configuration page.
+- Signal REST API connection/status check.
+- Persistent Signal settings.
+- Enable/disable Signal toggle.
+- Send Test Message button.
+- Signal status card on Admin.
+- Shared `send_signal_message()` function ready for automatic Gameweek notifications.
+
+### Configured
+- Existing working Signal endpoint and Predictor group are pre-populated.
+
+## [1.10.0] - 2026-08-20
+
+### Changed
+- Each live fixture now locks individually at its own kick-off.
+- Later fixtures in the same Gameweek remain editable until their own kick-off.
+- Other players' predictions are revealed separately for each fixture once that match kicks off.
+- Live points ignore future/unrevealed fixtures.
+- App and Home Assistant version updated to `1.10.0`.
+
+### Security / Integrity
+- Prediction locking is enforced server-side.
+- A second kick-off check is performed immediately before writing to the database.
+- Late or manipulated submissions are ignored.
+
+## [1.9.2] - 2026-08-20
+
+### Changed
+- Simplified Test Mode to exactly 5 fixtures.
+- Each test player now submits exactly 5 predictions.
+- Admin Test Mode page shows prediction forms for all four test players:
+  - Fontz
+  - Deludo
+  - Tropic
+  - Strat
+- Normal players still only see their own assigned Test Mode identity.
+- App and Home Assistant version updated to `1.9.2`.
+
+### Fixed
+- Admin can once again enter predictions for the other Test Mode users directly from the Test Mode page.
+
+## [1.9.1] - 2026-08-20
+
+### Changed
+- Test Mode player names changed to `Fontz`, `Deludo`, `Tropic`, and `Strat`.
+- Test aliases are isolated from live account display names.
+- App version updated to `1.9.1`.
+
+## [1.9.0] - 2026-08-20
+
+### Added
+- Admin toggle to make Test Mode available to normal players.
+- Test Mode now uses each logged-in player's real account name.
+- My Account page for players to edit their own name and PIN.
+
+### Changed
+- Each player can choose a maximum of 5 predictions from the 10 Test Mode fixtures.
+- Admin still controls Test Gameweek creation, results and deletion.
+- App version updated to `1.9.0`.
+
+### Safety
+- Test data remains isolated from the live league.
+- Players cannot change their own admin role.
+- Name/PIN changes preserve predictions, points and stats.
+
+## [1.8.1] - 2026-08-20
+
+### Changed
+- Expanded Test Mode from 3 fixtures to a full 10-match fake Premier League Gameweek.
+- Expanded Test Mode from 3 test players to 4:
+  - Dan Test
+  - Bob Test
+  - Sarah Test
+  - Mike Test
+- Added more varied suggested results to exercise home wins, away wins, draws and exact-score bonuses.
+- Improved Test Mode summary with fixture, player and finished-match counts.
+- App and Home Assistant version updated to `1.8.1`.
+
+### Safety
+- Test Mode remains fully isolated from live league data.
+
+## [1.8.0] - 2026-08-20
+
+### Added
+- Admin-only Test Mode with an isolated fake Gameweek.
+- Three fake fixtures and three test players.
+- Enter and edit test predictions before results are applied.
+- Set fake final results and score them with the exact same `calculate_points()` function used by the live league.
+- Test Gameweek leaderboard and per-match scoring audit.
+- Finished test fixtures lock prediction editing.
+- One-click deletion of all test data.
+
+### Safety
+- Test Mode uses dedicated `test_fixtures` and `test_predictions` tables.
+- Test data never appears in the live Dashboard, History, Stats, fixtures, predictions or league totals.
+- Deleting the Test Gameweek cannot delete live league data.
+
+### Changed
+- App and Home Assistant version updated to `1.8.0`.
+
+## [1.7.5] - 2026-08-20
+
+### Fixed
+- Fixed Google OAuth token exchange failing with `invalid_grant: Missing code verifier`.
+- Explicitly enables PKCE for the Google authorization flow.
+- Persists the generated PKCE `code_verifier` before redirecting to Google.
+- Sends the matching `code_verifier` to Google's token endpoint.
+- Clears the saved OAuth state and verifier after successful authorization.
+
+### Changed
+- App and Home Assistant version updated to `1.7.5`.
+
+## [1.7.4] - 2026-08-20
+
+### Fixed
+- Fixed a Python syntax error in the v1.7.3 Google OAuth callback diagnostics.
+- Corrected escaped newline handling in OAuth state and token-exchange error messages.
+- Validated the full `app.py` with Python compilation before packaging.
+
+### Changed
+- App and Home Assistant version updated to `1.7.4`.
+
+## [1.7.3] - 2026-08-20
+
+### Fixed
+- Removed the Google OAuth callback's dependency on the Flask login session.
+- OAuth state is now persisted in the Predictor database as well as the browser session.
+- The callback validates against persistent state, so reverse-proxy/session-cookie issues cannot silently break the Google round trip.
+- The callback now returns standalone HTML directly and does not depend on Jinja templates.
+- Google Drive API calls are no longer made inside the OAuth callback; the callback only exchanges and saves tokens.
+
+### Diagnostics
+- Callback progress and state values are written to the addon log.
+- Any callback exception is returned visibly in the browser with its Python exception type.
+
+### Changed
+- App and Home Assistant version updated to `1.7.3`.
+
+## [1.7.2] - 2026-08-20
+
+### Fixed
+- Replaced the Google OAuth library callback token exchange with a direct request to Google's OAuth token endpoint.
+- Added explicit HTTP timeout and token-response validation.
+- Added a visible Google callback success/error page so OAuth failures no longer appear as a blank white page.
+- Google callback failures are persisted as the last cloud backup error and written to the addon log.
+
+### Changed
+- App and Home Assistant version updated to `1.7.2`.
+
+## [1.7.1] - 2026-08-20
+
+### Fixed
+- Fixed Google OAuth callback handling when the Predictor is behind an HTTPS reverse proxy.
+- The callback now exchanges Google's returned authorization code directly instead of parsing the proxied callback URL.
+- Added Werkzeug `ProxyFix` support for the external HTTPS scheme and host.
+- Added explicit OAuth state checking and clearer callback error logging.
+
+### Changed
+- App and Home Assistant version updated to `1.7.1`.
+
+## [1.7.0] - 2026-08-20
+
+### Added
+- Optional Google Drive backup integration.
+- One-time Google OAuth connection from Admin > Backup & Restore.
+- Automatic upload of each 6-hour database backup to Google Drive.
+- Dedicated `Premier League Predictor Backups` folder created in Drive.
+- Google Drive backup status and last successful cloud backup time.
+- Manual `Back up to Drive now` action.
+- Google Drive disconnect action.
+- Cloud backup error display.
+
+### Changed
+- Reduced retained automatic local backups from 28 to 5.
+- Google Drive backups are retained for 30 days.
+- Manual local backups remain exempt from automatic pruning.
+- Google OAuth access/refresh token is persisted in `/data/google_drive_token.json`.
+- App and Home Assistant version updated to `1.7.0`.
+
+### Security
+- Google client credentials are entered through the Admin UI rather than hard-coded.
+- The integration requests the limited Google Drive `drive.file` scope, which is intended for files created or opened by the app.
+
+## [1.6.0] - 2026-08-20
+
+### Added
+- Admin player editing.
+- Change a player's display name.
+- Reset/change a player's PIN.
+- Promote or demote players between Player and Admin roles.
+- Dedicated Edit Player page.
+
+### Safety
+- Changing a player's name or PIN preserves all existing predictions, points and stats because the underlying player ID is unchanged.
+- The currently logged-in administrator cannot accidentally remove their own admin access.
+- Duplicate player names are blocked.
+
+## [1.5.1] - 2026-08-20
+
+### Fixed
+- Fixed the missing `/history` route that caused a `404 Not Found` error.
+- History is now included directly in the complete build rather than requiring a manual route patch.
+
+### Changed
+- Main dashboard now shows only the current gameweek.
+- Added a dedicated Gameweek History page for previous rounds.
+- Current gameweek automatically advances when the previous gameweek is fully finished.
+- Updated in-app and Home Assistant app version to `1.5.1`.
+
+## [1.4.0] - 2026-08-20
+
+### Added
+- Complete combined build with all routes pre-wired.
+- Stats page.
+- Last automatic backup shown in Admin.
+- Last API refresh shown in Admin.
+- App version displayed in Admin and footer.
+- Automatic database backup every 6 hours.
+- Backup & Restore admin page.
+- Live Gameweek page with revealed predictions after kick-off.
+- Live provisional Gameweek table.
+- Player self-registration and admin registration toggle.
+- Rules page.
+
+### Changed
+- Scoring system:
+  - Correct draw: 4 points.
+  - Correct winner: 3 points.
+  - Exact score bonus: +2 points.
+  - Exact draw: 6 points total.
+  - Exact winning score: 5 points total.
+
+## [1.3.0] - 2026-08-20
+
+### Added
+- Automatic SQLite backups every 6 hours.
+- Retains the latest 28 automatic backups in `/data/backups`.
+
+## [1.2.0] - 2026-08-20
+
+### Changed
+- Introduced result-based scoring plus exact-score bonus.
+
+## [1.1.0] - 2026-08-20
+
+### Added
+- Dedicated Stats page and league records.
+
+## [1.0.0] - 2026-08-20
+
+### Added
+- Backup and restore functionality.
+
+## [0.9.0] - 2026-08-20
+
+### Added
+- Live Gameweek hub.
+- Prediction reveal after kick-off.
+- Live provisional Gameweek standings.
+
+## [0.8.0] - 2026-08-20
+
+### Added
+- Complete combined build.
+- Automatic fixture/result refresh.
+- Persistent API token.
+
+## [0.7.0] - 2026-08-20
+
+### Added
+- Rules page.
+
+## [0.6.0] - 2026-08-20
+
+### Added
+- Player self-registration.
+
+## [0.5.0] - 2026-08-20
+
+### Changed
+- Major mobile-first UI refresh.
+
+## [0.4.0] - 2026-08-20
+
+### Added
+- Gameweek prediction entry.
+- Kick-off locking.
+- Leaderboard.
+
+## [0.3.0] - 2026-08-20
+
+### Added
+- Football-data.org API integration.
+- Premier League fixture import.
+
+## [0.2.0] - 2026-08-20
+
+### Added
+- Player accounts using Name + PIN.
+- Admin player management.
+
+## [0.1.0] - 2026-08-20
+
+### Added
+- Initial Home Assistant app.

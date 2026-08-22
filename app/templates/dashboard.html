@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">
+PREMIER LEAGUE PREDICTOR
+</div>
+<h1>Welcome, {{ session.player_name }}</h1>
+<p>Make your picks, follow the gameweek, climb the table.</p>
+</div>
+
+<div class="nav">
+<a href="https://signal.group/#CjQKICKvqNxAPVKOKRPHrZWMWVO61y8ojBfPn03L5mTSqN20EhBx7o-QFZZ-lEdOstntrezU"
+   target="_blank"
+   rel="noopener noreferrer"
+   style="display:inline-flex;align-items:center;gap:8px">
+<img
+    src="https://signal.org/brand/assets/logo_min_size.png"
+    alt="Signal"
+    width="26"
+    height="26"
+    style="width:26px;height:26px;object-fit:contain"
+>
+Get Your Pre-Dicks In
+</a>
+<a href="/leaderboard">🏆 League</a>
+<a href="/stats">📊 Stats</a>
+<a href="/history">🕘 History</a>
+<a href="/rules">📘 Rules</a>
+<a href="/prize-structure">💷 Prize Structure</a>
+<a href="/changelog">
+📝 Changelog
+{% if changelog_has_update %}
+<span class="badge live" style="margin-left:6px">NEW</span>
+{% endif %}
+</a>
+<a href="/account">👤 My Account</a>
+{% if test_mode_enabled or session.admin %}
+<a href="/test-mode">🧪 Test Mode</a>
+{% endif %}
+{% if session.admin %}
+<a href="/admin">⚙️ Admin</a>
+{% endif %}
+</div>
+
+{% if changelog_has_update %}
+
+<div class="card" style="border:2px solid currentColor">
+
+<div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap">
+
+<div>
+<div style="font-size:13px;font-weight:900;letter-spacing:.06em">
+✨ APP UPDATED
+</div>
+
+<h2 style="margin:4px 0 6px">
+Premier League Predictor v{{ app_version }}
+</h2>
+
+<p class="muted" style="margin:0">
+There's a new version of the Predictor. See what's changed.
+</p>
+</div>
+
+<a href="/changelog">
+<button class="primary">
+📝 View What's New
+</button>
+</a>
+
+</div>
+
+</div>
+
+{% endif %}
+
+
+<div class="grid" style="margin-bottom:14px">
+
+<div class="stat">
+<div class="small">YOUR SEASON TOTAL</div>
+<div class="stat-number">{{ total_points }}</div>
+<div class="muted">points</div>
+</div>
+
+<div class="stat">
+<div class="small">LEAGUE POSITION</div>
+
+<div class="stat-number">
+{% if league_position == 1 %}🥇
+{% elif league_position == 2 %}🥈
+{% elif league_position == 3 %}🥉
+{% elif league_position == 4 %}💩
+{% elif league_position %}
+{{ league_position }}
+{% else %}
+—
+{% endif %}
+</div>
+
+<div class="muted">
+{% if league_position and league_size %}
+{{ league_position }} of {{ league_size }}
+{% else %}
+No position yet
+{% endif %}
+</div>
+</div>
+
+{% if current_matchday is not none %}
+
+<div class="stat">
+<div class="small">CURRENT GAMEWEEK</div>
+<div class="stat-number">GW{{ current_matchday }}</div>
+<div class="muted">Premier League</div>
+</div>
+
+{% endif %}
+
+</div>
+
+{% if current_matchday is not none %}
+
+<div class="card">
+
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+
+<div>
+<h2 style="margin-bottom:6px">⚽ Gameweek {{ current_matchday }}</h2>
+<p class="muted" style="margin-top:0">Your current round.</p>
+</div>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+
+<a href="/predict/{{ current_matchday }}">
+<button class="primary">✍️ Make Predictions</button>
+</a>
+
+<a href="/gameweek/{{ current_matchday }}">
+<button>📊 Live GW</button>
+</a>
+
+</div>
+
+</div>
+
+<div style="margin-top:10px">
+
+{% for fixture in current_fixtures %}
+
+<div class="fixture fixture-set">
+
+<div class="fixture-row-grid">
+
+<div class="fixture-match">
+<div class="fixture-home">
+<strong>{{ short_team_name(fixture.home_team) }}</strong>
+</div>
+
+<div class="fixture-centre">
+{% if fixture.status == 'FINISHED' and fixture.home_score is not none and fixture.away_score is not none %}
+{{ fixture.home_score }}–{{ fixture.away_score }}
+{% else %}
+v
+{% endif %}
+</div>
+
+<div class="fixture-away">
+<strong>{{ short_team_name(fixture.away_team) }}</strong>
+</div>
+</div>
+
+<div class="fixture-submeta">
+{% if fixture.status not in ('IN_PLAY','PAUSED','FINISHED') %}
+{{ local_datetime(fixture.utc_date) }}
+{% else %}
+{{ status_label(fixture) }}
+{% endif %}
+</div>
+
+<div class="fixture-broadcaster">
+{% if fixture.broadcaster %}
+<span title="{{ fixture.broadcaster }}">
+<img
+    class="tv-logo"
+    src="{{ broadcaster_logo_url(fixture.broadcaster) }}"
+    alt="{{ fixture.broadcaster }}"
+>
+</span>
+{% endif %}
+</div>
+
+<div class="fixture-status">
+{% set display_status = fixture_display_status(fixture) %}
+{% if display_status in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA') %}
+<span class="badge live">{{ status_label(fixture) }}</span>
+{% elif display_status == 'FINISHED' %}
+<span class="badge">FT</span>
+{% elif display_status == 'AWAITING_RESULT' %}
+<span class="badge">{{ status_label(fixture) }}</span>
+{% else %}
+<span class="badge open">● Upcoming</span>
+{% endif %}
+</div>
+
+</div>
+
+</div>
+
+{% endfor %}
+
+</div>
+
+</div>
+
+{% else %}
+
+<div class="card">
+<h2>⚽ No current gameweek</h2>
+<p class="muted">No Premier League fixtures are currently available.</p>
+</div>
+
+{% endif %}
+
+<div class="card">
+
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+
+<div>
+<h2 style="margin-bottom:6px">🕘 Gameweek History</h2>
+<p class="muted" style="margin:0">
+View old predictions, results and gameweek tables.
+</p>
+</div>
+
+<a href="/history">
+<button>View History</button>
+</a>
+
+</div>
+
+</div>
+
+{% endblock %}
