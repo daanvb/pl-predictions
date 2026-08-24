@@ -2,6 +2,12 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.15] - 2026-08-24
+
+### Changed
+- Renamed the Historical Winners dashboard tab and page to `Past Winners` and moved the tab directly after Prize Structure.
+- Home Assistant package version updated to `1.21.18`.
+
 ## [1.0.14] - 2026-08-24
 
 ### Added
