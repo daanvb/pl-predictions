@@ -2,6 +2,14 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.12] - 2026-08-24
+
+### Changed
+- Players now log in with an email address and their existing PIN while their editable username remains the public display name.
+- Existing accounts are migrated safely: the old login name continues to work until an email is added in My Account or by an administrator.
+- New registrations and admin-created players require a unique email address.
+- Home Assistant package version updated to `1.21.15`.
+
 ## [1.0.11] - 2026-08-24
 
 ### Changed

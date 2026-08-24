@@ -40,8 +40,13 @@ def init_db(seed_default_player=True):
         )
     """)
     _add_column_if_missing(conn, "players", "login_name", "TEXT")
+    _add_column_if_missing(conn, "players", "email", "TEXT")
     conn.execute(
         "UPDATE players SET login_name = name WHERE login_name IS NULL OR TRIM(login_name) = ''"
+    )
+    conn.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_players_email_nocase
+           ON players(email COLLATE NOCASE) WHERE email IS NOT NULL"""
     )
 
     conn.execute("""
@@ -173,8 +178,8 @@ def init_db(seed_default_player=True):
     if seed_default_player and count == 0:
         conn.execute(
             """
-            INSERT INTO players(name, login_name, pin_hash, admin)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO players(name, login_name, email, pin_hash, admin)
+            VALUES (?, ?, NULL, ?, ?)
             """,
             ("Dan", "Dan", hash_pin("1234"), 1)
         )
