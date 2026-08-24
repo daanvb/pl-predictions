@@ -160,7 +160,7 @@ No position yet
 </div>
 
 <div class="fixture-centre">
-{% if fixture.status == 'FINISHED' and fixture.home_score is not none and fixture.away_score is not none %}
+{% if fixture.status in ('LIVE','IN_PLAY','PAUSED','FINISHED') and fixture.home_score is not none and fixture.away_score is not none %}
 {{ fixture.home_score }}–{{ fixture.away_score }}
 {% else %}
 v
@@ -173,7 +173,7 @@ v
 </div>
 
 <div class="fixture-submeta">
-{% if fixture.status not in ('IN_PLAY','PAUSED','FINISHED') %}
+{% if fixture.status not in ('LIVE','IN_PLAY','PAUSED','FINISHED') %}
 {{ local_datetime(fixture.utc_date) }}
 {% else %}
 {{ status_label(fixture) }}
@@ -205,6 +205,21 @@ v
 {% endif %}
 </div>
 
+{% if fixture.scorers.home or fixture.scorers.away %}
+<div class="fixture-scorers" aria-label="Goalscorers">
+  <div class="fixture-scorers-home">
+    {% for scorer in fixture.scorers.home %}
+    <span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>
+    {% endfor %}
+  </div>
+  <div class="fixture-scorers-away">
+    {% for scorer in fixture.scorers.away %}
+    <span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 </div>
 
 </div>
@@ -222,6 +237,14 @@ v
 <p class="muted">No Premier League fixtures are currently available.</p>
 </div>
 
+{% endif %}
+
+{% if dashboard_has_live_fixtures %}
+<script>
+window.setTimeout(function () {
+  window.location.reload();
+}, 60000);
+</script>
 {% endif %}
 
 <div class="card">

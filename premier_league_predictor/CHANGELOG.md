@@ -2,6 +2,23 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.6] - 2026-08-24
+
+### Added
+- The Dashboard now shows live scores while Premier League fixtures are in progress.
+- Current goalscorers and goal minutes appear beneath the correct home or away team when the football-data provider supplies goal events.
+- Penalties, own goals and stoppage-time minutes are labelled in the scorer list.
+- The Dashboard refreshes itself every minute while a fixture is live.
+
+### Improved
+- Live scorer details are retained if a later API response temporarily omits its goal-event payload.
+- The app requests match details for live fixtures when the competition feed does not include goal events.
+- Existing prediction locking and finished-match points recalculation are unchanged.
+
+### Packaging
+- Public Predictor version updated to `1.0.6`.
+- Home Assistant app package version updated to `1.21.9`.
+
 
 
 

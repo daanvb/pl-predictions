@@ -30,10 +30,10 @@ from database_restore import (
     install_database,
     validate_predictor_database,
 )
-from football_api import test_connection, get_matches, FootballAPIError
+from football_api import test_connection, get_match, get_matches, FootballAPIError
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -230,6 +230,57 @@ def kickoff_passed(utc_date):
 
 def fixture_is_locked(fixture):
     return kickoff_passed(fixture["utc_date"])
+
+
+def goal_minute_label(goal):
+    minute = goal.get("minute")
+    if minute is None:
+        return ""
+    injury_time = goal.get("injuryTime")
+    if injury_time:
+        return f"{minute}+{injury_time}'"
+    return f"{minute}'"
+
+
+def fixture_scorers(goals_json, home_team, away_team):
+    try:
+        goals = json.loads(goals_json or "[]")
+    except (TypeError, ValueError):
+        goals = []
+
+    grouped = {"home": [], "away": []}
+    scorer_index = {"home": {}, "away": {}}
+
+    for goal in goals:
+        scorer = (goal.get("scorer") or {}).get("name")
+        team = (goal.get("team") or {}).get("name")
+        if not scorer or not team:
+            continue
+
+        if team.casefold() == home_team.casefold():
+            side = "home"
+        elif team.casefold() == away_team.casefold():
+            side = "away"
+        else:
+            continue
+
+        goal_type = (goal.get("type") or "").upper()
+        marker = goal_minute_label(goal)
+        if goal_type == "PENALTY":
+            marker = f"{marker} pen".strip()
+        elif goal_type in ("OWN", "OWN_GOAL"):
+            marker = f"{marker} og".strip()
+
+        key = scorer
+        entry = scorer_index[side].get(key)
+        if entry is None:
+            entry = {"name": scorer, "goals": []}
+            scorer_index[side][key] = entry
+            grouped[side].append(entry)
+        if marker:
+            entry["goals"].append(marker)
+
+    return grouped
 
 
 
@@ -434,7 +485,7 @@ def status_label(fixture):
         fixture
     )
 
-    if status == "IN_PLAY":
+    if status in ("LIVE", "IN_PLAY"):
         minute = fixture["minute"]
 
         if minute:
@@ -1526,6 +1577,22 @@ def import_matches_from_api():
             {}
         )
 
+        goals = match.get("goals")
+        score_has_goals = any(
+            isinstance(score, (int, float)) and score > 0
+            for score in (full_time.get("home"), full_time.get("away"))
+        )
+        needs_goal_details = goals is None or (not goals and score_has_goals)
+        if needs_goal_details and match.get("status") in ("LIVE", "IN_PLAY", "PAUSED"):
+            try:
+                details = get_match(token, match["id"])
+                goals = details.get("goals")
+            except FootballAPIError as exc:
+                print(
+                    f"[live-scorers] Match {match['id']}: {exc}",
+                    flush=True,
+                )
+
         conn.execute(
             """
             INSERT INTO fixtures (
@@ -1540,9 +1607,10 @@ def import_matches_from_api():
                 away_score,
                 last_updated,
                 minute,
-                injury_time
+                injury_time,
+                goals_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
             ON CONFLICT(id)
             DO UPDATE SET
@@ -1555,7 +1623,8 @@ def import_matches_from_api():
                 away_score = excluded.away_score,
                 last_updated = excluded.last_updated,
                 minute = excluded.minute,
-                injury_time = excluded.injury_time
+                injury_time = excluded.injury_time,
+                goals_json = COALESCE(excluded.goals_json, fixtures.goals_json)
             """,
             (
                 match["id"],
@@ -1570,6 +1639,7 @@ def import_matches_from_api():
                 match.get("lastUpdated"),
                 match.get("minute"),
                 match.get("injuryTime"),
+                json.dumps(goals) if goals is not None else None,
             ),
         )
 
@@ -3553,7 +3623,7 @@ def dashboard():
     current_fixtures = []
 
     if current_matchday is not None:
-        current_fixtures = conn.execute(
+        fixture_rows = conn.execute(
             """
             SELECT *
             FROM fixtures
@@ -3566,6 +3636,15 @@ def dashboard():
                 current_matchday
             ),
         ).fetchall()
+        current_fixtures = []
+        for row in fixture_rows:
+            fixture = dict(row)
+            fixture["scorers"] = fixture_scorers(
+                fixture.get("goals_json"),
+                fixture["home_team"],
+                fixture["away_team"],
+            )
+            current_fixtures.append(fixture)
 
     row = conn.execute(
         """
@@ -3665,6 +3744,10 @@ def dashboard():
         total_points=row["total"],
         league_position=league_position,
         league_size=league_size,
+        dashboard_has_live_fixtures=any(
+            fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
+            for fixture in current_fixtures
+        ),
     )
 
 @app.route("/history")
