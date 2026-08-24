@@ -199,6 +199,10 @@ for route in [
     response = client.get(route)
     assert response.status_code == 200, (route, response.status_code)
 
+admin_response = client.get("/admin")
+assert b"API Settings" in admin_response.data
+assert b'href="/admin/settings"' in admin_response.data
+
 # Per-fixture kickoff helper.
 future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
 past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
