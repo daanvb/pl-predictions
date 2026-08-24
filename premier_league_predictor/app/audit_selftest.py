@@ -202,6 +202,8 @@ for route in [
 admin_response = client.get("/admin")
 assert b"API Settings" in admin_response.data
 assert b'href="/admin/settings"' in admin_response.data
+leaderboard_response = client.get("/leaderboard")
+assert b"Season position changes" in leaderboard_response.data
 
 # Per-fixture kickoff helper.
 future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()

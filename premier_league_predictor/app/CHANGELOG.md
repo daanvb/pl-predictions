@@ -2,6 +2,13 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.10] - 2026-08-24
+
+### Added
+- A responsive continuous line chart beneath the Season Leaderboard showing every player's league position after each completed gameweek.
+- Each player has a consistent colour, labelled legend and position markers; first place is shown at the top of the chart.
+- Home Assistant package version updated to `1.21.13`.
+
 ## [1.0.9] - 2026-08-24
 
 ### Changed
