@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import shutil
 import tempfile
 import sqlite3
@@ -27,6 +28,7 @@ database.init_db()
 conn = database.get_db()
 assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(predictions)").fetchall()}
 assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(test_predictions)").fetchall()}
+assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='historical_fixtures'"
 ).fetchone() is not None
@@ -98,6 +100,51 @@ with client.session_transaction() as sess:
     sess["player_id"] = admin["id"]
     sess["player_name"] = admin["name"]
     sess["admin"] = True
+
+# Live dashboard scores, scorers, injury time, penalties and auto-refresh.
+goal_events = [
+    {
+        "minute": 12,
+        "injuryTime": None,
+        "type": "REGULAR",
+        "team": {"name": "Home FC"},
+        "scorer": {"name": "Alex Striker"},
+    },
+    {
+        "minute": 45,
+        "injuryTime": 2,
+        "type": "PENALTY",
+        "team": {"name": "Home FC"},
+        "scorer": {"name": "Alex Striker"},
+    },
+]
+scorers = predictor.fixture_scorers(
+    json.dumps(goal_events), "Home FC", "Away FC"
+)
+assert scorers["home"][0]["name"] == "Alex Striker"
+assert scorers["home"][0]["goals"] == ["12'", "45+2' pen"]
+
+conn = database.get_db()
+live_kickoff = datetime.now(timezone.utc).isoformat()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           home_score, away_score, goals_json
+       ) VALUES (?, ?, 1, ?, 'IN_PLAY', 'Home FC', 'Away FC', 2, 0, ?)""",
+    (8800, predictor.SEASON, live_kickoff, json.dumps(goal_events)),
+)
+conn.commit()
+conn.close()
+response = client.get("/dashboard")
+assert response.status_code == 200
+assert "2–0".encode() in response.data
+assert b"Alex Striker" in response.data
+assert b"45+2&#39; pen" in response.data
+assert b"window.setTimeout" in response.data
+conn = database.get_db()
+conn.execute("DELETE FROM fixtures WHERE id = 8800")
+conn.commit()
+conn.close()
 
 for route in [
     "/dashboard",

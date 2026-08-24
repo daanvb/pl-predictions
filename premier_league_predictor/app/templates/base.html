@@ -415,6 +415,7 @@ th,td{
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
         "match status"
+        "scorers scorers"
         "meta broadcaster";
     column-gap: 14px;
     row-gap: 7px;
@@ -460,6 +461,33 @@ th,td{
     color: var(--muted, #64748b);
 }
 
+.fixture-scorers {
+    grid-area: scorers;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 34px;
+    margin-top: -2px;
+    padding: 0 120px;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.fixture-scorers-home,
+.fixture-scorers-away {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fixture-scorers-home {
+    text-align: right;
+}
+
+.fixture-scorers-away {
+    text-align: left;
+}
+
 .fixture-broadcaster {
     grid-area: broadcaster;
     justify-self: center;
@@ -479,6 +507,7 @@ th,td{
         grid-template-columns: 1fr 70px;
         grid-template-areas:
             "match match"
+            "scorers scorers"
             "meta broadcaster"
             "status status";
         row-gap: 8px;
@@ -506,6 +535,12 @@ th,td{
         text-align: left;
         font-size: 11px;
         line-height: 1.25;
+    }
+
+    .fixture-scorers {
+        gap: 20px;
+        margin: 0;
+        padding: 0 8px;
     }
 
     .fixture-status {
