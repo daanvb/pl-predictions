@@ -30,6 +30,8 @@ assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(predictions)"
 assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(test_predictions)").fetchall()}
 assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "live_data_source" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
+assert "login_name" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
+assert conn.execute("SELECT COUNT(*) FROM players WHERE login_name IS NULL").fetchone()[0] == 0
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='historical_fixtures'"
 ).fetchone() is not None
@@ -101,6 +103,20 @@ with client.session_transaction() as sess:
     sess["player_id"] = admin["id"]
     sess["player_name"] = admin["name"]
     sess["admin"] = True
+
+# Display names can change without changing the stable login identifier.
+conn = database.get_db()
+original_login = conn.execute(
+    "SELECT login_name FROM players WHERE id = ?", (admin["id"],)
+).fetchone()["login_name"]
+conn.execute("UPDATE players SET name = ? WHERE id = ?", ("Display Name", admin["id"]))
+conn.commit()
+assert conn.execute(
+    "SELECT login_name FROM players WHERE id = ?", (admin["id"],)
+).fetchone()["login_name"] == original_login
+conn.execute("UPDATE players SET name = ? WHERE id = ?", (admin["name"], admin["id"]))
+conn.commit()
+conn.close()
 
 # Live dashboard scores, scorers, injury time, penalties and auto-refresh.
 goal_events = [

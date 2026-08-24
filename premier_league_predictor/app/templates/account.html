@@ -11,6 +11,9 @@
 </div>
 <div class="card">
 <form method="POST">
+<label><strong>Login name</strong></label>
+<input style="width:100%;margin:7px 0 6px" value="{{ player.login_name or player.name }}" readonly>
+<p class="small" style="margin-top:0">This stays fixed, so changing your display name will not change how you log in.</p>
 <label><strong>Display name</strong></label>
 <input style="width:100%;margin:7px 0 18px" name="name" value="{{ player.name }}" maxlength="30" required>
 <label><strong>New PIN</strong></label>
