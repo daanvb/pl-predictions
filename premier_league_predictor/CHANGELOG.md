@@ -2,6 +2,12 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.8] - 2026-08-24
+
+### Fixed
+- The Admin overview now provides visible links to Players, Fixtures, API Settings and Backups, making the optional API-Football token form reachable without manually editing the URL.
+- Home Assistant package version updated to `1.21.11`.
+
 ## [1.0.7] - 2026-08-24
 
 ### Added
