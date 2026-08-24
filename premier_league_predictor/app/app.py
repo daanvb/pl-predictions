@@ -31,9 +31,15 @@ from database_restore import (
     validate_predictor_database,
 )
 from football_api import test_connection, get_match, get_matches, FootballAPIError
+from api_football import (
+    APIFootballError,
+    get_live_matches as get_api_football_live_matches,
+    goal_events as api_football_goal_events,
+    test_connection as test_api_football_connection,
+)
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.0.7"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -48,7 +54,8 @@ GOOGLE_BACKUP_FOLDER = "Premier League Predictor Backups"
 GOOGLE_RETENTION_DAYS = 30
 
 QUIET_REFRESH_SECONDS = 6 * 60 * 60
-LIVE_REFRESH_SECONDS = 5 * 60
+LIVE_REFRESH_SECONDS = 3 * 60
+FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
 MIN_REFRESH_SLEEP_SECONDS = 60
@@ -1557,6 +1564,7 @@ def import_matches_from_api():
 
     conn = get_db()
     imported = 0
+    final_scorer_backfills = 0
 
     for match in matches:
         home = match.get(
@@ -1577,13 +1585,34 @@ def import_matches_from_api():
             {}
         )
 
+        existing = conn.execute(
+            "SELECT goals_json FROM fixtures WHERE id = ?",
+            (match["id"],),
+        ).fetchone()
+        existing_goals_json = existing["goals_json"] if existing else None
+
         goals = match.get("goals")
         score_has_goals = any(
             isinstance(score, (int, float)) and score > 0
             for score in (full_time.get("home"), full_time.get("away"))
         )
-        needs_goal_details = goals is None or (not goals and score_has_goals)
-        if needs_goal_details and match.get("status") in ("LIVE", "IN_PLAY", "PAUSED"):
+        status = match.get("status")
+        needs_live_goal_details = (
+            goals is None or (not goals and score_has_goals)
+        ) and status in ("LIVE", "IN_PLAY", "PAUSED")
+        needs_final_goal_details = (
+            status == "FINISHED"
+            and existing_goals_json is None
+            and score_has_goals
+            and final_scorer_backfills < FINAL_SCORER_BACKFILL_PER_REFRESH
+        )
+        if status == "FINISHED" and existing_goals_json is None and not score_has_goals:
+            goals = []
+        if needs_live_goal_details or needs_final_goal_details:
+            if needs_final_goal_details:
+                # Count attempts as well as successes so a provider outage can
+                # never turn a quiet refresh into hundreds of detail requests.
+                final_scorer_backfills += 1
             try:
                 details = get_match(token, match["id"])
                 goals = details.get("goals")
@@ -1608,9 +1637,10 @@ def import_matches_from_api():
                 last_updated,
                 minute,
                 injury_time,
-                goals_json
+                goals_json,
+                live_data_source
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
             ON CONFLICT(id)
             DO UPDATE SET
@@ -1624,7 +1654,8 @@ def import_matches_from_api():
                 last_updated = excluded.last_updated,
                 minute = excluded.minute,
                 injury_time = excluded.injury_time,
-                goals_json = COALESCE(excluded.goals_json, fixtures.goals_json)
+                goals_json = COALESCE(excluded.goals_json, fixtures.goals_json),
+                live_data_source = excluded.live_data_source
             """,
             (
                 match["id"],
@@ -1640,6 +1671,7 @@ def import_matches_from_api():
                 match.get("minute"),
                 match.get("injuryTime"),
                 json.dumps(goals) if goals is not None else None,
+                "football-data.org",
             ),
         )
 
@@ -1668,6 +1700,119 @@ def import_matches_from_api():
     )
 
     return imported
+
+
+def normalized_team_name(name):
+    value = re.sub(r"[^a-z0-9]+", " ", (name or "").casefold()).strip()
+    words = [word for word in value.split() if word not in ("fc", "afc")]
+    value = " ".join(words)
+    aliases = {
+        "brighton hove albion": "brighton",
+        "manchester city": "man city",
+        "manchester united": "man united",
+        "newcastle united": "newcastle",
+        "nottingham forest": "nottm forest",
+        "tottenham hotspur": "tottenham",
+        "west ham united": "west ham",
+        "wolverhampton wanderers": "wolves",
+    }
+    return aliases.get(value, value)
+
+
+def api_football_status(status_short):
+    if status_short in ("1H", "2H", "ET", "BT", "P", "LIVE"):
+        return "IN_PLAY"
+    if status_short in ("HT", "INT"):
+        return "PAUSED"
+    if status_short in ("FT", "AET", "PEN"):
+        return "FINISHED"
+    return None
+
+
+def import_live_matches_from_api_football():
+    token = get_setting("api_football_token")
+    if not token:
+        return 0
+
+    matches = get_api_football_live_matches(token, SEASON)
+    conn = get_db()
+    updated = 0
+
+    try:
+        fixtures = conn.execute(
+            """
+            SELECT id, home_team, away_team, goals_json
+            FROM fixtures
+            WHERE season = ?
+              AND status NOT IN ('FINISHED', 'CANCELLED')
+            """,
+            (SEASON,),
+        ).fetchall()
+        fixture_map = {
+            (
+                normalized_team_name(row["home_team"]),
+                normalized_team_name(row["away_team"]),
+            ): row
+            for row in fixtures
+        }
+
+        for match in matches:
+            teams = match.get("teams") or {}
+            key = (
+                normalized_team_name((teams.get("home") or {}).get("name")),
+                normalized_team_name((teams.get("away") or {}).get("name")),
+            )
+            stored = fixture_map.get(key)
+            if not stored:
+                continue
+
+            fixture_data = match.get("fixture") or {}
+            status_data = fixture_data.get("status") or {}
+            mapped_status = api_football_status(status_data.get("short"))
+            if not mapped_status:
+                continue
+
+            scores = match.get("goals") or {}
+            goals = api_football_goal_events(match)
+            goals_json = json.dumps(goals) if goals else None
+
+            conn.execute(
+                """
+                UPDATE fixtures
+                SET status = ?,
+                    home_score = COALESCE(?, home_score),
+                    away_score = COALESCE(?, away_score),
+                    minute = COALESCE(?, minute),
+                    injury_time = COALESCE(?, injury_time),
+                    goals_json = COALESCE(?, goals_json),
+                    last_updated = ?,
+                    live_data_source = 'API-Football'
+                WHERE id = ?
+                """,
+                (
+                    mapped_status,
+                    scores.get("home"),
+                    scores.get("away"),
+                    status_data.get("elapsed"),
+                    status_data.get("extra"),
+                    goals_json,
+                    datetime.fromtimestamp(
+                        fixture_data.get("timestamp", int(time.time())),
+                        timezone.utc,
+                    ).isoformat(),
+                    stored["id"],
+                ),
+            )
+            updated += 1
+
+        if updated:
+            refresh_points(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+    set_setting("last_api_football_refresh", now_utc().isoformat())
+    return updated
 
 
 def next_api_refresh_delay():
@@ -1830,6 +1975,19 @@ def api_refresh_worker():
             )
 
         delay = next_api_refresh_delay()
+
+        if delay == LIVE_REFRESH_SECONDS and get_setting("api_football_token"):
+            try:
+                secondary_updates = import_live_matches_from_api_football()
+                set_setting("last_api_football_error", "")
+                print(
+                    f"[API-Football] Updated {secondary_updates} live fixture(s)",
+                    flush=True,
+                )
+            except Exception as exc:
+                set_setting("last_api_football_error", str(exc))
+                set_setting("last_api_football_error_at", now_utc().isoformat())
+                print(f"[API-Football] {exc}", flush=True)
 
         print(
             f"[auto-refresh] "
@@ -3596,14 +3754,14 @@ def dashboard():
         (SEASON,),
     ).fetchone()
 
-    current_matchday = (
+    automatic_matchday = (
         current_row["matchday"]
         if current_row
         else None
     )
 
     # If the season is fully complete, show the final gameweek.
-    if current_matchday is None:
+    if automatic_matchday is None:
         latest_row = conn.execute(
             """
             SELECT MAX(matchday) AS matchday
@@ -3614,11 +3772,38 @@ def dashboard():
             (SEASON,),
         ).fetchone()
 
-        current_matchday = (
+        automatic_matchday = (
             latest_row["matchday"]
             if latest_row
             else None
         )
+
+    available_matchdays = [
+        row["matchday"]
+        for row in conn.execute(
+            """
+            SELECT DISTINCT matchday
+            FROM fixtures
+            WHERE season = ? AND matchday IS NOT NULL
+            ORDER BY matchday
+            """,
+            (SEASON,),
+        ).fetchall()
+    ]
+    requested_matchday = request.args.get("matchday", type=int)
+    current_matchday = (
+        requested_matchday
+        if requested_matchday in available_matchdays
+        else automatic_matchday
+    )
+    previous_matchday = None
+    next_matchday = None
+    if current_matchday in available_matchdays:
+        selected_index = available_matchdays.index(current_matchday)
+        if selected_index > 0:
+            previous_matchday = available_matchdays[selected_index - 1]
+        if selected_index + 1 < len(available_matchdays):
+            next_matchday = available_matchdays[selected_index + 1]
 
     current_fixtures = []
 
@@ -3740,6 +3925,9 @@ def dashboard():
     return render_template(
         "dashboard.html",
         current_matchday=current_matchday,
+        automatic_matchday=automatic_matchday,
+        previous_matchday=previous_matchday,
+        next_matchday=next_matchday,
         current_fixtures=current_fixtures,
         total_points=row["total"],
         league_position=league_position,
@@ -5786,6 +5974,18 @@ def settings():
                 "/admin/settings"
             )
 
+        if action == "api_football":
+            token = request.form.get("api_football_token", "").strip()
+            if token:
+                set_setting("api_football_token", token)
+                flash(
+                    "API-Football token saved as the optional live backup feed.",
+                    "success",
+                )
+            else:
+                flash("Please enter an API-Football token.", "error")
+            return redirect("/admin/settings")
+
         token = request.form.get(
             "api_token",
             ""
@@ -5820,6 +6020,12 @@ def settings():
             get_setting(
                 "football_api_token"
             )
+        ),
+        api_football_configured=bool(get_setting("api_football_token")),
+        last_api_football_refresh=(
+            local_timestamp(get_setting("last_api_football_refresh"))
+            if get_setting("last_api_football_refresh")
+            else None
         ),
         registration_enabled=(
             get_setting(
@@ -5873,6 +6079,19 @@ def test_api():
     return redirect(
         "/admin/settings"
     )
+
+
+@app.route("/admin/settings/test-api-football", methods=["POST"])
+def test_api_football():
+    if not is_admin():
+        return redirect("/")
+
+    try:
+        test_api_football_connection(get_setting("api_football_token"), SEASON)
+        flash("API-Football connection successful.", "success")
+    except APIFootballError as exc:
+        flash(str(exc), "error")
+    return redirect("/admin/settings")
 
 
 

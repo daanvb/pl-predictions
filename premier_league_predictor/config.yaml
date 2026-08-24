@@ -1,6 +1,6 @@
 name: "Premier League Predictor"
 description: "Private Premier League prediction game"
-version: "1.21.9"
+version: "1.21.10"
 slug: "premier_league_predictor"
 init: false
 arch:
