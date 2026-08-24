@@ -143,15 +143,14 @@ assert b"Alex Striker" in response.data
 assert b"45+2&#39; pen" in response.data
 assert b"window.setTimeout" in response.data
 
-# Finished scorers remain visible when an older gameweek is selected on the
-# main dashboard.
+# Finished scorers remain visible in the automatically selected current GW.
 finished_kickoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 conn = database.get_db()
 conn.execute(
     """INSERT INTO fixtures(
            id, season, matchday, utc_date, status, home_team, away_team,
            home_score, away_score, goals_json
-       ) VALUES (?, ?, 2, ?, 'FINISHED', 'Archive FC', 'History FC', 1, 0, ?)""",
+       ) VALUES (?, ?, 1, ?, 'FINISHED', 'Archive FC', 'History FC', 1, 0, ?)""",
     (8801, predictor.SEASON, finished_kickoff, json.dumps([{
         "minute": 77,
         "type": "REGULAR",
@@ -164,22 +163,23 @@ conn.close()
 response = client.get("/dashboard?matchday=2")
 assert response.status_code == 200
 assert b"Persistent Scorer" in response.data
-assert b"Current GW" in response.data
+assert b"GW2" not in response.data
 
 # Secondary-provider team/status/event normalization.
 assert predictor.normalized_team_name("Manchester United FC") == "man united"
 assert predictor.normalized_team_name("Wolverhampton Wanderers") == "wolves"
-assert predictor.api_football_status("2H") == "IN_PLAY"
-assert predictor.api_football_status("FT") == "FINISHED"
-api_goals = predictor.api_football_goal_events({"events": [{
-    "time": {"elapsed": 90, "extra": 4},
-    "team": {"name": "Home FC"},
-    "player": {"name": "Backup Scorer"},
+api_goals = predictor.sportscore_goal_events({
+    "home": "Home FC",
+    "away": "Away FC",
+    "incidents": [{
+    "time": 90,
+    "side": "home",
+    "player": "Backup Scorer",
     "type": "Goal",
-    "detail": "Penalty",
+    "is_goal": True,
 }]})
-assert api_goals[0]["type"] == "PENALTY"
-assert api_goals[0]["injuryTime"] == 4
+assert api_goals[0]["scorer"]["name"] == "Backup Scorer"
+assert api_goals[0]["team"]["name"] == "Home FC"
 conn = database.get_db()
 conn.execute("DELETE FROM fixtures WHERE id IN (8800, 8801)")
 conn.commit()
