@@ -134,6 +134,24 @@ No position yet
 
 <div style="display:flex;gap:8px;flex-wrap:wrap">
 
+{% if previous_matchday %}
+<a href="/dashboard?matchday={{ previous_matchday }}">
+<button>← GW{{ previous_matchday }}</button>
+</a>
+{% endif %}
+
+{% if current_matchday != automatic_matchday %}
+<a href="/dashboard">
+<button>Current GW</button>
+</a>
+{% endif %}
+
+{% if next_matchday %}
+<a href="/dashboard?matchday={{ next_matchday }}">
+<button>GW{{ next_matchday }} →</button>
+</a>
+{% endif %}
+
 <a href="/predict/{{ current_matchday }}">
 <button class="primary">✍️ Make Predictions</button>
 </a>

@@ -66,6 +66,7 @@ def init_db(seed_default_player=True):
     _add_column_if_missing(conn, "fixtures", "injury_time", "INTEGER")
     _add_column_if_missing(conn, "fixtures", "broadcaster", "TEXT")
     _add_column_if_missing(conn, "fixtures", "goals_json", "TEXT")
+    _add_column_if_missing(conn, "fixtures", "live_data_source", "TEXT")
 
     # Historical results are stored separately so they can power local
     # form/head-to-head statistics without ever interfering with the live

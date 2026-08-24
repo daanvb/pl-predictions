@@ -29,6 +29,7 @@ conn = database.get_db()
 assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(predictions)").fetchall()}
 assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(test_predictions)").fetchall()}
 assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
+assert "live_data_source" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='historical_fixtures'"
 ).fetchone() is not None
@@ -141,8 +142,46 @@ assert "2–0".encode() in response.data
 assert b"Alex Striker" in response.data
 assert b"45+2&#39; pen" in response.data
 assert b"window.setTimeout" in response.data
+
+# Finished scorers remain visible when an older gameweek is selected on the
+# main dashboard.
+finished_kickoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 conn = database.get_db()
-conn.execute("DELETE FROM fixtures WHERE id = 8800")
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           home_score, away_score, goals_json
+       ) VALUES (?, ?, 2, ?, 'FINISHED', 'Archive FC', 'History FC', 1, 0, ?)""",
+    (8801, predictor.SEASON, finished_kickoff, json.dumps([{
+        "minute": 77,
+        "type": "REGULAR",
+        "team": {"name": "Archive FC"},
+        "scorer": {"name": "Persistent Scorer"},
+    }])),
+)
+conn.commit()
+conn.close()
+response = client.get("/dashboard?matchday=2")
+assert response.status_code == 200
+assert b"Persistent Scorer" in response.data
+assert b"Current GW" in response.data
+
+# Secondary-provider team/status/event normalization.
+assert predictor.normalized_team_name("Manchester United FC") == "man united"
+assert predictor.normalized_team_name("Wolverhampton Wanderers") == "wolves"
+assert predictor.api_football_status("2H") == "IN_PLAY"
+assert predictor.api_football_status("FT") == "FINISHED"
+api_goals = predictor.api_football_goal_events({"events": [{
+    "time": {"elapsed": 90, "extra": 4},
+    "team": {"name": "Home FC"},
+    "player": {"name": "Backup Scorer"},
+    "type": "Goal",
+    "detail": "Penalty",
+}]})
+assert api_goals[0]["type"] == "PENALTY"
+assert api_goals[0]["injuryTime"] == 4
+conn = database.get_db()
+conn.execute("DELETE FROM fixtures WHERE id IN (8800, 8801)")
 conn.commit()
 conn.close()
 
