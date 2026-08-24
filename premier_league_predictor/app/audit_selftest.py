@@ -1,4 +1,6 @@
 import os
+import io
+import shutil
 import tempfile
 import sqlite3
 from datetime import datetime, timezone, timedelta
@@ -36,6 +38,59 @@ predictor.app.config["TESTING"] = True
 
 # Route/template smoke tests using the actual Flask/Jinja environment.
 client = predictor.app.test_client()
+
+# A fresh installation exposes restore only while it has zero users. Invalid
+# uploads are rejected, a compatible backup is installed, and the route then
+# disables itself immediately.
+backup = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+backup.close()
+shutil.copyfile(database.DB, backup.name)
+conn = database.get_db()
+conn.execute("DELETE FROM players")
+conn.commit()
+conn.close()
+response = client.get("/", follow_redirects=False)
+assert response.status_code == 302
+assert response.headers["Location"].endswith("/first-run/restore")
+response = client.get("/first-run/restore")
+assert response.status_code == 200
+with open(predictor.FIRST_RUN_TOKEN_FILE) as token_file:
+    restore_code = token_file.read().strip()
+response = client.post(
+    "/first-run/restore",
+    data={
+        "restore_code": "wrong-code",
+        "backup_file": (io.BytesIO(b"not sqlite"), "bad.db"),
+    },
+    content_type="multipart/form-data",
+    follow_redirects=True,
+)
+assert b"restore code is incorrect" in response.data
+response = client.post(
+    "/first-run/restore",
+    data={
+        "restore_code": restore_code,
+        "backup_file": (io.BytesIO(b"not sqlite"), "bad.db"),
+    },
+    content_type="multipart/form-data",
+    follow_redirects=True,
+)
+assert b"Restore failed" in response.data
+with open(backup.name, "rb") as backup_file:
+    response = client.post(
+        "/first-run/restore",
+        data={
+            "restore_code": restore_code,
+            "backup_file": (io.BytesIO(backup_file.read()), "predictor.db"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+assert response.status_code == 302
+assert response.headers["Location"].endswith("/")
+assert client.get("/first-run/restore").status_code == 302
+os.remove(backup.name)
+
 conn = database.get_db()
 admin = conn.execute("SELECT id, name FROM players ORDER BY id LIMIT 1").fetchone()
 conn.close()

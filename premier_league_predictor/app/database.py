@@ -6,7 +6,7 @@ DB = "/data/predictor.db"
 
 
 def get_db():
-    os.makedirs("/data", exist_ok=True)
+    os.makedirs(os.path.dirname(DB) or ".", exist_ok=True)
     conn = sqlite3.connect(DB, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
@@ -28,7 +28,7 @@ def _add_column_if_missing(conn, table, column, definition):
         )
 
 
-def init_db():
+def init_db(seed_default_player=True):
     conn = get_db()
 
     conn.execute("""
@@ -164,7 +164,7 @@ def init_db():
         "SELECT COUNT(*) FROM players"
     ).fetchone()[0]
 
-    if count == 0:
+    if seed_default_player and count == 0:
         conn.execute(
             """
             INSERT INTO players(name, pin_hash, admin)
