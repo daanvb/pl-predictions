@@ -31,6 +31,7 @@ assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(test_predicti
 assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "live_data_source" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "login_name" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
+assert "email" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
 assert conn.execute("SELECT COUNT(*) FROM players WHERE login_name IS NULL").fetchone()[0] == 0
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='historical_fixtures'"
@@ -117,6 +118,25 @@ assert conn.execute(
 conn.execute("UPDATE players SET name = ? WHERE id = ?", (admin["name"], admin["id"]))
 conn.commit()
 conn.close()
+
+# Existing users can transition safely: their legacy login works while email
+# is unset, then email becomes the login identifier once configured.
+client.get("/logout")
+response = client.post(
+    "/", data={"identifier": original_login, "pin": "1234"},
+    follow_redirects=False,
+)
+assert response.status_code == 302 and response.headers["Location"].endswith("/dashboard")
+conn = database.get_db()
+conn.execute("UPDATE players SET email = ? WHERE id = ?", ("dan@example.com", admin["id"]))
+conn.commit()
+conn.close()
+client.get("/logout")
+response = client.post(
+    "/", data={"identifier": "DAN@example.com", "pin": "1234"},
+    follow_redirects=False,
+)
+assert response.status_code == 302 and response.headers["Location"].endswith("/dashboard")
 
 # Live dashboard scores, scorers, injury time, penalties and auto-refresh.
 goal_events = [

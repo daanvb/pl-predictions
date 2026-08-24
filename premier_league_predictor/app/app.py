@@ -38,7 +38,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.11"
+APP_VERSION = "1.0.12"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -3014,8 +3014,8 @@ def login():
     )
 
     if request.method == "POST":
-        name = request.form.get(
-            "name",
+        identifier = request.form.get(
+            "identifier",
             ""
         ).strip()
 
@@ -3030,11 +3030,15 @@ def login():
             """
             SELECT *
             FROM players
-            WHERE LOWER(COALESCE(login_name, name)) = LOWER(?)
+            WHERE (
+                LOWER(email) = LOWER(?)
+                OR (email IS NULL AND LOWER(COALESCE(login_name, name)) = LOWER(?))
+            )
               AND pin_hash = ?
             """,
             (
-                name,
+                identifier,
+                identifier,
                 hash_pin(pin)
             ),
         ).fetchone()
@@ -3055,7 +3059,7 @@ def login():
             )
 
         flash(
-            "Incorrect login name or PIN.",
+            "Incorrect email or PIN.",
             "error"
         )
 
@@ -3144,6 +3148,8 @@ def register():
             ""
         ).strip()
 
+        email = request.form.get("email", "").strip().casefold()
+
         pin = request.form.get(
             "pin",
             ""
@@ -3153,6 +3159,10 @@ def register():
             "pin_confirm",
             ""
         ).strip()
+
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            flash("Enter a valid email address.", "error")
+            return redirect("/register")
 
         if (
             len(name) < 2
@@ -3198,17 +3208,16 @@ def register():
             """
             SELECT id
             FROM players
-            WHERE LOWER(COALESCE(login_name, name)) = LOWER(?)
+            WHERE LOWER(email) = LOWER(?)
             """,
-            (name,),
+            (email,),
         ).fetchone()
 
         if existing:
             conn.close()
 
             flash(
-                "That player name "
-                "is already taken.",
+                "That email address is already registered.",
                 "error"
             )
 
@@ -3221,14 +3230,16 @@ def register():
             INSERT INTO players(
                 name,
                 login_name,
+                email,
                 pin_hash,
                 admin
             )
-            VALUES (?, ?, ?, 0)
+            VALUES (?, ?, ?, ?, 0)
             """,
             (
                 name,
                 name,
+                email,
                 hash_pin(pin)
             ),
         )
@@ -3258,7 +3269,7 @@ def account():
 
     conn = get_db()
     player = conn.execute(
-        "SELECT id, name, login_name, admin FROM players WHERE id = ?",
+        "SELECT id, name, login_name, email, admin FROM players WHERE id = ?",
         (session["player_id"],)
     ).fetchone()
 
@@ -3269,12 +3280,27 @@ def account():
 
     if request.method == "POST":
         name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().casefold()
         pin = request.form.get("pin", "").strip()
         pin_confirm = request.form.get("pin_confirm", "").strip()
 
         if len(name) < 2 or len(name) > 30:
             conn.close()
             flash("Name must be between 2 and 30 characters.", "error")
+            return redirect("/account")
+
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            conn.close()
+            flash("Enter a valid email address.", "error")
+            return redirect("/account")
+
+        email_dup = conn.execute(
+            "SELECT id FROM players WHERE LOWER(email)=LOWER(?) AND id != ?",
+            (email, session["player_id"]),
+        ).fetchone()
+        if email_dup:
+            conn.close()
+            flash("Another player already uses that email address.", "error")
             return redirect("/account")
 
         dup = conn.execute(
@@ -3297,13 +3323,13 @@ def account():
                 flash("PINs do not match.", "error")
                 return redirect("/account")
             conn.execute(
-                "UPDATE players SET name=?, pin_hash=? WHERE id=?",
-                (name, hash_pin(pin), session["player_id"])
+                "UPDATE players SET name=?, email=?, pin_hash=? WHERE id=?",
+                (name, email, hash_pin(pin), session["player_id"])
             )
         else:
             conn.execute(
-                "UPDATE players SET name=? WHERE id=?",
-                (name, session["player_id"])
+                "UPDATE players SET name=?, email=? WHERE id=?",
+                (name, email, session["player_id"])
             )
 
         conn.commit()
@@ -5660,6 +5686,7 @@ def add_player():
         "name",
         ""
     ).strip()
+    email = request.form.get("email", "").strip().casefold()
 
     pin = request.form.get(
         "pin",
@@ -5668,10 +5695,11 @@ def add_player():
 
     if (
         not name
+        or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email)
         or not pin
     ):
         flash(
-            "Name and PIN are required.",
+            "A valid email, display name and PIN are required.",
             "error"
         )
 
@@ -5701,14 +5729,16 @@ def add_player():
             INSERT INTO players(
                 name,
                 login_name,
+                email,
                 pin_hash,
                 admin
             )
-            VALUES (?, ?, ?, 0)
+            VALUES (?, ?, ?, ?, 0)
             """,
             (
                 name,
                 name,
+                email,
                 hash_pin(pin)
             ),
         )
@@ -5748,7 +5778,7 @@ def edit_player(player_id):
 
     player = conn.execute(
         """
-        SELECT id, name, admin
+        SELECT id, name, email, admin
         FROM players
         WHERE id = ?
         """,
@@ -5770,6 +5800,7 @@ def edit_player(player_id):
             "name",
             ""
         ).strip()
+        email = request.form.get("email", "").strip().casefold()
 
         pin = request.form.get(
             "pin",
@@ -5788,6 +5819,11 @@ def edit_player(player_id):
                 "Name must be between 2 and 30 characters.",
                 "error"
             )
+
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            conn.close()
+            flash("Enter a valid email address.", "error")
+            return redirect(f"/admin/players/edit/{player_id}")
             return redirect(
                 f"/admin/players/edit/{player_id}"
             )
@@ -5828,6 +5864,15 @@ def edit_player(player_id):
                 "Another player already uses that name.",
                 "error"
             )
+
+        duplicate_email = conn.execute(
+            "SELECT id FROM players WHERE LOWER(email)=LOWER(?) AND id != ?",
+            (email, player_id),
+        ).fetchone()
+        if duplicate_email:
+            conn.close()
+            flash("Another player already uses that email address.", "error")
+            return redirect(f"/admin/players/edit/{player_id}")
             return redirect(
                 f"/admin/players/edit/{player_id}"
             )
@@ -5838,12 +5883,14 @@ def edit_player(player_id):
                 UPDATE players
                 SET
                     name = ?,
+                    email = ?,
                     pin_hash = ?,
                     admin = ?
                 WHERE id = ?
                 """,
                 (
                     name,
+                    email,
                     hash_pin(pin),
                     admin_value,
                     player_id
@@ -5855,11 +5902,13 @@ def edit_player(player_id):
                 UPDATE players
                 SET
                     name = ?,
+                    email = ?,
                     admin = ?
                 WHERE id = ?
                 """,
                 (
                     name,
+                    email,
                     admin_value,
                     player_id
                 )
