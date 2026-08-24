@@ -875,6 +875,54 @@ delay = predictor.next_api_refresh_delay()
 assert delay < predictor.QUIET_REFRESH_SECONDS
 assert delay <= (2 * 60 * 60)
 
+# Live refresh must look up the current fixture directly. The global latest-50
+# feed can omit Premier League matches when many games are played worldwide.
+conn = database.get_db()
+conn.execute(
+    """INSERT OR REPLACE INTO fixtures(
+           id, season, matchday, utc_date, status,
+           home_team, away_team
+       ) VALUES (99002, ?, 0, ?, 'SCHEDULED', 'Fulham', 'Chelsea')""",
+    (season, datetime.now(timezone.utc).isoformat()),
+)
+conn.commit()
+conn.close()
+direct_calls = []
+original_match_details = predictor.get_sportscore_match_details
+predictor.get_sportscore_match_details = lambda match: (
+    direct_calls.append(match["url"])
+    or {
+        "home": "Fulham",
+        "away": "Chelsea",
+        "home_score": "2",
+        "away_score": "3",
+        "status": "live",
+        "live_minute": "64",
+        "incidents": [{
+            "time": 54,
+            "type": "Goal",
+            "side": "home",
+            "player": "Direct Scorer",
+            "is_goal": True,
+        }],
+    }
+)
+try:
+    assert predictor.import_live_matches_from_sportscore() == 1
+finally:
+    predictor.get_sportscore_match_details = original_match_details
+assert direct_calls == ["/football/match/fulham-vs-chelsea/"]
+conn = database.get_db()
+direct_fixture = conn.execute(
+    "SELECT home_score, away_score, minute, goals_json FROM fixtures WHERE id = 99002"
+).fetchone()
+assert (direct_fixture["home_score"], direct_fixture["away_score"]) == (2, 3)
+assert direct_fixture["minute"] == 64
+assert "Direct Scorer" in direct_fixture["goals_json"]
+conn.execute("DELETE FROM fixtures WHERE id = 99002")
+conn.commit()
+conn.close()
+
 # UI fallback should stop saying Upcoming once stored kickoff has passed.
 past_fixture = {
     "status": "SCHEDULED",
