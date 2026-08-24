@@ -2,6 +2,19 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.7] - 2026-08-24
+
+### Added
+- Previous and next gameweek controls on the main Dashboard keep stored final scores and goalscorers browsable throughout the season.
+- Finished fixtures with missing goal events are backfilled in small, rate-limit-safe batches.
+- Optional API-Football backup-feed support for live Premier League scores, match status, minutes and goalscorers.
+- The main football-data.org feed remains authoritative for the fixture schedule; secondary data is only applied to an exact home/away team match.
+
+### Improved
+- Live refreshes now run every three minutes instead of every five minutes.
+- API-Football is only queried during live match windows to protect its 100-request free daily allowance.
+- Public Predictor version updated to `1.0.7`; Home Assistant package version updated to `1.21.10`.
+
 ## [1.0.6] - 2026-08-24
 
 ### Added
