@@ -32,14 +32,12 @@ from database_restore import (
 )
 from football_api import test_connection, get_match, get_matches, FootballAPIError
 from sportscore import (
-    get_live_matches as get_sportscore_live_matches,
-    get_team_matches as get_sportscore_team_matches,
     get_match_details as get_sportscore_match_details,
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.15"
+APP_VERSION = "1.0.16"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -1824,7 +1822,6 @@ def sportscore_team_slug(name):
 
 
 def import_live_matches_from_sportscore(force_current_gameweek=False):
-    matches = get_sportscore_live_matches()
     conn = get_db()
     updated = 0
 
@@ -1832,7 +1829,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
         fixtures = conn.execute(
             """
             SELECT id, home_team, away_team, home_score, away_score,
-                   status, goals_json
+                   status, goals_json, utc_date
             FROM fixtures
             WHERE season = ?
               AND matchday = COALESCE(
@@ -1851,60 +1848,39 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
             """,
             (SEASON, SEASON, SEASON),
         ).fetchall()
-        fixture_map = {
-            (
-                normalized_team_name(row["home_team"]),
-                normalized_team_name(row["away_team"]),
-            ): row
-            for row in fixtures
-        }
-
-        if force_current_gameweek:
-            known_keys = {
-                (
-                    normalized_team_name(match.get("home")),
-                    normalized_team_name(match.get("away")),
-                )
-                for match in matches
-            }
-            for fixture in fixtures:
-                needs_scorers = (
-                    not fixture["goals_json"]
-                    and (
-                        (fixture["home_score"] or 0) > 0
-                        or (fixture["away_score"] or 0) > 0
-                    )
-                )
-                key = (
-                    normalized_team_name(fixture["home_team"]),
-                    normalized_team_name(fixture["away_team"]),
-                )
-                if not needs_scorers or key in known_keys:
-                    continue
-
-                team_matches = get_sportscore_team_matches(
-                    sportscore_team_slug(fixture["home_team"])
-                )
-                for candidate in team_matches:
-                    candidate_key = (
-                        normalized_team_name(candidate.get("home")),
-                        normalized_team_name(candidate.get("away")),
-                    )
-                    if candidate_key == key:
-                        matches.append(candidate)
-                        known_keys.add(key)
-                        break
-
-        for match in matches:
-            key = (
-                normalized_team_name(match.get("home")),
-                normalized_team_name(match.get("away")),
+        current_time = now_utc()
+        for stored in fixtures:
+            kickoff = parse_utc(stored["utc_date"])
+            in_live_window = bool(
+                kickoff
+                and kickoff - timedelta(seconds=LIVE_WINDOW_BEFORE_SECONDS)
+                <= current_time
+                <= kickoff + timedelta(seconds=LIVE_WINDOW_AFTER_SECONDS)
             )
-            stored = fixture_map.get(key)
-            if not stored:
+            already_live = stored["status"] in ("LIVE", "IN_PLAY", "PAUSED")
+            needs_scorers = bool(
+                not stored["goals_json"]
+                and ((stored["home_score"] or 0) > 0 or (stored["away_score"] or 0) > 0)
+            )
+            if not (in_live_window or already_live or (force_current_gameweek and needs_scorers)):
                 continue
 
-            details = get_sportscore_match_details(match)
+            home_slug = sportscore_team_slug(stored["home_team"])
+            away_slug = sportscore_team_slug(stored["away_team"])
+            details = get_sportscore_match_details({
+                "url": f"/football/match/{home_slug}-vs-{away_slug}/"
+            })
+            details_key = (
+                normalized_team_name(details.get("home")),
+                normalized_team_name(details.get("away")),
+            )
+            stored_key = (
+                normalized_team_name(stored["home_team"]),
+                normalized_team_name(stored["away_team"]),
+            )
+            if details_key != stored_key:
+                continue
+
             goals = sportscore_goal_events(details)
             goals_json = json.dumps(goals) if goals else None
             minute_value = details.get("live_minute")
@@ -1926,7 +1902,11 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                 WHERE id = ?
                 """,
                 (
-                    "FINISHED" if details.get("status") == "finished" else "IN_PLAY",
+                    (
+                        "FINISHED" if details.get("status") == "finished"
+                        else "IN_PLAY" if details.get("status") == "live"
+                        else stored["status"]
+                    ),
                     details.get("home_score"),
                     details.get("away_score"),
                     minute_value,

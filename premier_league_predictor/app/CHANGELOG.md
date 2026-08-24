@@ -2,6 +2,15 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.16] - 2026-08-24
+
+### Fixed
+- Live updates now query each active Premier League fixture directly instead of relying on SportScore's global latest-50 feed, which could omit evening matches among worldwide fixtures.
+- Current scores, match minutes and goalscorers can now reach the dashboard on the intended one-minute refresh cycle.
+
+### Changed
+- Home Assistant package version updated to `1.21.19`.
+
 ## [1.0.15] - 2026-08-24
 
 ### Changed
