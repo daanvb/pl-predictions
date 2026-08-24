@@ -32,12 +32,13 @@ from database_restore import (
 )
 from football_api import test_connection, get_match, get_matches, FootballAPIError
 from sportscore import (
+    SportScoreError,
     get_match_details as get_sportscore_match_details,
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.16"
+APP_VERSION = "1.0.17"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -1741,7 +1742,12 @@ def import_matches_from_api():
                 last_updated = excluded.last_updated,
                 minute = excluded.minute,
                 injury_time = excluded.injury_time,
-                goals_json = COALESCE(excluded.goals_json, fixtures.goals_json),
+                goals_json = CASE
+                    WHEN excluded.goals_json IS NULL
+                      OR excluded.goals_json = '[]'
+                    THEN fixtures.goals_json
+                    ELSE excluded.goals_json
+                END,
                 live_data_source = excluded.live_data_source
             """,
             (
@@ -1867,18 +1873,34 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
 
             home_slug = sportscore_team_slug(stored["home_team"])
             away_slug = sportscore_team_slug(stored["away_team"])
-            details = get_sportscore_match_details({
-                "url": f"/football/match/{home_slug}-vs-{away_slug}/"
-            })
-            details_key = (
-                normalized_team_name(details.get("home")),
-                normalized_team_name(details.get("away")),
-            )
             stored_key = (
                 normalized_team_name(stored["home_team"]),
                 normalized_team_name(stored["away_team"]),
             )
-            if details_key != stored_key:
+            details = None
+            for match_slug in (
+                f"{home_slug}-vs-{away_slug}",
+                f"{away_slug}-vs-{home_slug}",
+            ):
+                try:
+                    candidate = get_sportscore_match_details({
+                        "url": f"/football/match/{match_slug}/"
+                    })
+                except SportScoreError as exc:
+                    if "HTTP 404" in str(exc):
+                        continue
+                    raise
+                candidate_key = (
+                    normalized_team_name(candidate.get("home")),
+                    normalized_team_name(candidate.get("away")),
+                )
+                if candidate_key == stored_key:
+                    details = candidate
+                    break
+
+            # A missing scorer archive must not stop live matches later in the
+            # gameweek from refreshing.
+            if details is None:
                 continue
 
             goals = sportscore_goal_events(details)
