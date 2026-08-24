@@ -30,6 +30,16 @@ def get_live_matches():
     ]
 
 
+def get_team_matches(team_slug):
+    payload = _get("team", {"slug": team_slug, "limit": 10})
+    if isinstance(payload.get("matches"), list):
+        return payload["matches"]
+    if isinstance(payload.get("fixtures"), list):
+        return payload["fixtures"]
+    team = payload.get("team") or {}
+    return team.get("matches") or team.get("fixtures") or []
+
+
 def get_match_details(match):
     slug = (match.get("url") or "").rstrip("/").split("/")[-1]
     if not slug or not re.fullmatch(r"[a-z0-9-]+", slug):

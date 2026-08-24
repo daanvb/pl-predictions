@@ -136,37 +136,42 @@ def init_db(seed_default_player=True):
         ON predictions(fixture_id)
     """)
 
-    # Isolated test-mode data. These tables are deliberately separate from
-    # real fixtures/predictions so testing can never affect the live league.
+    # Permanent end-of-season snapshots. Player names are copied rather than
+    # linked so later account edits cannot rewrite historical tables.
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS test_fixtures (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            home_team TEXT NOT NULL,
-            away_team TEXT NOT NULL,
-            home_score INTEGER,
-            away_score INTEGER,
-            status TEXT DEFAULT 'SCHEDULED'
+        CREATE TABLE IF NOT EXISTS season_archives (
+            season INTEGER PRIMARY KEY,
+            label TEXT NOT NULL,
+            winner_name TEXT NOT NULL,
+            archived_at TEXT,
+            stats_available INTEGER DEFAULT 0
         )
     """)
 
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS test_predictions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tester TEXT NOT NULL,
-            fixture_id INTEGER NOT NULL,
-            home_score INTEGER NOT NULL,
-            away_score INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS season_archive_players (
+            season INTEGER NOT NULL,
+            position INTEGER NOT NULL,
+            player_name TEXT NOT NULL,
             points INTEGER DEFAULT 0,
-            UNIQUE(tester, fixture_id),
-            FOREIGN KEY(fixture_id) REFERENCES test_fixtures(id)
+            exact_draws INTEGER DEFAULT 0,
+            exact_scores INTEGER DEFAULT 0,
+            correct_results INTEGER DEFAULT 0,
+            dp_exact_scores INTEGER DEFAULT 0,
+            PRIMARY KEY (season, position),
+            FOREIGN KEY(season) REFERENCES season_archives(season)
         )
     """)
 
-    _add_column_if_missing(
-        conn,
-        "test_predictions",
-        "dp",
-        "INTEGER DEFAULT 0"
+    conn.execute(
+        """INSERT OR IGNORE INTO season_archives
+           (season, label, winner_name, stats_available)
+           VALUES (2024, '2024/25', 'Fontz', 0)"""
+    )
+    conn.execute(
+        """INSERT OR IGNORE INTO season_archives
+           (season, label, winner_name, stats_available)
+           VALUES (2025, '2025/26', 'TROPiC', 0)"""
     )
 
     conn.commit()

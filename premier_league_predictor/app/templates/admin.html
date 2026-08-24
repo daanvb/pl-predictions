@@ -45,19 +45,6 @@ v{{ app_version }}
 </div>
 
 <div class="card">
-<h2>🧪 Test Mode</h2>
-<p>Let normal players use the safe Test Mode. Each player predicts all <strong>5</strong> fake fixtures.</p>
-<form method="POST" action="/admin/test-mode/toggle">
-<label style="display:flex;gap:10px;align-items:center;font-weight:800">
-<input type="checkbox" name="test_mode_enabled" value="1" style="width:auto" {% if test_mode_enabled %}checked{% endif %}>
-Allow all players to use Test Mode
-</label><br>
-<button>Save Test Mode Access</button>
-</form><br>
-<a href="/test-mode"><button class="primary">Open Test Mode</button></a>
-</div>
-
-<div class="card">
 <h2>📣 Signal</h2>
 {% if signal.enabled %}
 <p>{% if signal_status.ok %}✅ Connected and enabled{% else %}⚠️ Enabled, but API unavailable{% endif %}</p>
@@ -147,6 +134,15 @@ Some seasons could not be loaded:
 <div class="card">
 
 <h2>🔄 Football data</h2>
+
+<form method="POST" action="/admin/sportscore/scorers">
+<button class="primary">⚽ Refresh Current Gameweek Scorers</button>
+</form>
+
+<p class="muted">
+Uses SportScore to retry missing goalscorer details for scored matches in the
+current gameweek. Existing scorer records are preserved.
+</p>
 
 {% if last_api_refresh %}
 <p>
