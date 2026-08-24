@@ -77,7 +77,8 @@
 {% endfor %}
 
 <p class="small">
-Page refreshes every 60 seconds. API checks every 5 minutes around live matches.
+Page and SportScore live data refresh every 60 seconds while matches are active.
+Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
 </p>
 
 </div>
@@ -141,7 +142,7 @@ Page refreshes every 60 seconds. API checks every 5 minutes around live matches.
 
 <div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:10px">
 
-{% for player in players %}
+{% for player in fixture_players.get(fixture.id, players) %}
 
 {% set pred = prediction_map.get((player.id, fixture.id)) %}
 

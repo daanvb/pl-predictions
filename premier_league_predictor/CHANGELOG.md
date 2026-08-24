@@ -2,6 +2,22 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.13] - 2026-08-24
+
+### Added
+- Added SportScore-first one-minute live updates, persistent goalscorers and an Admin retry for current-gameweek scorer gaps; Football-Data remains the fixture/results fallback.
+- Added Historical Winners with Fontz (2024/25), TROPiC (2025/26), the all-time most-league-wins record and automatic full season snapshots from 2026/27 onward.
+- Added a crowned-football Predictor logo for Home Assistant, browser favicons and app branding.
+
+### Improved
+- Live Gameweek player predictions are ordered by the points earned in each match.
+- Season League statistics now use separate exact-draw, exact-win and other-correct columns, plus new DP exact-score and league-record statistics.
+- Signal manual messages no longer cause automatic duplicates, and Signal tables now use the same exact-score tie-breaks as the main league.
+
+### Removed
+- Retired Test Mode and moved Changelog to the final dashboard navigation position.
+- Home Assistant package version updated to `1.21.16`.
+
 ## [1.0.12] - 2026-08-24
 
 ### Changed

@@ -33,12 +33,13 @@ from database_restore import (
 from football_api import test_connection, get_match, get_matches, FootballAPIError
 from sportscore import (
     get_live_matches as get_sportscore_live_matches,
+    get_team_matches as get_sportscore_team_matches,
     get_match_details as get_sportscore_match_details,
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.12"
+APP_VERSION = "1.0.13"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -53,7 +54,9 @@ GOOGLE_BACKUP_FOLDER = "Premier League Predictor Backups"
 GOOGLE_RETENTION_DAYS = 30
 
 QUIET_REFRESH_SECONDS = 6 * 60 * 60
-LIVE_REFRESH_SECONDS = 3 * 60
+# SportScore caches its live feed for 60 seconds, so polling more often would
+# add load without producing fresher data.
+LIVE_REFRESH_SECONDS = 60
 FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
@@ -151,14 +154,6 @@ def is_admin():
     return bool(session.get("admin"))
 
 
-def test_mode_enabled():
-    return get_setting("test_mode_enabled") == "1"
-
-
-def can_use_test_mode():
-    return is_admin() or test_mode_enabled()
-
-
 def changelog_seen_key(player_id):
     return f"changelog_seen_version_{player_id}"
 
@@ -188,27 +183,11 @@ def mark_changelog_seen():
     )
 
 
-TEST_MODE_NAMES = ["Fontz", "Deludo", "Tropic", "Strat"]
-
-
-def test_mode_name_for_player(player_id):
-    """Return a stable Test Mode alias without changing the live player name."""
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT id FROM players ORDER BY id"
-    ).fetchall()
-    conn.close()
-
-    ids = [row["id"] for row in rows]
-    try:
-        index = ids.index(player_id)
-    except ValueError:
-        return f"Player {player_id}"
-
-    if index < len(TEST_MODE_NAMES):
-        return TEST_MODE_NAMES[index]
-
-    return f"Player {index + 1}"
+@app.before_request
+def retire_test_mode_routes():
+    if request.path == "/test-mode" or "test-mode" in request.path:
+        flash("Test Mode has been retired.", "success")
+        return redirect("/dashboard" if logged_in() else "/")
 
 
 def now_utc():
@@ -298,6 +277,117 @@ def ranking_positions(rows):
             start=1
         )
     }
+
+
+def season_label(season):
+    return f"{season}/{str(season + 1)[-2:]}"
+
+
+def archive_completed_season(conn, season):
+    """Store one immutable final table once all 380 league games complete."""
+    existing = conn.execute(
+        "SELECT stats_available FROM season_archives WHERE season = ?",
+        (season,),
+    ).fetchone()
+    if existing and existing["stats_available"]:
+        return False
+
+    fixture_status = conn.execute(
+        """
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN status IN ('FINISHED', 'CANCELLED')
+                        THEN 1 ELSE 0 END) AS complete
+        FROM fixtures
+        WHERE season = ?
+        """,
+        (season,),
+    ).fetchone()
+    if (
+        not fixture_status
+        or fixture_status["total"] < 380
+        or fixture_status["complete"] != fixture_status["total"]
+    ):
+        return False
+
+    rows = conn.execute(
+        """
+        SELECT
+            pl.name,
+            COALESCE(SUM(CASE WHEN f.season = ? THEN p.points ELSE 0 END), 0)
+                AS points,
+            COALESCE(SUM(CASE
+                WHEN f.season = ? AND f.status = 'FINISHED'
+                 AND p.home_score = f.home_score
+                 AND p.away_score = f.away_score
+                 AND f.home_score = f.away_score
+                THEN 1 ELSE 0 END), 0) AS exact_draws,
+            COALESCE(SUM(CASE
+                WHEN f.season = ? AND f.status = 'FINISHED'
+                 AND p.home_score = f.home_score
+                 AND p.away_score = f.away_score
+                 AND f.home_score != f.away_score
+                THEN 1 ELSE 0 END), 0) AS exact_scores,
+            COALESCE(SUM(CASE
+                WHEN f.season = ? AND f.status = 'FINISHED'
+                 AND NOT (p.home_score = f.home_score AND p.away_score = f.away_score)
+                 AND (
+                    (f.home_score = f.away_score AND p.home_score = p.away_score)
+                    OR (f.home_score > f.away_score AND p.home_score > p.away_score)
+                    OR (f.home_score < f.away_score AND p.home_score < p.away_score)
+                 )
+                THEN 1 ELSE 0 END), 0) AS correct_results,
+            COALESCE(SUM(CASE
+                WHEN f.season = ? AND f.status = 'FINISHED'
+                 AND COALESCE(p.dp, 0) = 1
+                 AND p.home_score = f.home_score
+                 AND p.away_score = f.away_score
+                THEN 1 ELSE 0 END), 0) AS dp_exact_scores
+        FROM players pl
+        LEFT JOIN predictions p ON p.player_id = pl.id
+        LEFT JOIN fixtures f ON f.id = p.fixture_id
+        GROUP BY pl.id
+        ORDER BY points DESC, exact_draws DESC, exact_scores DESC,
+                 pl.name COLLATE NOCASE
+        """,
+        (season, season, season, season, season),
+    ).fetchall()
+    if not rows:
+        return False
+
+    conn.execute(
+        """
+        INSERT INTO season_archives
+            (season, label, winner_name, archived_at, stats_available)
+        VALUES (?, ?, ?, ?, 1)
+        ON CONFLICT(season) DO UPDATE SET
+            label = excluded.label,
+            winner_name = excluded.winner_name,
+            archived_at = excluded.archived_at,
+            stats_available = 1
+        """,
+        (season, season_label(season), rows[0]["name"], now_utc().isoformat()),
+    )
+    conn.execute(
+        "DELETE FROM season_archive_players WHERE season = ?",
+        (season,),
+    )
+    conn.executemany(
+        """
+        INSERT INTO season_archive_players
+            (season, position, player_name, points, exact_draws, exact_scores,
+             correct_results, dp_exact_scores)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                season, position, row["name"], row["points"],
+                row["exact_draws"], row["exact_scores"],
+                row["correct_results"], row["dp_exact_scores"],
+            )
+            for position, row in enumerate(rows, start=1)
+        ],
+    )
+    return True
 
 
 def overall_table_at_matchday(
@@ -1689,6 +1779,7 @@ def import_matches_from_api():
         )
 
     refresh_points(conn)
+    archive_completed_season(conn, SEASON)
 
     conn.commit()
     conn.close()
@@ -1718,7 +1809,21 @@ def normalized_team_name(name):
     return aliases.get(value, value)
 
 
-def import_live_matches_from_sportscore():
+def sportscore_team_slug(name):
+    normalized = normalized_team_name(name)
+    aliases = {
+        "man city": "manchester-city",
+        "man united": "manchester-united",
+        "newcastle": "newcastle-united",
+        "nottm forest": "nottingham-forest",
+        "tottenham": "tottenham-hotspur",
+        "west ham": "west-ham-united",
+        "wolves": "wolverhampton-wanderers",
+    }
+    return aliases.get(normalized, normalized.replace(" ", "-"))
+
+
+def import_live_matches_from_sportscore(force_current_gameweek=False):
     matches = get_sportscore_live_matches()
     conn = get_db()
     updated = 0
@@ -1726,7 +1831,8 @@ def import_live_matches_from_sportscore():
     try:
         fixtures = conn.execute(
             """
-            SELECT id, home_team, away_team, goals_json
+            SELECT id, home_team, away_team, home_score, away_score,
+                   status, goals_json
             FROM fixtures
             WHERE season = ?
               AND matchday = COALESCE(
@@ -1752,6 +1858,42 @@ def import_live_matches_from_sportscore():
             ): row
             for row in fixtures
         }
+
+        if force_current_gameweek:
+            known_keys = {
+                (
+                    normalized_team_name(match.get("home")),
+                    normalized_team_name(match.get("away")),
+                )
+                for match in matches
+            }
+            for fixture in fixtures:
+                needs_scorers = (
+                    not fixture["goals_json"]
+                    and (
+                        (fixture["home_score"] or 0) > 0
+                        or (fixture["away_score"] or 0) > 0
+                    )
+                )
+                key = (
+                    normalized_team_name(fixture["home_team"]),
+                    normalized_team_name(fixture["away_team"]),
+                )
+                if not needs_scorers or key in known_keys:
+                    continue
+
+                team_matches = get_sportscore_team_matches(
+                    sportscore_team_slug(fixture["home_team"])
+                )
+                for candidate in team_matches:
+                    candidate_key = (
+                        normalized_team_name(candidate.get("home")),
+                        normalized_team_name(candidate.get("away")),
+                    )
+                    if candidate_key == key:
+                        matches.append(candidate)
+                        known_keys.add(key)
+                        break
 
         for match in matches:
             key = (
@@ -1797,6 +1939,7 @@ def import_live_matches_from_sportscore():
 
         if updated:
             refresh_points(conn)
+            archive_completed_season(conn, SEASON)
         conn.commit()
     finally:
         conn.close()
@@ -1968,10 +2111,10 @@ def api_refresh_worker():
 
         if delay == LIVE_REFRESH_SECONDS:
             try:
-                secondary_updates = import_live_matches_from_sportscore()
+                live_updates = import_live_matches_from_sportscore()
                 set_setting("last_sportscore_error", "")
                 print(
-                    f"[SportScore] Updated {secondary_updates} live fixture(s)",
+                    f"[SportScore] Updated {live_updates} live fixture(s)",
                     flush=True,
                 )
             except Exception as exc:
@@ -2743,6 +2886,7 @@ def signal_reminder_message(
 
 def signal_gw_table(conn, matchday):
     refresh_points(conn)
+    archive_completed_season(conn, SEASON)
     conn.commit()
 
     return conn.execute(
@@ -2759,7 +2903,21 @@ def signal_gw_table(conn, matchday):
                     END
                 ),
                 0
-            ) AS points
+            ) AS points,
+            COALESCE(SUM(CASE
+                WHEN f.season = ? AND f.matchday = ?
+                 AND f.status = 'FINISHED'
+                 AND p.home_score = f.home_score
+                 AND p.away_score = f.away_score
+                 AND f.home_score = f.away_score
+                THEN 1 ELSE 0 END), 0) AS exact_draws,
+            COALESCE(SUM(CASE
+                WHEN f.season = ? AND f.matchday = ?
+                 AND f.status = 'FINISHED'
+                 AND p.home_score = f.home_score
+                 AND p.away_score = f.away_score
+                 AND f.home_score != f.away_score
+                THEN 1 ELSE 0 END), 0) AS exact_scores
         FROM players pl
         LEFT JOIN predictions p
           ON p.player_id = pl.id
@@ -2768,9 +2926,15 @@ def signal_gw_table(conn, matchday):
         GROUP BY pl.id
         ORDER BY
             points DESC,
+            exact_draws DESC,
+            exact_scores DESC,
             pl.name COLLATE NOCASE
         """,
-        (SEASON, matchday),
+        (
+            SEASON, matchday,
+            SEASON, matchday,
+            SEASON, matchday,
+        ),
     ).fetchall()
 
 
@@ -2782,16 +2946,66 @@ def signal_overall_table(conn):
         """
         SELECT
             pl.name,
-            COALESCE(SUM(p.points), 0) AS points
+            COALESCE(SUM(p.points), 0) AS points,
+            COALESCE(SUM(CASE
+                WHEN f.status = 'FINISHED'
+                 AND p.home_score = f.home_score
+                 AND p.away_score = f.away_score
+                 AND f.home_score = f.away_score
+                THEN 1 ELSE 0 END), 0) AS exact_draws,
+            COALESCE(SUM(CASE
+                WHEN f.status = 'FINISHED'
+                 AND p.home_score = f.home_score
+                 AND p.away_score = f.away_score
+                 AND f.home_score != f.away_score
+                THEN 1 ELSE 0 END), 0) AS exact_scores
         FROM players pl
         LEFT JOIN predictions p
           ON p.player_id = pl.id
+        LEFT JOIN fixtures f
+          ON f.id = p.fixture_id
         GROUP BY pl.id
         ORDER BY
             points DESC,
+            exact_draws DESC,
+            exact_scores DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()
+
+
+def signal_manual_reminder_key(fixtures):
+    """Return the scheduled reminder slot covered by a manual send."""
+    active_fixtures = [
+        fixture
+        for fixture in fixtures
+        if fixture["status"] != "CANCELLED"
+    ]
+    if not active_fixtures:
+        return None
+
+    first_kickoff = parse_utc(active_fixtures[0]["utc_date"])
+    if not first_kickoff:
+        return None
+
+    time_to_kickoff = first_kickoff - now_utc()
+    if (
+        timedelta(0) < time_to_kickoff
+        <= timedelta(
+            hours=SIGNAL_FINAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF
+        )
+    ):
+        return "signal_last_reminder_2_gw"
+    if (
+        timedelta(
+            hours=SIGNAL_FINAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF
+        ) < time_to_kickoff
+        <= timedelta(
+            hours=SIGNAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF
+        )
+    ):
+        return "signal_last_reminder_24_gw"
+    return None
 
 
 def signal_results_message(matchday, gw_table, overall_table):
@@ -2985,7 +3199,6 @@ def inject_globals():
         "calculate_points": calculate_points,
         "calculate_prediction_points": calculate_prediction_points,
         "app_version": APP_VERSION,
-        "test_mode_enabled": test_mode_enabled(),
         "changelog_has_update": changelog_has_unread_update(),
         "broadcaster_logo_url": broadcaster_logo_url,
     }
@@ -3120,6 +3333,39 @@ def first_run_restore():
 
     ensure_first_run_restore_token()
     return render_template("first_run_restore.html")
+
+
+def order_players_for_fixture(
+    players,
+    fixture,
+    prediction_map,
+    revealed,
+):
+    """Order a fixture's player rows by current match points."""
+
+    def sort_key(player):
+        points = 0
+        pred = prediction_map.get(
+            (player["id"], fixture["id"])
+        )
+
+        if (
+            revealed
+            and pred
+            and fixture["home_score"] is not None
+            and fixture["away_score"] is not None
+        ):
+            points = calculate_prediction_points(
+                pred["home_score"],
+                pred["away_score"],
+                fixture["home_score"],
+                fixture["away_score"],
+                bool(pred["dp"]),
+            )
+
+        return (-points, player["name"].casefold())
+
+    return sorted(players, key=sort_key)
 
 
 @app.route(
@@ -3451,6 +3697,86 @@ def rules():
     )
 
 
+@app.route("/seasons")
+def historical_seasons():
+    if not logged_in():
+        return redirect("/")
+
+    conn = get_db()
+    archives = conn.execute(
+        """
+        SELECT season, label, winner_name, archived_at, stats_available
+        FROM season_archives
+        ORDER BY season DESC
+        """
+    ).fetchall()
+    title_rows = conn.execute(
+        """
+        SELECT winner_name, COUNT(*) AS titles
+        FROM season_archives
+        GROUP BY winner_name COLLATE NOCASE
+        ORDER BY titles DESC, winner_name COLLATE NOCASE
+        """
+    ).fetchall()
+    conn.close()
+
+    title_record = title_rows[0]["titles"] if title_rows else 0
+    most_titles = [
+        row for row in title_rows
+        if row["titles"] == title_record
+    ]
+    return render_template(
+        "seasons.html",
+        archives=archives,
+        most_titles=most_titles,
+        title_record=title_record,
+    )
+
+
+@app.route("/seasons/<int:season>")
+def historical_season(season):
+    if not logged_in():
+        return redirect("/")
+
+    conn = get_db()
+    archive = conn.execute(
+        "SELECT * FROM season_archives WHERE season = ?",
+        (season,),
+    ).fetchone()
+    if not archive:
+        conn.close()
+        flash("That historical season is not available.", "error")
+        return redirect("/seasons")
+
+    table = conn.execute(
+        """
+        SELECT * FROM season_archive_players
+        WHERE season = ?
+        ORDER BY position
+        """,
+        (season,),
+    ).fetchall()
+    conn.close()
+
+    records = {}
+    for key in (
+        "points", "exact_draws", "exact_scores",
+        "correct_results", "dp_exact_scores",
+    ):
+        value = max((row[key] for row in table), default=0)
+        records[key] = {
+            "value": value,
+            "players": [row for row in table if row[key] == value],
+        }
+
+    return render_template(
+        "season_archive.html",
+        archive=archive,
+        table=table,
+        records=records,
+    )
+
+
 @app.route("/stats")
 def stats():
     if not logged_in():
@@ -3459,6 +3785,7 @@ def stats():
     conn = get_db()
 
     refresh_points(conn)
+    archive_completed_season(conn, SEASON)
     conn.commit()
 
     personal = conn.execute(
@@ -3528,11 +3855,13 @@ def stats():
                 SUM(
                     CASE
                     WHEN COALESCE(p.dp, 0) = 1
+                        AND p.home_score = f.home_score
+                        AND p.away_score = f.away_score
                     THEN 1 ELSE 0
                     END
                 ),
                 0
-            ) AS dp_used
+            ) AS dp_exact_scores
 
         FROM predictions p
         JOIN fixtures f
@@ -3679,6 +4008,78 @@ def stats():
         if row["total"] == exact_score_value
     ]
 
+    correct_result_rows = conn.execute(
+        """
+        SELECT
+            pl.id,
+            pl.name,
+            COUNT(*) AS total
+        FROM predictions p
+        JOIN players pl
+          ON pl.id = p.player_id
+        JOIN fixtures f
+          ON f.id = p.fixture_id
+        WHERE f.status = 'FINISHED'
+          AND NOT (
+              p.home_score = f.home_score
+              AND p.away_score = f.away_score
+          )
+          AND (
+              (f.home_score = f.away_score AND p.home_score = p.away_score)
+              OR (f.home_score > f.away_score AND p.home_score > p.away_score)
+              OR (f.home_score < f.away_score AND p.home_score < p.away_score)
+          )
+        GROUP BY pl.id
+        ORDER BY
+            total DESC,
+            pl.name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    correct_result_value = (
+        correct_result_rows[0]["total"]
+        if correct_result_rows
+        else 0
+    )
+    most_correct_results = [
+        row
+        for row in correct_result_rows
+        if row["total"] == correct_result_value
+    ]
+
+    dp_exact_score_rows = conn.execute(
+        """
+        SELECT
+            pl.id,
+            pl.name,
+            COUNT(*) AS total
+        FROM predictions p
+        JOIN players pl
+          ON pl.id = p.player_id
+        JOIN fixtures f
+          ON f.id = p.fixture_id
+        WHERE f.status = 'FINISHED'
+          AND COALESCE(p.dp, 0) = 1
+          AND p.home_score = f.home_score
+          AND p.away_score = f.away_score
+        GROUP BY pl.id
+        ORDER BY
+            total DESC,
+            pl.name COLLATE NOCASE
+        """
+    ).fetchall()
+
+    dp_exact_score_value = (
+        dp_exact_score_rows[0]["total"]
+        if dp_exact_score_rows
+        else 0
+    )
+    most_dp_exact_scores = [
+        row
+        for row in dp_exact_score_rows
+        if row["total"] == dp_exact_score_value
+    ]
+
     best_gameweek_rows = conn.execute(
         """
         SELECT
@@ -3745,6 +4146,10 @@ def stats():
         exact_draw_value=exact_draw_value,
         most_exact_scores=most_exact_scores,
         exact_score_value=exact_score_value,
+        most_correct_results=most_correct_results,
+        correct_result_value=correct_result_value,
+        most_dp_exact_scores=most_dp_exact_scores,
+        dp_exact_score_value=dp_exact_score_value,
         best_gameweeks_overall=best_gameweeks_overall,
         best_gameweek_value=best_gameweek_value,
         completed_matches=completed_matches["total"],
@@ -4369,6 +4774,17 @@ def gameweek(matchday):
         for fixture in fixtures
     }
 
+
+    fixture_players = {
+        fixture["id"]: order_players_for_fixture(
+            players,
+            fixture,
+            prediction_map,
+            reveal_map[fixture["id"]],
+        )
+        for fixture in fixtures
+    }
+
     live_table = []
 
     for player in players:
@@ -4493,6 +4909,7 @@ def gameweek(matchday):
         matchday=matchday,
         fixtures=fixtures,
         players=players,
+        fixture_players=fixture_players,
         prediction_map=prediction_map,
         reveal_map=reveal_map,
         live_table=live_table,
@@ -4507,6 +4924,7 @@ def leaderboard():
     conn = get_db()
 
     refresh_points(conn)
+    archive_completed_season(conn, SEASON)
     conn.commit()
 
     players = conn.execute(
@@ -4863,6 +5281,10 @@ def admin_signal_send_open():
 
             if message:
                 send_signal_message(message)
+                set_setting(
+                    "signal_last_open_gw",
+                    str(matchday)
+                )
                 flash(
                     f"GW{matchday} open message sent.",
                     "success"
@@ -4915,6 +5337,14 @@ def admin_signal_send_reminder():
 
             if message:
                 send_signal_message(message)
+                reminder_key = signal_manual_reminder_key(
+                    fixtures
+                )
+                if reminder_key:
+                    set_setting(
+                        reminder_key,
+                        str(matchday)
+                    )
                 flash(
                     f"GW{matchday} reminder sent.",
                     "success"
@@ -4966,6 +5396,10 @@ def admin_signal_send_results():
                         conn
                     )
                 )
+            )
+            set_setting(
+                "signal_last_results_gw",
+                str(matchday)
             )
 
             flash(
@@ -6129,513 +6563,26 @@ def test_api():
 
 
 
-@app.route("/test-mode")
-def test_mode():
-    if not logged_in():
-        return redirect("/")
-
-    if not can_use_test_mode():
-        flash(
-            "Test Mode is currently disabled.",
-            "error"
-        )
-        return redirect("/dashboard")
-
-    conn = get_db()
-
-    fixtures = conn.execute(
-        "SELECT * FROM test_fixtures ORDER BY id"
-    ).fetchall()
-
-    predictions = {}
-
-    for row in conn.execute(
-        """
-        SELECT tester, fixture_id, home_score, away_score, points,
-               COALESCE(dp, 0) AS dp
-        FROM test_predictions
-        """
-    ).fetchall():
-        predictions[
-            (
-                row["tester"],
-                row["fixture_id"]
-            )
-        ] = row
-
-    leaderboard = conn.execute(
-        """
-        SELECT
-            tester,
-            COUNT(*) AS predictions,
-            COALESCE(SUM(points), 0) AS points
-        FROM test_predictions
-        GROUP BY tester
-        ORDER BY
-            points DESC,
-            tester COLLATE NOCASE
-        """
-    ).fetchall()
-
-    finished = sum(
-        1
-        for fixture in fixtures
-        if fixture["status"] == "FINISHED"
-    )
-
-    current_alias = test_mode_name_for_player(
-        session["player_id"]
-    )
-
-    visible_testers = (
-        TEST_MODE_NAMES
-        if is_admin()
-        else [current_alias]
-    )
-
-    conn.close()
-
-    return render_template(
-        "test_mode.html",
-        fixtures=fixtures,
-        testers=visible_testers,
-        all_testers=TEST_MODE_NAMES,
-        current_alias=current_alias,
-        predictions=predictions,
-        leaderboard=leaderboard,
-        finished=finished,
-        is_admin=is_admin(),
-    )
 
 
-@app.route(
-    "/admin/test-mode/toggle",
-    methods=["POST"]
-)
-def test_mode_toggle():
+@app.route("/admin/sportscore/scorers", methods=["POST"])
+def admin_refresh_current_scorers():
     if not is_admin():
         return redirect("/")
-
-    enabled = (
-        "1"
-        if request.form.get("test_mode_enabled") == "1"
-        else "0"
-    )
-
-    set_setting(
-        "test_mode_enabled",
-        enabled
-    )
-
-    flash(
-        (
-            "Test Mode is now available to all players."
-            if enabled == "1"
-            else
-            "Test Mode is now admin-only."
-        ),
-        "success"
-    )
-
-    return redirect("/admin")
-
-
-@app.route(
-    "/admin/test-mode/create",
-    methods=["POST"]
-)
-def test_mode_create():
-    if not is_admin():
-        return redirect("/")
-
-    conn = get_db()
-
-    conn.execute(
-        "DELETE FROM test_predictions"
-    )
-    conn.execute(
-        "DELETE FROM test_fixtures"
-    )
-
-    games = [
-        ("Liverpool", "Chelsea"),
-        ("Arsenal", "Tottenham"),
-        ("Aston Villa", "Everton"),
-        ("Manchester City", "Newcastle"),
-        ("Manchester United", "West Ham"),
-    ]
-
-    for home, away in games:
-        conn.execute(
-            """
-            INSERT INTO test_fixtures(
-                home_team,
-                away_team,
-                status
-            )
-            VALUES (?, ?, 'SCHEDULED')
-            """,
-            (home, away)
-        )
-
-    conn.commit()
-    conn.close()
-
-    flash(
-        "5-match Test Gameweek created.",
-        "success"
-    )
-
-    return redirect("/test-mode")
-
-
-@app.route(
-    "/test-mode/predictions",
-    methods=["POST"]
-)
-def test_mode_predictions():
-    if not logged_in():
-        return redirect("/")
-
-    if not can_use_test_mode():
-        flash(
-            "Test Mode is currently disabled.",
-            "error"
-        )
-        return redirect("/dashboard")
-
-    requested_tester = request.form.get(
-        "tester",
-        ""
-    ).strip()
-
-    if is_admin():
-        if requested_tester not in TEST_MODE_NAMES:
-            flash(
-                "Invalid test player.",
-                "error"
-            )
-            return redirect("/test-mode")
-
-        tester = requested_tester
-
-    else:
-        tester = test_mode_name_for_player(
-            session["player_id"]
-        )
-
-    requested_dp_raw = request.form.get(
-        "dp_fixture_id",
-        ""
-    ).strip()
 
     try:
-        requested_dp_id = int(requested_dp_raw)
-    except (TypeError, ValueError):
+        updated = import_live_matches_from_sportscore(
+            force_current_gameweek=True
+        )
         flash(
-            "Choose one DP match.",
-            "error"
+            f"SportScore checked the current gameweek and updated "
+            f"{updated} fixture(s).",
+            "success",
         )
-        return redirect("/test-mode")
+    except Exception as exc:
+        flash(f"SportScore scorer refresh failed: {exc}", "error")
 
-    conn = get_db()
-
-    fixtures = conn.execute(
-        "SELECT * FROM test_fixtures ORDER BY id"
-    ).fetchall()
-
-    if len(fixtures) != 5:
-        conn.close()
-        flash(
-            "Test Mode must contain exactly 5 fixtures. "
-            "Ask the admin to recreate the Test Gameweek.",
-            "error"
-        )
-        return redirect("/test-mode")
-
-    submitted = []
-
-    for fixture in fixtures:
-        if fixture["status"] == "FINISHED":
-            continue
-
-        home_raw = request.form.get(
-            f"home_{fixture['id']}",
-            ""
-        ).strip()
-
-        away_raw = request.form.get(
-            f"away_{fixture['id']}",
-            ""
-        ).strip()
-
-        if home_raw == "" or away_raw == "":
-            conn.close()
-            flash(
-                "Enter a prediction for all 5 fixtures.",
-                "error"
-            )
-            return redirect("/test-mode")
-
-        try:
-            home = int(home_raw)
-            away = int(away_raw)
-
-        except ValueError:
-            conn.close()
-            flash(
-                "Scores must be whole numbers.",
-                "error"
-            )
-            return redirect("/test-mode")
-
-        if not (
-            0 <= home <= 20
-            and 0 <= away <= 20
-        ):
-            conn.close()
-            flash(
-                "Scores must be between 0 and 20.",
-                "error"
-            )
-            return redirect("/test-mode")
-
-        submitted.append(
-            (
-                fixture["id"],
-                home,
-                away
-            )
-        )
-
-    conn.execute(
-        "DELETE FROM test_predictions WHERE tester = ?",
-        (tester,)
-    )
-
-    for fixture_id, home, away in submitted:
-        conn.execute(
-            """
-            INSERT INTO test_predictions(
-                tester,
-                fixture_id,
-                home_score,
-                away_score,
-                points,
-                dp
-            )
-            VALUES (?, ?, ?, ?, 0, 0)
-            """,
-            (
-                tester,
-                fixture_id,
-                home,
-                away
-            )
-        )
-
-    valid_dp = conn.execute(
-        """
-        SELECT id
-        FROM test_predictions
-        WHERE tester = ?
-          AND fixture_id = ?
-        """,
-        (
-            tester,
-            requested_dp_id
-        )
-    ).fetchone()
-
-    if not valid_dp:
-        conn.close()
-        flash(
-            "Choose one of the five Test Mode fixtures for DP.",
-            "error"
-        )
-        return redirect("/test-mode")
-
-    conn.execute(
-        """
-        UPDATE test_predictions
-        SET dp = 0
-        WHERE tester = ?
-        """,
-        (tester,)
-    )
-
-    conn.execute(
-        """
-        UPDATE test_predictions
-        SET dp = 1
-        WHERE tester = ?
-          AND fixture_id = ?
-        """,
-        (
-            tester,
-            requested_dp_id
-        )
-    )
-
-    conn.commit()
-    conn.close()
-
-    flash(
-        f"All 5 predictions saved for {tester}.",
-        "success"
-    )
-
-    return redirect("/test-mode")
-
-
-@app.route(
-    "/admin/test-mode/results",
-    methods=["POST"]
-)
-def test_mode_results():
-    if not is_admin():
-        return redirect("/")
-
-    conn = get_db()
-
-    fixtures = conn.execute(
-        "SELECT * FROM test_fixtures ORDER BY id"
-    ).fetchall()
-
-    for fixture in fixtures:
-        try:
-            home = int(
-                request.form.get(
-                    f"result_home_{fixture['id']}",
-                    ""
-                )
-            )
-
-            away = int(
-                request.form.get(
-                    f"result_away_{fixture['id']}",
-                    ""
-                )
-            )
-
-        except (
-            TypeError,
-            ValueError
-        ):
-            conn.close()
-
-            flash(
-                "Enter a result for every test fixture.",
-                "error"
-            )
-
-            return redirect("/test-mode")
-
-        if not (
-            0 <= home <= 20
-            and 0 <= away <= 20
-        ):
-            conn.close()
-
-            flash(
-                "Results must be between 0 and 20.",
-                "error"
-            )
-
-            return redirect("/test-mode")
-
-        conn.execute(
-            """
-            UPDATE test_fixtures
-            SET
-                home_score = ?,
-                away_score = ?,
-                status = 'FINISHED'
-            WHERE id = ?
-            """,
-            (
-                home,
-                away,
-                fixture["id"]
-            )
-        )
-
-    rows = conn.execute(
-        """
-        SELECT
-            p.id,
-            p.home_score AS predicted_home,
-            p.away_score AS predicted_away,
-            f.home_score AS actual_home,
-            f.away_score AS actual_away,
-            COALESCE(p.dp, 0) AS dp
-        FROM test_predictions p
-        JOIN test_fixtures f
-          ON f.id = p.fixture_id
-        WHERE f.status = 'FINISHED'
-        """
-    ).fetchall()
-
-    for row in rows:
-        points = calculate_prediction_points(
-            row["predicted_home"],
-            row["predicted_away"],
-            row["actual_home"],
-            row["actual_away"],
-            bool(row["dp"]),
-        )
-
-        conn.execute(
-            """
-            UPDATE test_predictions
-            SET points = ?
-            WHERE id = ?
-            """,
-            (
-                points,
-                row["id"]
-            )
-        )
-
-    conn.commit()
-    conn.close()
-
-    flash(
-        "Test Gameweek results applied and scored.",
-        "success"
-    )
-
-    return redirect("/test-mode")
-
-
-@app.route(
-    "/admin/test-mode/reset",
-    methods=["POST"]
-)
-def test_mode_reset():
-    if not is_admin():
-        return redirect("/")
-
-    conn = get_db()
-
-    conn.execute(
-        "DELETE FROM test_predictions"
-    )
-    conn.execute(
-        "DELETE FROM test_fixtures"
-    )
-
-    conn.commit()
-    conn.close()
-
-    flash(
-        "Test Gameweek deleted. "
-        "Live league data was untouched.",
-        "success"
-    )
-
-    return redirect("/test-mode")
-
+    return redirect("/admin")
 
 
 @app.route(
