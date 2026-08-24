@@ -269,6 +269,16 @@ th,td{
   font-size:12px;
   padding:14px 0 0
 }
+.logout-bar{
+  display:flex;
+  justify-content:center;
+  margin:20px 0 4px
+}
+.logout-button{
+  background:#fff;
+  color:var(--danger);
+  border:1px solid #fecaca
+}
 @media(max-width:620px){
   .container{padding:10px}
   .hero{padding:21px}
@@ -939,6 +949,12 @@ th,td{
 {% endwith %}
 
 {% block content %}{% endblock %}
+
+{% if is_logged_in %}
+<form class="logout-bar" method="POST" action="/logout">
+<button class="logout-button" type="submit">Log out</button>
+</form>
+{% endif %}
 
 <div class="footer">
 Premier League Predictor v{{ app_version }}
