@@ -116,37 +116,13 @@ Test API connection
 
 <div class="card">
 
-<h2>Optional API-Football live backup</h2>
+<h2>Automatic SportScore live backup</h2>
 
-<p>
-{% if api_football_configured %}
-✅ Backup-feed token stored persistently.
-{% else %}
-Optional. The free plan can supplement live scores and goal events while
-football-data.org remains the main fixture source.
-{% endif %}
-</p>
+<p>✅ No token or account is required. SportScore supplements the main feed
+with current scores, match minutes and goal events during the current gameweek.</p>
 
-<form method="POST">
-<input type="hidden" name="action" value="api_football">
-<input
-    type="password"
-    name="api_football_token"
-    placeholder="API-Football token"
-    style="width:100%;margin-bottom:10px"
-    required
->
-<button>Save backup-feed token</button>
-</form>
-
-{% if api_football_configured %}
-<form method="POST" action="/admin/settings/test-api-football" style="margin-top:10px">
-<button class="primary">Test API-Football connection</button>
-</form>
-{% endif %}
-
-{% if last_api_football_refresh %}
-<p class="small">Last backup-feed refresh: {{ last_api_football_refresh }}</p>
+{% if last_sportscore_refresh %}
+<p class="small">Last backup-feed refresh: {{ last_sportscore_refresh }}</p>
 {% endif %}
 
 </div>
