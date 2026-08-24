@@ -7,7 +7,7 @@
 PLAYER ADMIN
 </div>
 <h1>✏️ Edit {{ player.name }}</h1>
-<p>Change their display name, PIN or role.</p>
+<p>Change their email, display name, PIN or role.</p>
 </div>
 
 <div class="nav">
@@ -18,6 +18,9 @@ PLAYER ADMIN
 <div class="card">
 
 <form method="POST">
+
+<label><strong>Login email</strong></label>
+<input style="width:100%;margin:7px 0 15px" name="email" type="email" value="{{ player.email or '' }}" required>
 
 <label><strong>Name</strong></label>
 
@@ -89,7 +92,7 @@ Nothing is lost. Predictions, points and stats stay attached to the same player 
 </p>
 
 <p class="muted">
-Changing the display name or PIN does not create a new player or alter their login name.
+Changing the display name or PIN does not create a new player. Changing the email changes how they log in.
 </p>
 
 </div>
