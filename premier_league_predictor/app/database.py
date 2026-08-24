@@ -163,15 +163,21 @@ def init_db(seed_default_player=True):
         )
     """)
 
-    conn.execute(
-        """INSERT OR IGNORE INTO season_archives
-           (season, label, winner_name, stats_available)
-           VALUES (2024, '2024/25', 'Fontz', 0)"""
+    known_champions = (
+        (2018, "2018/19", "Strat"),
+        (2019, "2019/20", "Strat"),
+        (2020, "2020/21", "Strat"),
+        (2021, "2021/22", "TROPiC"),
+        (2022, "2022/23", "TROPiC"),
+        (2023, "2023/24", "Percei"),
+        (2024, "2024/25", "Fontz"),
+        (2025, "2025/26", "TROPiC"),
     )
-    conn.execute(
+    conn.executemany(
         """INSERT OR IGNORE INTO season_archives
            (season, label, winner_name, stats_available)
-           VALUES (2025, '2025/26', 'TROPiC', 0)"""
+           VALUES (?, ?, ?, 0)""",
+        known_champions,
     )
 
     conn.commit()
