@@ -327,7 +327,7 @@ assert b'href="/admin/settings"' in admin_response.data
 leaderboard_response = client.get("/leaderboard")
 assert b"Season position changes" in leaderboard_response.data
 seasons_response = client.get("/seasons")
-assert b"Historical Winners" in seasons_response.data
+assert b"Past Winners" in seasons_response.data
 assert b"Most League Wins" in seasons_response.data
 assert b"Fontz" in seasons_response.data
 assert b"TROPiC" in seasons_response.data
