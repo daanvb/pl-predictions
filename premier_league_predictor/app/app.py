@@ -38,7 +38,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.9"
+APP_VERSION = "1.0.10"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -4663,11 +4663,41 @@ def leaderboard():
             )
         )
 
+    completed_matchdays = [
+        row["matchday"]
+        for row in conn.execute(
+            """
+            SELECT matchday
+            FROM fixtures
+            WHERE season = ? AND matchday IS NOT NULL
+            GROUP BY matchday
+            HAVING SUM(
+                CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
+                     THEN 1 ELSE 0 END
+            ) = 0
+            ORDER BY matchday
+            """,
+            (SEASON,),
+        ).fetchall()
+    ]
+    chart_players = {
+        player["id"]: {"name": player["name"], "positions": []}
+        for player in players
+    }
+    for matchday in completed_matchdays:
+        positions = ranking_positions(overall_table_at_matchday(conn, matchday))
+        for player_id, series in chart_players.items():
+            series["positions"].append(positions.get(player_id))
+
     conn.close()
 
     return render_template(
         "leaderboard.html",
-        players=players
+        players=players,
+        position_chart={
+            "matchdays": completed_matchdays,
+            "players": list(chart_players.values()),
+        },
     )
 
 
