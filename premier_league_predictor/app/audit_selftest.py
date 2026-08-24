@@ -27,11 +27,24 @@ assert calculate_prediction_points(1, 1, 1, 1, True) == 12
 database.init_db()
 conn = database.get_db()
 assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(predictions)").fetchall()}
-assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(test_predictions)").fetchall()}
 assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "live_data_source" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "login_name" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
 assert "email" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
+assert conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='season_archives'"
+).fetchone() is not None
+assert conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='season_archive_players'"
+).fetchone() is not None
+seeded_champions = {
+    row["label"]: row["winner_name"]
+    for row in conn.execute(
+        "SELECT label, winner_name FROM season_archives"
+    ).fetchall()
+}
+assert seeded_champions["2024/25"] == "Fontz"
+assert seeded_champions["2025/26"] == "TROPiC"
 assert conn.execute("SELECT COUNT(*) FROM players WHERE login_name IS NULL").fetchone()[0] == 0
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='historical_fixtures'"
@@ -41,6 +54,59 @@ conn.close()
 # Import the real Flask app after redirecting its database module.
 import app as predictor
 predictor.app.config["TESTING"] = True
+assert predictor.LIVE_REFRESH_SECONDS == 60
+
+# Each revealed fixture lists the highest-scoring prediction first, with
+# alphabetical ordering used for tied match points.
+fixture = {
+    "id": 77,
+    "home_score": 2,
+    "away_score": 1,
+}
+players = [
+    {"id": 1, "name": "Zoe"},
+    {"id": 2, "name": "Amy"},
+    {"id": 3, "name": "Ben"},
+]
+prediction_map = {
+    (1, 77): {
+        "home_score": 1,
+        "away_score": 0,
+        "dp": 0,
+    },
+    (2, 77): {
+        "home_score": 2,
+        "away_score": 1,
+        "dp": 0,
+    },
+    (3, 77): {
+        "home_score": 2,
+        "away_score": 1,
+        "dp": 1,
+    },
+}
+ordered = predictor.order_players_for_fixture(
+    players,
+    fixture,
+    prediction_map,
+    True,
+)
+assert [player["name"] for player in ordered] == [
+    "Ben",
+    "Amy",
+    "Zoe",
+]
+ordered_hidden = predictor.order_players_for_fixture(
+    players,
+    fixture,
+    prediction_map,
+    False,
+)
+assert [player["name"] for player in ordered_hidden] == [
+    "Amy",
+    "Ben",
+    "Zoe",
+]
 
 # Route/template smoke tests using the actual Flask/Jinja environment.
 client = predictor.app.test_client()
@@ -204,6 +270,8 @@ assert b"GW2" not in response.data
 # Secondary-provider team/status/event normalization.
 assert predictor.normalized_team_name("Manchester United FC") == "man united"
 assert predictor.normalized_team_name("Wolverhampton Wanderers") == "wolves"
+assert predictor.sportscore_team_slug("Nottingham Forest FC") == "nottingham-forest"
+assert predictor.sportscore_team_slug("Manchester United FC") == "manchester-united"
 api_goals = predictor.sportscore_goal_events({
     "home": "Home FC",
     "away": "Away FC",
@@ -230,16 +298,26 @@ for route in [
     "/changelog",
     "/account",
     "/admin",
-    "/test-mode",
 ]:
     response = client.get(route)
     assert response.status_code == 200, (route, response.status_code)
+
+retired_test_response = client.get("/test-mode", follow_redirects=False)
+assert retired_test_response.status_code == 302
+assert retired_test_response.headers["Location"].endswith("/dashboard")
 
 admin_response = client.get("/admin")
 assert b"API Settings" in admin_response.data
 assert b'href="/admin/settings"' in admin_response.data
 leaderboard_response = client.get("/leaderboard")
 assert b"Season position changes" in leaderboard_response.data
+seasons_response = client.get("/seasons")
+assert b"Historical Winners" in seasons_response.data
+assert b"Most League Wins" in seasons_response.data
+assert b"Fontz" in seasons_response.data
+assert b"TROPiC" in seasons_response.data
+old_season_response = client.get("/seasons/2024")
+assert b"league-table and player statistics were not retained" in old_season_response.data
 
 # Per-fixture kickoff helper.
 future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
@@ -260,6 +338,25 @@ msg = predictor.signal_reminder_message(
 )
 assert "Fontz" in msg and "no DP selected" in msg
 assert "Deludo" in msg and "8/10 submitted" in msg
+
+manual_24_fixture = [{
+    "status": "SCHEDULED",
+    "utc_date": (
+        datetime.now(timezone.utc) + timedelta(hours=12)
+    ).isoformat(),
+}]
+manual_2_fixture = [{
+    "status": "SCHEDULED",
+    "utc_date": (
+        datetime.now(timezone.utc) + timedelta(hours=1)
+    ).isoformat(),
+}]
+assert predictor.signal_manual_reminder_key(manual_24_fixture) == (
+    "signal_last_reminder_24_gw"
+)
+assert predictor.signal_manual_reminder_key(manual_2_fixture) == (
+    "signal_last_reminder_2_gw"
+)
 
 # Completed-GW lookup must work even with no next GW imported.
 conn = database.get_db()
@@ -648,6 +745,39 @@ with open(
 assert '_match_stats.html' in predictions_template
 assert '_match_stats.html' not in dashboard_template
 assert '_match_stats.html' not in gameweek_template
+assert 'href="https://sportscore.com/" rel="dofollow"' in gameweek_template
+
+with open(
+    os.path.join(templates_dir, "leaderboard.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    leaderboard_template = handle.read()
+
+assert 'role="table" aria-label="Season league table"' in leaderboard_template
+assert 'data-label="Exact draws"' in leaderboard_template
+assert 'data-label="Exact wins"' in leaderboard_template
+assert 'data-label="Other correct"' in leaderboard_template
+
+with open(
+    os.path.join(templates_dir, "stats.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    stats_template = handle.read()
+
+assert "DPs USED" not in stats_template
+assert "MOST OTHER CORRECT RESULTS" in stats_template
+assert "MOST EXACT SCORES WITH DP" in stats_template
+
+with open(
+    os.path.join(templates_dir, "base.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    base_template = handle.read()
+
+assert '/static/predictor-icon.png' in base_template
 
 # Broadcaster logos are deliberately omitted from Predictions.
 assert 'broadcaster_logo_url' not in predictions_template
@@ -742,6 +872,54 @@ assert predictor.fixture_display_status(
 assert "awaiting score" in predictor.status_label(
     past_fixture
 ).lower()
+
+# A season archive must never be created early. At the 380-match boundary it
+# snapshots every player once and becomes immutable on later checks.
+archive_season = 9090
+conn = database.get_db()
+conn.executemany(
+    """
+    INSERT INTO fixtures(
+        id, season, matchday, utc_date, status,
+        home_team, away_team, home_score, away_score
+    ) VALUES (?, ?, ?, ?, 'FINISHED', ?, ?, 0, 0)
+    """,
+    [
+        (
+            200000 + index,
+            archive_season,
+            ((index - 1) // 10) + 1,
+            now,
+            f"Archive Home {index}",
+            f"Archive Away {index}",
+        )
+        for index in range(1, 380)
+    ],
+)
+assert predictor.archive_completed_season(conn, archive_season) is False
+conn.execute(
+    """
+    INSERT INTO fixtures(
+        id, season, matchday, utc_date, status,
+        home_team, away_team, home_score, away_score
+    ) VALUES (200380, ?, 38, ?, 'FINISHED', 'Final Home', 'Final Away', 0, 0)
+    """,
+    (archive_season, now),
+)
+assert predictor.archive_completed_season(conn, archive_season) is True
+archive_row = conn.execute(
+    "SELECT stats_available FROM season_archives WHERE season = ?",
+    (archive_season,),
+).fetchone()
+assert archive_row["stats_available"] == 1
+archived_player_count = conn.execute(
+    "SELECT COUNT(*) FROM season_archive_players WHERE season = ?",
+    (archive_season,),
+).fetchone()[0]
+live_player_count = conn.execute("SELECT COUNT(*) FROM players").fetchone()[0]
+assert archived_player_count == live_player_count
+assert predictor.archive_completed_season(conn, archive_season) is False
+conn.close()
 
 # Changelog parser must actually parse packaged release notes.
 releases = predictor.read_app_changelog()

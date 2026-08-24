@@ -26,22 +26,20 @@ Get Your Pre-Dicks In
 </a>
 <a href="/leaderboard">🏆 League</a>
 <a href="/stats">📊 Stats</a>
+<a href="/seasons">👑 Winners</a>
 <a href="/history">🕘 History</a>
 <a href="/rules">📘 Rules</a>
 <a href="/prize-structure">💷 Prize Structure</a>
+<a href="/account">👤 My Account</a>
+{% if session.admin %}
+<a href="/admin">⚙️ Admin</a>
+{% endif %}
 <a href="/changelog">
 📝 Changelog
 {% if changelog_has_update %}
 <span class="badge live" style="margin-left:6px">NEW</span>
 {% endif %}
 </a>
-<a href="/account">👤 My Account</a>
-{% if test_mode_enabled or session.admin %}
-<a href="/test-mode">🧪 Test Mode</a>
-{% endif %}
-{% if session.admin %}
-<a href="/admin">⚙️ Admin</a>
-{% endif %}
 </div>
 
 {% if changelog_has_update %}
@@ -225,6 +223,11 @@ v
 </div>
 
 {% endfor %}
+
+<p class="small">
+Live match data from
+<a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
+</p>
 
 </div>
 
