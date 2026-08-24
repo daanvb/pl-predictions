@@ -71,4 +71,82 @@
 
 </div>
 
+<div class="card">
+<h2>📈 Season position changes</h2>
+<p class="muted">League position after each completed gameweek.</p>
+
+{% if position_chart.matchdays %}
+<div style="position:relative;width:100%;height:420px">
+<canvas id="position-chart" aria-label="Player league positions by gameweek"></canvas>
+</div>
+<div id="position-chart-legend" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px"></div>
+<script>
+(function () {
+  const data = {{ position_chart|tojson }};
+  const canvas = document.getElementById('position-chart');
+  const legend = document.getElementById('position-chart-legend');
+  const colours = ['#2563eb','#dc2626','#16a34a','#9333ea','#ea580c','#0891b2','#db2777','#65a30d','#4f46e5','#b45309','#0f766e','#7c3aed'];
+  const ratio = window.devicePixelRatio || 1;
+
+  function draw() {
+    const box = canvas.parentElement.getBoundingClientRect();
+    canvas.width = Math.max(320, box.width) * ratio;
+    canvas.height = 420 * ratio;
+    canvas.style.width = Math.max(320, box.width) + 'px';
+    canvas.style.height = '420px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+    const width = canvas.width / ratio;
+    const height = canvas.height / ratio;
+    const pad = {left: 46, right: 18, top: 18, bottom: 42};
+    const plotW = width - pad.left - pad.right;
+    const plotH = height - pad.top - pad.bottom;
+    const maxPosition = Math.max(1, data.players.length);
+    const x = index => pad.left + (data.matchdays.length === 1 ? plotW / 2 : index * plotW / (data.matchdays.length - 1));
+    const y = position => pad.top + (position - 1) * plotH / Math.max(1, maxPosition - 1);
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.strokeStyle = '#dbe3ef';
+    ctx.fillStyle = '#64748b';
+    ctx.lineWidth = 1;
+    for (let position = 1; position <= maxPosition; position++) {
+      const py = y(position);
+      ctx.beginPath(); ctx.moveTo(pad.left, py); ctx.lineTo(width - pad.right, py); ctx.stroke();
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(String(position), pad.left - 10, py);
+    }
+    data.matchdays.forEach((gw, index) => {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText('GW' + gw, x(index), height - pad.bottom + 12);
+    });
+    data.players.forEach((player, playerIndex) => {
+      const colour = colours[playerIndex % colours.length];
+      ctx.strokeStyle = colour; ctx.fillStyle = colour; ctx.lineWidth = 3;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.beginPath();
+      player.positions.forEach((position, index) => {
+        if (position == null) return;
+        if (index === 0) ctx.moveTo(x(index), y(position)); else ctx.lineTo(x(index), y(position));
+      });
+      ctx.stroke();
+      player.positions.forEach((position, index) => {
+        if (position == null) return;
+        ctx.beginPath(); ctx.arc(x(index), y(position), 4, 0, Math.PI * 2); ctx.fill();
+      });
+    });
+  }
+
+  data.players.forEach((player, index) => {
+    const item = document.createElement('span');
+    item.innerHTML = '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:' + colours[index % colours.length] + ';margin-right:5px"></span>' + player.name;
+    legend.appendChild(item);
+  });
+  draw();
+  window.addEventListener('resize', draw);
+})();
+</script>
+{% else %}
+<p class="muted">The chart will appear after the first gameweek is complete.</p>
+{% endif %}
+</div>
+
 {% endblock %}
