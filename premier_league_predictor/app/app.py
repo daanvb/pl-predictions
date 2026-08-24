@@ -39,7 +39,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.13"
+APP_VERSION = "1.0.14"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -3201,6 +3201,7 @@ def inject_globals():
         "app_version": APP_VERSION,
         "changelog_has_update": changelog_has_unread_update(),
         "broadcaster_logo_url": broadcaster_logo_url,
+        "is_logged_in": logged_in(),
     }
 
 
@@ -5147,7 +5148,7 @@ def leaderboard():
     )
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
 

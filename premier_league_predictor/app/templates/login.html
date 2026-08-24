@@ -15,14 +15,19 @@
 
 <h2>Who's playing?</h2>
 
-<form method="POST">
+<form method="POST" id="login-form">
 
 <label><strong>Email address</strong></label>
-<input style="width:100%;margin:7px 0 15px" name="identifier" autocomplete="username" required>
+<input style="width:100%;margin:7px 0 15px" id="login-identifier" name="identifier" autocomplete="username" inputmode="email" required>
 <p class="small">Existing players can use their old login name until they add an email in My Account.</p>
 
 <label><strong>PIN</strong></label>
-<input style="width:100%;margin:7px 0 18px" name="pin" type="password" inputmode="numeric" maxlength="8" required>
+<input style="width:100%;margin:7px 0 12px" name="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" required>
+
+<label style="display:flex;align-items:center;gap:9px;margin:0 0 18px">
+<input id="remember-email" type="checkbox" style="width:18px;height:18px">
+<span>Remember my email on this device</span>
+</label>
 
 <button class="primary" style="width:100%">LOG IN</button>
 
@@ -37,5 +42,27 @@
 </div>
 
 </div>
+
+<script>
+(() => {
+  const email = document.getElementById("login-identifier");
+  const remember = document.getElementById("remember-email");
+  const form = document.getElementById("login-form");
+  const key = "predictor_login_email";
+  try {
+    const saved = window.localStorage.getItem(key);
+    if (saved) {
+      email.value = saved;
+      remember.checked = true;
+    }
+    form.addEventListener("submit", () => {
+      if (remember.checked) window.localStorage.setItem(key, email.value.trim());
+      else window.localStorage.removeItem(key);
+    });
+  } catch (_) {
+    // Login still works if private browsing blocks local storage.
+  }
+})();
+</script>
 
 {% endblock %}

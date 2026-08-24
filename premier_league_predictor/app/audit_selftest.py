@@ -43,8 +43,16 @@ seeded_champions = {
         "SELECT label, winner_name FROM season_archives"
     ).fetchall()
 }
-assert seeded_champions["2024/25"] == "Fontz"
-assert seeded_champions["2025/26"] == "TROPiC"
+assert seeded_champions == {
+    "2018/19": "Strat",
+    "2019/20": "Strat",
+    "2020/21": "Strat",
+    "2021/22": "TROPiC",
+    "2022/23": "TROPiC",
+    "2023/24": "Percei",
+    "2024/25": "Fontz",
+    "2025/26": "TROPiC",
+}
 assert conn.execute("SELECT COUNT(*) FROM players WHERE login_name IS NULL").fetchone()[0] == 0
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='historical_fixtures'"
@@ -187,7 +195,11 @@ conn.close()
 
 # Existing users can transition safely: their legacy login works while email
 # is unset, then email becomes the login identifier once configured.
-client.get("/logout")
+logout_response = client.post("/logout", follow_redirects=False)
+assert logout_response.status_code == 302
+login_response = client.get("/")
+assert b"Remember my email on this device" in login_response.data
+assert b'autocomplete="current-password"' in login_response.data
 response = client.post(
     "/", data={"identifier": original_login, "pin": "1234"},
     follow_redirects=False,
@@ -197,7 +209,8 @@ conn = database.get_db()
 conn.execute("UPDATE players SET email = ? WHERE id = ?", ("dan@example.com", admin["id"]))
 conn.commit()
 conn.close()
-client.get("/logout")
+logout_response = client.post("/logout", follow_redirects=False)
+assert logout_response.status_code == 302
 response = client.post(
     "/", data={"identifier": "DAN@example.com", "pin": "1234"},
     follow_redirects=False,
@@ -240,6 +253,8 @@ conn.commit()
 conn.close()
 response = client.get("/dashboard")
 assert response.status_code == 200
+assert b'action="/logout"' in response.data
+assert b"Log out" in response.data
 assert "2–0".encode() in response.data
 assert b"Alex Striker" in response.data
 assert b"45+2&#39; pen" in response.data
@@ -316,6 +331,8 @@ assert b"Historical Winners" in seasons_response.data
 assert b"Most League Wins" in seasons_response.data
 assert b"Fontz" in seasons_response.data
 assert b"TROPiC" in seasons_response.data
+assert b"Strat" in seasons_response.data
+assert b"Percei" in seasons_response.data
 old_season_response = client.get("/seasons/2024")
 assert b"league-table and player statistics were not retained" in old_season_response.data
 
