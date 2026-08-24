@@ -2,6 +2,14 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.9] - 2026-08-24
+
+### Changed
+- Replaced the current-season-restricted API-Football backup with SportScore, which requires no token or account.
+- The Dashboard again shows only the automatically selected current gameweek; manual previous/next gameweek controls were removed.
+- SportScore supplements live and just-finished current-gameweek fixtures with scores, minutes and persistent goal events.
+- Home Assistant package version updated to `1.21.12`.
+
 ## [1.0.8] - 2026-08-24
 
 ### Fixed
