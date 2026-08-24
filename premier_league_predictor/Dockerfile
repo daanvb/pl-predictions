@@ -19,7 +19,7 @@ RUN pip3 install \
     google-auth-oauthlib
 
 # Build-time regression tests run with the same Flask/Jinja dependencies as runtime.
-RUN python3 -m py_compile /app/app.py /app/database.py /app/scoring.py /app/football_api.py \
+RUN python3 -m py_compile /app/app.py /app/database.py /app/database_restore.py /app/scoring.py /app/football_api.py \
     && python3 /app/audit_selftest.py \
     && rm -rf /data/*
 

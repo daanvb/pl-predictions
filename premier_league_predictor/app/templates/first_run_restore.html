@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Restore Predictor{% endblock %}
+{% block content %}
+
+<div style="max-width:560px;margin:55px auto">
+  <div class="hero">
+    <div style="font-size:50px">♻️</div>
+    <h1>Restore your Predictor</h1>
+    <p>This fresh installation does not have any players yet.</p>
+  </div>
+  <div class="card">
+    <h2>Upload your database backup</h2>
+    <p>
+      Choose the <code>.db</code> file downloaded from your old Local
+      Predictor. It restores players, PINs, predictions, fixtures and settings
+      into this installation only.
+    </p>
+    <form method="POST" enctype="multipart/form-data">
+      <label><strong>First-run restore code</strong></label>
+      <input style="width:100%;margin:7px 0 15px" name="restore_code"
+             autocomplete="one-time-code" required>
+      <p class="muted">Find this one-time code in the new app's log.</p>
+      <input type="file" name="backup_file" accept=".db" required>
+      <button class="primary" style="width:100%;margin-top:18px">
+        VALIDATE AND RESTORE
+      </button>
+    </form>
+    <p class="muted" style="margin-top:18px">
+      This page automatically switches off as soon as the database contains a
+      player. Your old Local installation is not modified.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

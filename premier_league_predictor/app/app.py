@@ -8,7 +8,6 @@ import re
 import secrets
 import threading
 import time
-import shutil
 import sqlite3
 import requests
 import json
@@ -26,6 +25,11 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 from database import init_db, get_db, hash_pin, get_setting, set_setting, DB
+from database_restore import (
+    database_has_users,
+    install_database,
+    validate_predictor_database,
+)
 from football_api import test_connection, get_matches, FootballAPIError
 from scoring import calculate_points, calculate_prediction_points
 
@@ -33,10 +37,12 @@ APP_VERSION = "1.0.5"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
-SECRET_FILE = "/data/secret.key"
-BACKUP_DIR = "/data/backups"
-UPLOAD_DIR = "/data/uploads"
-GOOGLE_TOKEN_FILE = "/data/google_drive_token.json"
+DATA_DIR = os.path.dirname(DB) or "/data"
+SECRET_FILE = os.path.join(DATA_DIR, "secret.key")
+BACKUP_DIR = os.path.join(DATA_DIR, "backups")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+GOOGLE_TOKEN_FILE = os.path.join(DATA_DIR, "google_drive_token.json")
+FIRST_RUN_TOKEN_FILE = os.path.join(DATA_DIR, "first_run_restore.token")
 GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 GOOGLE_BACKUP_FOLDER = "Premier League Predictor Backups"
 GOOGLE_RETENTION_DAYS = 30
@@ -70,6 +76,7 @@ TNT_SPORTS_LOGO = (
 )
 
 app = Flask(__name__, template_folder="templates")
+app.config["MAX_CONTENT_LENGTH"] = 128 * 1024 * 1024
 
 # The Predictor is served publicly through an HTTPS reverse proxy.
 # Trust one proxy hop for the original scheme and host.
@@ -80,7 +87,7 @@ app.wsgi_app = ProxyFix(
     x_host=1
 )
 
-os.makedirs("/data", exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(BACKUP_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -95,7 +102,39 @@ else:
 
     app.secret_key = secret
 
-init_db()
+init_db(seed_default_player=False)
+database_restore_lock = threading.Lock()
+
+
+def ensure_first_run_restore_token():
+    if database_has_users(DB):
+        if os.path.exists(FIRST_RUN_TOKEN_FILE):
+            os.remove(FIRST_RUN_TOKEN_FILE)
+        return None
+
+    if os.path.exists(FIRST_RUN_TOKEN_FILE):
+        with open(FIRST_RUN_TOKEN_FILE, "r") as handle:
+            return handle.read().strip()
+
+    token = secrets.token_urlsafe(18)
+    try:
+        with open(FIRST_RUN_TOKEN_FILE, "x") as handle:
+            handle.write(token)
+    except FileExistsError:
+        with open(FIRST_RUN_TOKEN_FILE, "r") as handle:
+            return handle.read().strip()
+    try:
+        os.chmod(FIRST_RUN_TOKEN_FILE, 0o600)
+    except OSError:
+        pass
+    app.logger.warning(
+        "FIRST-RUN RESTORE CODE: %s (enter this code in the restore screen)",
+        token,
+    )
+    return token
+
+
+ensure_first_run_restore_token()
 
 
 def logged_in():
@@ -1885,55 +1924,7 @@ def create_database_backup():
 
 
 def validate_restore_database(path):
-    conn = sqlite3.connect(path)
-
-    try:
-        rows = conn.execute(
-            """
-            SELECT name
-            FROM sqlite_master
-            WHERE type='table'
-            """
-        ).fetchall()
-
-        tables = {
-            row[0]
-            for row in rows
-        }
-
-        required = {
-            "players",
-            "settings",
-            "fixtures",
-            "predictions",
-        }
-
-        missing = required - tables
-
-        if missing:
-            raise ValueError(
-                "Backup is not a valid "
-                "Predictor database. "
-                "Missing tables: "
-                + ", ".join(
-                    sorted(missing)
-                )
-            )
-
-        conn.execute(
-            "SELECT COUNT(*) FROM players"
-        ).fetchone()
-
-        conn.execute(
-            "SELECT COUNT(*) FROM fixtures"
-        ).fetchone()
-
-        conn.execute(
-            "SELECT COUNT(*) FROM predictions"
-        ).fetchone()
-
-    finally:
-        conn.close()
+    return validate_predictor_database(path)
 
 
 
@@ -2792,6 +2783,9 @@ def inject_short_team_name():
 
 @app.route("/", methods=["GET", "POST"])
 def login():
+    if not database_has_users(DB):
+        return redirect("/first-run/restore")
+
     if logged_in():
         return redirect("/dashboard")
 
@@ -2851,6 +2845,59 @@ def login():
         "login.html",
         registration_enabled=registration_enabled
     )
+
+
+@app.route("/first-run/restore", methods=["GET", "POST"])
+def first_run_restore():
+    if database_has_users(DB):
+        ensure_first_run_restore_token()
+        return redirect("/")
+
+    if request.method == "POST":
+        supplied_token = request.form.get("restore_code", "").strip()
+        expected_token = ensure_first_run_restore_token()
+        if not secrets.compare_digest(supplied_token, expected_token or ""):
+            flash("The first-run restore code is incorrect.", "error")
+            return redirect("/first-run/restore")
+
+        uploaded = request.files.get("backup_file")
+        if not uploaded or not uploaded.filename:
+            flash("Choose a Predictor .db backup first.", "error")
+            return redirect("/first-run/restore")
+
+        filename = secure_filename(uploaded.filename)
+        if not filename.lower().endswith(".db"):
+            flash("Backup must be a .db file.", "error")
+            return redirect("/first-run/restore")
+
+        temp_path = os.path.join(
+            UPLOAD_DIR, "first-run-" + secrets.token_hex(16) + ".db"
+        )
+        uploaded.save(temp_path)
+        try:
+            with database_restore_lock:
+                # Recheck inside the lock so concurrent requests cannot replace
+                # a database after the first successful restore creates users.
+                if database_has_users(DB):
+                    return redirect("/")
+                validate_predictor_database(temp_path, require_users=True)
+                install_database(temp_path, DB)
+                init_db(seed_default_player=False)
+
+            session.clear()
+            ensure_first_run_restore_token()
+            flash("Backup restored successfully. Please log in.", "success")
+            return redirect("/")
+        except (OSError, sqlite3.DatabaseError, ValueError) as exc:
+            app.logger.warning("First-run database restore rejected: %s", exc)
+            flash(f"Restore failed: {exc}", "error")
+            return redirect("/first-run/restore")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    ensure_first_run_restore_token()
+    return render_template("first_run_restore.html")
 
 
 @app.route(
@@ -5265,22 +5312,9 @@ def restore_backup():
 
         create_database_backup()
 
-        replacement = (
-            DB
-            + ".restore"
-        )
+        install_database(temp_path, DB)
 
-        shutil.copy2(
-            temp_path,
-            replacement
-        )
-
-        os.replace(
-            replacement,
-            DB
-        )
-
-        init_db()
+        init_db(seed_default_player=False)
 
         session.clear()
 
