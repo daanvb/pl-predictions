@@ -2,6 +2,16 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.17] - 2026-08-24
+
+### Fixed
+- SportScore direct match lookups now try both team orders because its canonical match URLs are not consistently ordered.
+- A missing scorer archive returning HTTP 404 no longer aborts the whole gameweek refresh or blocks the active match.
+- Empty scorer data from the slower Football-Data fallback no longer erases goalscorers already obtained from SportScore.
+
+### Changed
+- Home Assistant package version updated to `1.21.20`.
+
 ## [1.0.16] - 2026-08-24
 
 ### Fixed

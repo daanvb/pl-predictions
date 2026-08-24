@@ -889,9 +889,11 @@ conn.commit()
 conn.close()
 direct_calls = []
 original_match_details = predictor.get_sportscore_match_details
-predictor.get_sportscore_match_details = lambda match: (
+def fake_direct_match_details(match):
     direct_calls.append(match["url"])
-    or {
+    if match["url"] == "/football/match/fulham-vs-chelsea/":
+        raise predictor.SportScoreError("SportScore returned HTTP 404.")
+    return {
         "home": "Fulham",
         "away": "Chelsea",
         "home_score": "2",
@@ -906,12 +908,16 @@ predictor.get_sportscore_match_details = lambda match: (
             "is_goal": True,
         }],
     }
-)
+
+predictor.get_sportscore_match_details = fake_direct_match_details
 try:
     assert predictor.import_live_matches_from_sportscore() == 1
 finally:
     predictor.get_sportscore_match_details = original_match_details
-assert direct_calls == ["/football/match/fulham-vs-chelsea/"]
+assert direct_calls == [
+    "/football/match/fulham-vs-chelsea/",
+    "/football/match/chelsea-vs-fulham/",
+]
 conn = database.get_db()
 direct_fixture = conn.execute(
     "SELECT home_score, away_score, minute, goals_json FROM fixtures WHERE id = 99002"
