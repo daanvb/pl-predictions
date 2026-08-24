@@ -11,22 +11,33 @@
 <a href="/dashboard">← Dashboard</a>
 </div>
 
-<div class="card">
+<div class="card league-table-card">
+
+<div class="league-table-scroll">
+<div class="league-table" role="table" aria-label="Season league table">
+
+<div class="league-table-row league-table-header" role="row">
+<div role="columnheader">Pos</div>
+<div role="columnheader">Player</div>
+<div role="columnheader" title="Exact score in a drawn match">Exact draws</div>
+<div role="columnheader" title="Exact score in a match with a winner">Exact wins</div>
+<div role="columnheader">Other correct</div>
+<div role="columnheader">Points</div>
+</div>
 
 {% for player in players %}
 
-<div class="leader-row">
+<div class="league-table-row" role="row">
 
-<div class="rank">
+<div class="league-position" role="cell">
+<span class="rank">
 {% if player.position == 1 %}🥇
 {% elif player.position == 2 %}🥈
 {% elif player.position == 3 %}🥉
 {% elif player.position == 4 %}💩
 {% else %}{{ player.position }}
 {% endif %}
-</div>
-
-<div>
+</span>
 {% if player.position_change > 0 %}
 <span
     class="position-move position-up"
@@ -49,19 +60,23 @@
 {% endif %}
 </div>
 
-<div>
-
+<div class="league-player" role="cell">
 <strong>{{ player.name }}</strong>
-
-<div class="small">
-{{ player.exact_draws }} exact draws ·
-{{ player.exact_scores }} exact winning scores ·
-{{ player.correct_results }} other correct results
 </div>
 
+<div class="league-stat" role="cell" data-label="Exact draws">
+{{ player.exact_draws }}
 </div>
 
-<div class="leader-points">
+<div class="league-stat" role="cell" data-label="Exact wins">
+{{ player.exact_scores }}
+</div>
+
+<div class="league-stat" role="cell" data-label="Other correct">
+{{ player.correct_results }}
+</div>
+
+<div class="leader-points league-stat" role="cell" data-label="Points">
 {{ player.points }}
 </div>
 
@@ -70,6 +85,59 @@
 {% endfor %}
 
 </div>
+</div>
+</div>
+
+<style>
+.league-table-scroll {
+  overflow-x: auto;
+}
+.league-table {
+  min-width: 680px;
+}
+.league-table-row {
+  display: grid;
+  grid-template-columns: 90px minmax(150px, 1fr) 105px 105px 115px 85px;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.league-table-row:last-child {
+  border-bottom: 0;
+}
+.league-table-header {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding-top: 4px;
+}
+.league-table-header > div:not(:nth-child(2)),
+.league-stat {
+  text-align: center;
+}
+.league-position {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 6px;
+}
+.league-position .rank {
+  min-width: 36px;
+}
+.league-player {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .league-table-card {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+</style>
 
 <div class="card">
 <h2>📈 Season position changes</h2>

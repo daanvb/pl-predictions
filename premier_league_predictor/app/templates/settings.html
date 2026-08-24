@@ -116,13 +116,18 @@ Test API connection
 
 <div class="card">
 
-<h2>Automatic SportScore live backup</h2>
+<h2>Automatic SportScore live feed</h2>
 
-<p>✅ No token or account is required. SportScore supplements the main feed
-with current scores, match minutes and goal events during the current gameweek.</p>
+<p>✅ No token or account is required. SportScore is checked every 60 seconds
+during live match windows for current scores, match minutes and goal events.
+Football-Data remains available as the fixture and results fallback.</p>
+
+<p class="small">
+Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
+</p>
 
 {% if last_sportscore_refresh %}
-<p class="small">Last backup-feed refresh: {{ last_sportscore_refresh }}</p>
+<p class="small">Last live-feed refresh: {{ last_sportscore_refresh }}</p>
 {% endif %}
 
 </div>
