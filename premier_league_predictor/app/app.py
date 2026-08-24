@@ -38,7 +38,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.10"
+APP_VERSION = "1.0.11"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -3030,7 +3030,7 @@ def login():
             """
             SELECT *
             FROM players
-            WHERE LOWER(name) = LOWER(?)
+            WHERE LOWER(COALESCE(login_name, name)) = LOWER(?)
               AND pin_hash = ?
             """,
             (
@@ -3055,7 +3055,7 @@ def login():
             )
 
         flash(
-            "Incorrect name or PIN.",
+            "Incorrect login name or PIN.",
             "error"
         )
 
@@ -3198,7 +3198,7 @@ def register():
             """
             SELECT id
             FROM players
-            WHERE LOWER(name) = LOWER(?)
+            WHERE LOWER(COALESCE(login_name, name)) = LOWER(?)
             """,
             (name,),
         ).fetchone()
@@ -3220,12 +3220,14 @@ def register():
             """
             INSERT INTO players(
                 name,
+                login_name,
                 pin_hash,
                 admin
             )
-            VALUES (?, ?, 0)
+            VALUES (?, ?, ?, 0)
             """,
             (
+                name,
                 name,
                 hash_pin(pin)
             ),
@@ -3256,7 +3258,7 @@ def account():
 
     conn = get_db()
     player = conn.execute(
-        "SELECT id, name, admin FROM players WHERE id = ?",
+        "SELECT id, name, login_name, admin FROM players WHERE id = ?",
         (session["player_id"],)
     ).fetchone()
 
@@ -5698,12 +5700,14 @@ def add_player():
             """
             INSERT INTO players(
                 name,
+                login_name,
                 pin_hash,
                 admin
             )
-            VALUES (?, ?, 0)
+            VALUES (?, ?, ?, 0)
             """,
             (
+                name,
                 name,
                 hash_pin(pin)
             ),
