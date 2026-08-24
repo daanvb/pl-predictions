@@ -72,11 +72,16 @@ def get_match(token, match_id):
     if not token:
         raise FootballAPIError("No API token has been configured.")
 
-    response = requests.get(
-        f"{API_BASE}/matches/{match_id}",
-        headers=headers(token),
-        timeout=15,
-    )
+    try:
+        response = requests.get(
+            f"{API_BASE}/matches/{match_id}",
+            headers=headers(token),
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        raise FootballAPIError(
+            "Match scorer details are temporarily unavailable."
+        ) from exc
 
     if response.status_code == 401:
         raise FootballAPIError("API token was rejected.")
