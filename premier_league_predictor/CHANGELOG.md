@@ -2,6 +2,16 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.14] - 2026-08-24
+
+### Added
+- Added the recorded champions from 2018/19 through 2023/24: Strat (three titles), TROPiC (two), and Percei (one).
+- Historical Winners now calculates the all-time title record across all eight recorded seasons.
+- Added a visible Logout button and a safe “Remember my email” login option; browser credential managers can save the PIN when the user chooses.
+
+### Changed
+- Home Assistant package version updated to `1.21.17`.
+
 ## [1.0.13] - 2026-08-24
 
 ### Added
