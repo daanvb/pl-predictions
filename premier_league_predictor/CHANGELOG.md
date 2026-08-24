@@ -2,6 +2,14 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.11] - 2026-08-24
+
+### Changed
+- Login names are now separate from editable display names. Existing players keep their current name as their permanent login name during migration.
+- Players and admins can change a display name without changing that player's login credentials, predictions, points or history.
+- The Account page clearly shows the fixed login name, and the login screen labels it explicitly.
+- Home Assistant package version updated to `1.21.14`.
+
 ## [1.0.10] - 2026-08-24
 
 ### Added

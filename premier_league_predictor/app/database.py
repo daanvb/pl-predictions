@@ -39,6 +39,10 @@ def init_db(seed_default_player=True):
             admin INTEGER DEFAULT 0
         )
     """)
+    _add_column_if_missing(conn, "players", "login_name", "TEXT")
+    conn.execute(
+        "UPDATE players SET login_name = name WHERE login_name IS NULL OR TRIM(login_name) = ''"
+    )
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS settings (
@@ -169,10 +173,10 @@ def init_db(seed_default_player=True):
     if seed_default_player and count == 0:
         conn.execute(
             """
-            INSERT INTO players(name, pin_hash, admin)
-            VALUES (?, ?, ?)
+            INSERT INTO players(name, login_name, pin_hash, admin)
+            VALUES (?, ?, ?, ?)
             """,
-            ("Dan", hash_pin("1234"), 1)
+            ("Dan", "Dan", hash_pin("1234"), 1)
         )
         conn.commit()
 
