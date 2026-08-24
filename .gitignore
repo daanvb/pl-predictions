@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+
+# Predictor databases and SQLite sidecar files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Runtime data, uploads, backups, and credentials
+data/
+backups/
+uploads/
+secret.key
+first_run_restore.token
+google_drive_token.json
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
