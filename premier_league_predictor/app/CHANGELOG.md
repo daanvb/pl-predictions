@@ -2,6 +2,11 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.20] - 2026-08-25
+
+### Fixed
+- Added a verified SportScore fallback for Chelsea's badge when its team API response omits the logo.
+
 ## [1.0.19] - 2026-08-25
 
 ### Added

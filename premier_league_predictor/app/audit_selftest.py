@@ -66,6 +66,9 @@ assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
 assert predictor.sportscore_team_slug("Brighton & Hove Albion") == "brighton-hove-albion"
 assert predictor.sportscore_team_slug("Nott'm Forest") == "nottingham-forest"
+assert predictor.safe_team_logo_url(
+    predictor.SPORTSCORE_TEAM_LOGO_FALLBACKS["chelsea"]
+).endswith("a0cf8f551e9440acb3f4ff533dcc58a4.png")
 
 import sportscore
 original_sportscore_get = sportscore._get
@@ -396,6 +399,7 @@ predictor.get_sportscore_match_details = lambda match: {
     "away_score": "2",
     "status": "live",
     "status_text": "2nd half",
+    "competition": "UEFA Champions League",
     "live_minute": "90+3",
     "incidents": [{
         "time": 75,
@@ -419,28 +423,40 @@ assert b'class="fixture-scorers"' in live_test_response.data
 
 # With no manual slugs, the diagnostics page discovers current matches from
 # SportScore instead of retrying expired, hard-coded match URLs.
-original_live_matches = predictor.get_sportscore_live_matches
+original_live_matches = predictor.get_sportscore_champions_league_matches
 original_test_match_details = predictor.get_sportscore_match_details
-predictor.get_sportscore_live_matches = lambda: [{
-    "home": "Fresh Home",
-    "away": "Fresh Away",
-    "home_score": 0,
-    "away_score": 0,
-    "status": "live",
-    "status_text": "1st half",
-    "live_minute": "12",
-    "incidents": [],
-    "url": "/football/match/fresh-home-vs-fresh-away/",
-}]
+predictor.get_sportscore_champions_league_matches = lambda: [
+    {
+        "home": "Fresh Home",
+        "away": "Fresh Away",
+        "home_score": 0,
+        "away_score": 0,
+        "status": "live",
+        "status_text": "1st half",
+        "competition": "UEFA Champions League",
+        "live_minute": "12",
+        "incidents": [],
+        "url": "/football/match/fresh-home-vs-fresh-away/",
+        "_details_loaded": True,
+    },
+    {
+        "home": "Domestic Home",
+        "away": "Domestic Away",
+        "status": "live",
+        "competition": "Premier League",
+        "url": "/football/match/domestic-home-vs-domestic-away/",
+    },
+]
 predictor.get_sportscore_match_details = lambda match: match
 try:
     discovered_test_response = client.get("/admin/live-feed-test")
 finally:
-    predictor.get_sportscore_live_matches = original_live_matches
+    predictor.get_sportscore_champions_league_matches = original_live_matches
     predictor.get_sportscore_match_details = original_test_match_details
 assert discovered_test_response.status_code == 200
 assert b"Fresh Home" in discovered_test_response.data
-assert b"Automatically showing live SportScore matches" in discovered_test_response.data
+assert b"Domestic Home" not in discovered_test_response.data
+assert b"UEFA Champions League matches from SportScore" in discovered_test_response.data
 conn = database.get_db()
 conn.execute("DELETE FROM fixtures WHERE id IN (8800, 8801)")
 conn.commit()

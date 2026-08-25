@@ -2,6 +2,10 @@ import re
 import requests
 
 API_BASE = "https://sportscore.com/api/widget"
+CHAMPIONS_LEAGUE_URL = (
+    "https://sportscore.com/football/competition/world/"
+    "uefa-champions-league/z8yomo4h7wq0j6l/"
+)
 
 
 class SportScoreError(Exception):
@@ -28,6 +32,47 @@ def get_live_matches():
         match for match in payload.get("matches", [])
         if match.get("status") in ("upcoming", "live", "finished")
     ]
+
+
+def get_champions_league_matches(limit=6):
+    """Discover current UEFA Champions League matches from its competition page."""
+    try:
+        response = requests.get(
+            CHAMPIONS_LEAGUE_URL,
+            headers={"User-Agent": "PremierLeaguePredictor/1.0"},
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        raise SportScoreError("SportScore is temporarily unavailable.") from exc
+    if response.status_code != 200:
+        raise SportScoreError(f"SportScore returned HTTP {response.status_code}.")
+
+    paths = re.findall(
+        r'href="(/football/match/[a-z0-9-]+/)"\s*'
+        r'[^>]*aria-label="[^"]+— UEFA Champions League"',
+        response.text,
+        flags=re.I,
+    )
+    matches = []
+    seen = set()
+    for path in paths:
+        slug = path.rstrip("/").split("/")[-1]
+        if slug in seen:
+            continue
+        seen.add(slug)
+        try:
+            details = get_match_details({"url": path})
+        except SportScoreError:
+            continue
+        if "uefa champions league" not in (
+            details.get("competition") or ""
+        ).casefold():
+            continue
+        details["_details_loaded"] = True
+        matches.append(details)
+        if len(matches) >= limit:
+            break
+    return matches
 
 
 def get_team_matches(team_slug):
