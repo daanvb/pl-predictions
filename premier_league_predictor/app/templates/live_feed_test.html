@@ -16,6 +16,13 @@
 
 <div class="card">
 <h2>Matches to monitor</h2>
+{% if automatic_discovery %}
+<p class="muted">Automatically showing live SportScore matches, then upcoming matches before kickoff, or recent completed matches when neither is available.</p>
+{% endif %}
+{% if discovery_error %}
+<p style="color:#b91c1c">⚠️ Live match discovery failed: {{ discovery_error }}</p>
+{% endif %}
+{% if monitored %}
 <form method="GET">
 {% for item in monitored %}
 <label><strong>SportScore match slug {{ loop.index }}</strong></label>
@@ -23,6 +30,9 @@
 {% endfor %}
 <button class="primary" type="submit">Check now</button>
 </form>
+{% else %}
+<p>No current or recently completed matches were returned.</p>
+{% endif %}
 <p class="small">This page checks again every 60 seconds. Last page check: {{ checked_at }}</p>
 </div>
 
@@ -39,9 +49,9 @@
 </div>
 <p class="small">Raw status: {{ item.status }} · Raw minute: {{ item.raw_minute if item.raw_minute is not none else 'none' }}</p>
 {% if item.scorers.home or item.scorers.away %}
-<div class="grid">
-<div><strong>{{ item.home }}</strong>{% for scorer in item.scorers.home %}<div>{{ scorer.name }} {{ scorer.goals|join(', ') }}</div>{% endfor %}</div>
-<div><strong>{{ item.away }}</strong>{% for scorer in item.scorers.away %}<div>{{ scorer.name }} {{ scorer.goals|join(', ') }}</div>{% endfor %}</div>
+<div class="fixture-scorers" aria-label="Goalscorers">
+<div class="fixture-scorers-home">{% for scorer in item.scorers.home %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}</div>
+<div class="fixture-scorers-away">{% for scorer in item.scorers.away %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}</div>
 </div>
 {% else %}
 <p class="muted">No goalscorer events returned yet.</p>

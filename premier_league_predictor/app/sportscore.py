@@ -26,7 +26,7 @@ def get_live_matches():
     payload = _get("matches", {"limit": 50})
     return [
         match for match in payload.get("matches", [])
-        if match.get("status") in ("live", "finished")
+        if match.get("status") in ("upcoming", "live", "finished")
     ]
 
 
@@ -38,6 +38,27 @@ def get_team_matches(team_slug):
         return payload["fixtures"]
     team = payload.get("team") or {}
     return team.get("matches") or team.get("fixtures") or []
+
+
+def get_team_logo(team_slug):
+    """Return a badge from SportScore's team record or one of its matches."""
+    payload = _get("team", {"slug": team_slug, "limit": 10})
+    team = payload.get("team") or {}
+    if team.get("logo"):
+        return team["logo"]
+
+    team_name = (team.get("name") or "").strip().casefold()
+    matches = payload.get("matches") or payload.get("fixtures") or []
+    for match in matches:
+        if (match.get("home") or "").strip().casefold() == team_name:
+            logo = match.get("home_logo")
+        elif (match.get("away") or "").strip().casefold() == team_name:
+            logo = match.get("away_logo")
+        else:
+            continue
+        if logo:
+            return logo
+    return None
 
 
 def get_match_details(match):

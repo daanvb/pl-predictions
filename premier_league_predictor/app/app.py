@@ -33,12 +33,14 @@ from database_restore import (
 from football_api import test_connection, get_match, get_matches, FootballAPIError
 from sportscore import (
     SportScoreError,
+    get_live_matches as get_sportscore_live_matches,
     get_match_details as get_sportscore_match_details,
+    get_team_logo as get_sportscore_team_logo,
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.21.21"
+APP_VERSION = "1.0.19"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -50,7 +52,7 @@ GOOGLE_TOKEN_FILE = os.path.join(DATA_DIR, "google_drive_token.json")
 FIRST_RUN_TOKEN_FILE = os.path.join(DATA_DIR, "first_run_restore.token")
 GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 GOOGLE_BACKUP_FOLDER = "Premier League Predictor Backups"
-GOOGLE_RETENTION_DAYS = 30
+GOOGLE_BACKUP_LIMIT = 10
 
 QUIET_REFRESH_SECONDS = 6 * 60 * 60
 # SportScore caches its live feed for 60 seconds, so polling more often would
@@ -68,12 +70,6 @@ SIGNAL_NOTIFICATION_CHECK_SECONDS = 15 * 60
 SIGNAL_NEXT_GAMEWEEK_DELAY_SECONDS = 15 * 60
 SIGNAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF = 24
 SIGNAL_FINAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF = 2
-
-SPORTSCORE_TEST_MATCHES = (
-    ("Sabah v Hapoel Be'er Sheva", "sabah-vs-hapoel-beer-sheva"),
-    ("LASK v Celtic", "lask-vs-celtic"),
-    ("Bodø/Glimt v NEC Nijmegen", "bodo-glimt-vs-nec-nijmegen"),
-)
 
 PREMIER_LEAGUE_FIXTURE_SOURCE = (
     "https://www.premierleague.com/en/news/4675097/"
@@ -1876,9 +1872,11 @@ def normalized_team_name(name):
 def sportscore_team_slug(name):
     normalized = normalized_team_name(name)
     aliases = {
+        "brighton": "brighton-hove-albion",
         "man city": "manchester-city",
         "man united": "manchester-united",
         "newcastle": "newcastle-united",
+        "nott m forest": "nottingham-forest",
         "nottm forest": "nottingham-forest",
         "tottenham": "tottenham-hotspur",
         "west ham": "west-ham-united",
@@ -1896,6 +1894,83 @@ def safe_team_logo_url(value):
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return None
     return value
+
+
+def populate_missing_team_logos():
+    """Fill missing fixture badges independently of live-match updates."""
+    conn = get_db()
+    updated = 0
+    try:
+        teams = conn.execute(
+            """
+            SELECT team FROM (
+                SELECT home_team AS team
+                FROM fixtures
+                WHERE season = ? AND COALESCE(home_logo, '') = ''
+                UNION
+                SELECT away_team AS team
+                FROM fixtures
+                WHERE season = ? AND COALESCE(away_logo, '') = ''
+            )
+            ORDER BY team
+            """,
+            (SEASON, SEASON),
+        ).fetchall()
+
+        for index, row in enumerate(teams):
+            team_name = row["team"]
+            try:
+                logo = safe_team_logo_url(
+                    get_sportscore_team_logo(sportscore_team_slug(team_name))
+                )
+            except SportScoreError as exc:
+                print(
+                    f"[SportScore] Badge lookup failed for {team_name}: {exc}",
+                    flush=True,
+                )
+                logo = None
+
+            if logo:
+                home = conn.execute(
+                    """
+                    UPDATE fixtures SET home_logo = ?
+                    WHERE season = ? AND home_team = ?
+                      AND COALESCE(home_logo, '') = ''
+                    """,
+                    (logo, SEASON, team_name),
+                ).rowcount
+                away = conn.execute(
+                    """
+                    UPDATE fixtures SET away_logo = ?
+                    WHERE season = ? AND away_team = ?
+                      AND COALESCE(away_logo, '') = ''
+                    """,
+                    (logo, SEASON, team_name),
+                ).rowcount
+                updated += home + away
+                conn.commit()
+
+            # Keep badge discovery gentle on SportScore.
+            if index < len(teams) - 1:
+                time.sleep(1)
+    finally:
+        conn.close()
+
+    return updated
+
+
+def team_logo_worker():
+    time.sleep(30)
+    while True:
+        try:
+            updated = populate_missing_team_logos()
+            print(
+                f"[SportScore] Populated {updated} missing fixture badge(s)",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"[SportScore] Badge refresh failed: {exc}", flush=True)
+        time.sleep(QUIET_REFRESH_SECONDS)
 
 
 def import_live_matches_from_sportscore(force_current_gameweek=False):
@@ -2550,13 +2625,6 @@ def google_drive_folder_id(service):
 
 
 def prune_google_backups(service):
-    cutoff = (
-        now_utc()
-        - timedelta(
-            days=GOOGLE_RETENTION_DAYS
-        )
-    )
-
     query = (
         "trashed = false "
         "and appProperties has "
@@ -2565,6 +2633,7 @@ def prune_google_backups(service):
     )
 
     page_token = None
+    backups = []
 
     while True:
         result = service.files().list(
@@ -2578,30 +2647,7 @@ def prune_google_backups(service):
             pageToken=page_token,
         ).execute()
 
-        for item in result.get(
-            "files",
-            []
-        ):
-            created = parse_utc(
-                item.get("createdTime")
-            )
-
-            if (
-                created
-                and created < cutoff
-            ):
-                try:
-                    service.files().delete(
-                        fileId=item["id"]
-                    ).execute()
-
-                except Exception as e:
-                    print(
-                        "[google-drive] "
-                        "Cloud prune failed "
-                        f"for {item['name']}: {e}",
-                        flush=True
-                    )
+        backups.extend(result.get("files", []))
 
         page_token = result.get(
             "nextPageToken"
@@ -2609,6 +2655,28 @@ def prune_google_backups(service):
 
         if not page_token:
             break
+
+    backups.sort(
+        key=lambda item: (
+            parse_utc(item.get("createdTime"))
+            or datetime.min.replace(tzinfo=timezone.utc)
+        ),
+        reverse=True,
+    )
+
+    for item in backups[GOOGLE_BACKUP_LIMIT:]:
+        try:
+            service.files().delete(
+                fileId=item["id"]
+            ).execute()
+
+        except Exception as e:
+            print(
+                "[google-drive] "
+                "Cloud prune failed "
+                f"for {item['name']}: {e}",
+                flush=True
+            )
 
 
 def upload_backup_to_google_drive(
@@ -6018,7 +6086,7 @@ def backup_page():
         ),
         google_redirect_uri=google_redirect_uri(),
         local_backup_limit=MAX_AUTO_BACKUPS,
-        cloud_retention_days=GOOGLE_RETENTION_DAYS,
+        cloud_backup_limit=GOOGLE_BACKUP_LIMIT,
     )
 
 @app.route(
@@ -6682,24 +6750,50 @@ def admin_live_feed_test():
         for value in request.args.getlist("slug")
         if value.strip()
     ][:6]
-    configured = (
-        [(slug, slug.replace("-vs-", " v ").replace("-", " ").title())
-         for slug in requested_slugs]
-        if requested_slugs
-        else [(slug, label) for label, slug in SPORTSCORE_TEST_MATCHES]
-    )
+    discovery_error = None
+    if requested_slugs:
+        configured = [
+            (
+                slug,
+                slug.replace("-vs-", " v ").replace("-", " ").title(),
+                None,
+            )
+            for slug in requested_slugs
+        ]
+    else:
+        try:
+            discovered = get_sportscore_live_matches()
+            live = [match for match in discovered if match.get("status") == "live"]
+            upcoming = [
+                match for match in discovered
+                if match.get("status") == "upcoming"
+            ]
+            selected = (live or upcoming or discovered)[:6]
+            configured = []
+            for match in selected:
+                slug = (match.get("url") or "").rstrip("/").split("/")[-1]
+                label = (
+                    f"{match.get('home') or 'Home'} v "
+                    f"{match.get('away') or 'Away'}"
+                )
+                if slug:
+                    configured.append((slug, label, match))
+        except Exception as exc:
+            configured = []
+            discovery_error = str(exc)
     monitored = []
 
-    for slug, label in configured:
+    for slug, label, discovered_match in configured:
         item = {"slug": slug, "label": label, "error": None}
         if not re.fullmatch(r"[a-z0-9-]+-vs-[a-z0-9-]+", slug):
             item["error"] = "Enter a valid match slug such as lask-vs-celtic."
             monitored.append(item)
             continue
         try:
-            details = get_sportscore_match_details({
-                "url": f"/football/match/{slug}/"
-            })
+            details = get_sportscore_match_details(
+                discovered_match
+                or {"url": f"/football/match/{slug}/"}
+            )
             minute, injury_time = parse_live_minute(details.get("live_minute"))
             raw_status = (details.get("status") or "unknown").casefold()
             if raw_status == "live":
@@ -6735,6 +6829,8 @@ def admin_live_feed_test():
     return render_template(
         "live_feed_test.html",
         monitored=monitored,
+        discovery_error=discovery_error,
+        automatic_discovery=not requested_slugs,
         checked_at=local_datetime(now_utc().isoformat()),
     )
 
@@ -6929,6 +7025,11 @@ if __name__ == "__main__":
 
     threading.Thread(
         target=auto_backup_worker,
+        daemon=True
+    ).start()
+
+    threading.Thread(
+        target=team_logo_worker,
         daemon=True
     ).start()
 
