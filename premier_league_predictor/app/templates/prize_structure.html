@@ -2,12 +2,70 @@
 {% block title %}Prize Structure{% endblock %}
 {% block content %}
 
-<div class="hero">
+<style>
+.prize-hero{
+position:relative;
+min-height:240px;
+display:flex;
+align-items:center;
+overflow:hidden;
+isolation:isolate
+}
+.prize-hero-copy{
+position:relative;
+z-index:2;
+max-width:58%
+}
+.prize-hero-image{
+position:absolute;
+z-index:1;
+top:-20%;
+right:-2%;
+width:48%;
+height:145%;
+object-fit:cover;
+object-position:center 28%;
+opacity:.72;
+filter:saturate(.82) contrast(.94);
+-webkit-mask-image:linear-gradient(to right,transparent 0%,rgba(0,0,0,.72) 30%,#000 60%);
+mask-image:linear-gradient(to right,transparent 0%,rgba(0,0,0,.72) 30%,#000 60%)
+}
+.prize-hero::after{
+content:"";
+position:absolute;
+z-index:1;
+inset:0;
+background:linear-gradient(90deg,rgba(15,23,42,1) 0%,rgba(15,23,42,.92) 46%,rgba(15,23,42,.12) 100%);
+pointer-events:none
+}
+@media(max-width:620px){
+.prize-hero{min-height:210px}
+.prize-hero-copy{max-width:72%}
+.prize-hero-image{
+right:-18%;
+width:78%;
+opacity:.48
+}
+.prize-hero::after{
+background:linear-gradient(90deg,rgba(15,23,42,1) 0%,rgba(15,23,42,.88) 58%,rgba(15,23,42,.2) 100%)
+}
+}
+</style>
+
+<div class="hero prize-hero">
+<div class="prize-hero-copy">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">
 PREMIER LEAGUE PREDICTOR
 </div>
 <h1>💷 Prize Structure</h1>
 <p>Prize details will be added here soon.</p>
+</div>
+<img
+class="prize-hero-image"
+src="/static/prize-structure.png"
+alt=""
+aria-hidden="true"
+>
 </div>
 
 <div class="card">

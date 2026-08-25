@@ -162,7 +162,7 @@ No position yet
 
 <div class="fixture-centre">
 {% if fixture.status in ('LIVE','IN_PLAY','PAUSED','FINISHED') and fixture.home_score is not none and fixture.away_score is not none %}
-{{ fixture.home_score }}–{{ fixture.away_score }}
+<span class="fixture-scoreline"><span>{{ fixture.home_score }}</span><span class="fixture-score-dash">–</span><span>{{ fixture.away_score }}</span></span>
 {% else %}
 v
 {% endif %}

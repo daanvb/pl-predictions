@@ -40,7 +40,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.23"
+APP_VERSION = "1.0.24"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -1052,6 +1052,10 @@ def canonical_team_name(name):
         "sheffield united fc": "sheffield united",
         "sheffield united": "sheffield united",
         "sheffield utd": "sheffield united",
+        "coventry": "coventry city",
+        "coventry city": "coventry city",
+        "hull": "hull city",
+        "hull city": "hull city",
     }
 
     if value in aliases:

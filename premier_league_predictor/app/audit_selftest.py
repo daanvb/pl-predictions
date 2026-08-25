@@ -90,7 +90,7 @@ class HistoricalCsvResponse:
     status_code = 200
     text = (
         "Date,HomeTeam,AwayTeam,FTHG,FTAG\n"
-        "15/02/2025,Hull City,Coventry City,1,2\n"
+        "15/02/2025,Hull,Coventry,1,2\n"
     )
 
 original_predictor_get = predictor.requests.get
@@ -101,8 +101,8 @@ try:
     championship_row = conn.execute(
         "SELECT * FROM historical_fixtures WHERE competition = 'E1'"
     ).fetchone()
-    assert championship_row["home_team"] == "Hull City"
-    assert championship_row["away_team"] == "Coventry City"
+    assert championship_row["home_team"] == "Hull"
+    assert championship_row["away_team"] == "Coventry"
     championship_h2h = predictor.match_stats_for_fixture(
         conn,
         {
