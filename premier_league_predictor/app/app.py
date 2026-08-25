@@ -33,14 +33,14 @@ from database_restore import (
 from football_api import test_connection, get_match, get_matches, FootballAPIError
 from sportscore import (
     SportScoreError,
-    get_live_matches as get_sportscore_live_matches,
+    get_champions_league_matches as get_sportscore_champions_league_matches,
     get_match_details as get_sportscore_match_details,
     get_team_logo as get_sportscore_team_logo,
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.19"
+APP_VERSION = "1.0.20"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -53,6 +53,12 @@ FIRST_RUN_TOKEN_FILE = os.path.join(DATA_DIR, "first_run_restore.token")
 GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 GOOGLE_BACKUP_FOLDER = "Premier League Predictor Backups"
 GOOGLE_BACKUP_LIMIT = 10
+SPORTSCORE_TEAM_LOGO_FALLBACKS = {
+    "chelsea": (
+        "https://img.thesports.com/football/team/"
+        "a0cf8f551e9440acb3f4ff533dcc58a4.png"
+    ),
+}
 
 QUIET_REFRESH_SECONDS = 6 * 60 * 60
 # SportScore caches its live feed for 60 seconds, so polling more often would
@@ -1919,16 +1925,20 @@ def populate_missing_team_logos():
 
         for index, row in enumerate(teams):
             team_name = row["team"]
+            team_slug = sportscore_team_slug(team_name)
             try:
-                logo = safe_team_logo_url(
-                    get_sportscore_team_logo(sportscore_team_slug(team_name))
-                )
+                discovered_logo = get_sportscore_team_logo(team_slug)
             except SportScoreError as exc:
                 print(
                     f"[SportScore] Badge lookup failed for {team_name}: {exc}",
                     flush=True,
                 )
-                logo = None
+                discovered_logo = None
+
+            logo = safe_team_logo_url(
+                discovered_logo
+                or SPORTSCORE_TEAM_LOGO_FALLBACKS.get(team_slug)
+            )
 
             if logo:
                 home = conn.execute(
@@ -6762,7 +6772,12 @@ def admin_live_feed_test():
         ]
     else:
         try:
-            discovered = get_sportscore_live_matches()
+            discovered = [
+                match for match in get_sportscore_champions_league_matches()
+                if "uefa champions league" in (
+                    match.get("competition") or ""
+                ).casefold()
+            ]
             live = [match for match in discovered if match.get("status") == "live"]
             upcoming = [
                 match for match in discovered
@@ -6790,10 +6805,19 @@ def admin_live_feed_test():
             monitored.append(item)
             continue
         try:
-            details = get_sportscore_match_details(
+            details = (
                 discovered_match
-                or {"url": f"/football/match/{slug}/"}
+                if discovered_match and discovered_match.get("_details_loaded")
+                else get_sportscore_match_details(
+                    discovered_match
+                    or {"url": f"/football/match/{slug}/"}
+                )
             )
+            competition = details.get("competition") or ""
+            if "uefa champions league" not in competition.casefold():
+                raise SportScoreError(
+                    "This match is not listed as UEFA Champions League by SportScore."
+                )
             minute, injury_time = parse_live_minute(details.get("live_minute"))
             raw_status = (details.get("status") or "unknown").casefold()
             if raw_status == "live":
@@ -6816,6 +6840,7 @@ def admin_live_feed_test():
                 "status": raw_status,
                 "status_label": status_text,
                 "raw_minute": details.get("live_minute"),
+                "competition": competition,
                 "scorers": fixture_scorers(
                     json.dumps(goals),
                     details.get("home") or "",

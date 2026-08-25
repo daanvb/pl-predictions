@@ -6,8 +6,8 @@
 
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">ADMIN · DIAGNOSTICS</div>
-<h1>🧪 SportScore Live Feed Test</h1>
-<p>Read-only monitoring. These matches never affect Predictor fixtures, points or history.</p>
+<h1>🧪 Champions League Live Test</h1>
+<p>Read-only UEFA Champions League monitoring. These matches never affect Predictor fixtures, points or history.</p>
 </div>
 
 <div class="nav">
@@ -17,7 +17,7 @@
 <div class="card">
 <h2>Matches to monitor</h2>
 {% if automatic_discovery %}
-<p class="muted">Automatically showing live SportScore matches, then upcoming matches before kickoff, or recent completed matches when neither is available.</p>
+<p class="muted">Automatically showing UEFA Champions League matches from SportScore: live first, then upcoming, then recently completed.</p>
 {% endif %}
 {% if discovery_error %}
 <p style="color:#b91c1c">⚠️ Live match discovery failed: {{ discovery_error }}</p>
@@ -31,7 +31,7 @@
 <button class="primary" type="submit">Check now</button>
 </form>
 {% else %}
-<p>No current or recently completed matches were returned.</p>
+<p>No UEFA Champions League matches are currently available in SportScore's feed.</p>
 {% endif %}
 <p class="small">This page checks again every 60 seconds. Last page check: {{ checked_at }}</p>
 </div>
@@ -48,6 +48,7 @@
 <span class="badge {% if item.status == 'live' %}live{% endif %}">{{ item.status_label }}</span>
 </div>
 <p class="small">Raw status: {{ item.status }} · Raw minute: {{ item.raw_minute if item.raw_minute is not none else 'none' }}</p>
+<p class="small">Competition: {{ item.competition }}</p>
 {% if item.scorers.home or item.scorers.away %}
 <div class="fixture-scorers" aria-label="Goalscorers">
 <div class="fixture-scorers-home">{% for scorer in item.scorers.home %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}</div>
