@@ -54,7 +54,7 @@
 </div>
 <div class="fixture-centre">
 {% if item.status in ('live', 'finished') and item.home_score is not none and item.away_score is not none %}
-{{ item.home_score }}–{{ item.away_score }}
+<span class="fixture-scoreline"><span>{{ item.home_score }}</span><span class="fixture-score-dash">–</span><span>{{ item.away_score }}</span></span>
 {% else %}
 v
 {% endif %}

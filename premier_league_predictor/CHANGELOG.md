@@ -2,6 +2,12 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.24] - 2026-08-25
+
+### Fixed
+- Championship head-to-head results now match short source names such as Hull and Coventry to their current club names.
+- Improved score spacing on live fixture cards and centred mobile kickoff dates and times.
+
 ## [1.0.23] - 2026-08-25
 
 ### Added

@@ -447,7 +447,7 @@ th,td{
 .fixture-match {
     grid-area: match;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 50px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
     align-items: center;
     gap: 8px;
     min-width: 0;
@@ -515,6 +515,19 @@ th,td{
     white-space: nowrap;
 }
 
+.fixture-scoreline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 64px;
+    font-variant-numeric: tabular-nums;
+}
+
+.fixture-score-dash {
+    color: #64748b;
+}
+
 .fixture-status {
     grid-area: status;
     justify-self: end;
@@ -530,7 +543,7 @@ th,td{
 .fixture-scorers {
     grid-area: scorers;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 50px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
     gap: 8px;
     margin-top: -2px;
     padding: 0;
@@ -603,7 +616,7 @@ th,td{
     }
 
     .fixture-match {
-        grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr);
         gap: 5px;
         width: 100%;
     }
@@ -618,15 +631,20 @@ th,td{
         font-size: 13px;
     }
 
+    .fixture-scoreline {
+        gap: 7px;
+        min-width: 58px;
+    }
+
     .fixture-submeta {
-        justify-self: start;
-        text-align: left;
+        justify-self: stretch;
+        text-align: center;
         font-size: 11px;
         line-height: 1.25;
     }
 
     .fixture-scorers {
-        grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr);
         gap: 5px;
         margin: 0;
         padding: 0;
