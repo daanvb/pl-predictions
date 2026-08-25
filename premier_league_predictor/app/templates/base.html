@@ -437,7 +437,7 @@ th,td{
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
         "match status"
-        "scorers scorers"
+        "scorers ."
         "meta broadcaster";
     column-gap: 14px;
     row-gap: 7px;
@@ -530,10 +530,10 @@ th,td{
 .fixture-scorers {
     grid-area: scorers;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 34px;
+    grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+    gap: 8px;
     margin-top: -2px;
-    padding: 0 120px;
+    padding: 0;
     color: #64748b;
     font-size: 12px;
     line-height: 1.4;
@@ -547,10 +547,12 @@ th,td{
 }
 
 .fixture-scorers-home {
+    grid-column: 1;
     text-align: right;
 }
 
 .fixture-scorers-away {
+    grid-column: 3;
     text-align: left;
 }
 
@@ -619,9 +621,10 @@ th,td{
     }
 
     .fixture-scorers {
-        gap: 20px;
+        grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+        gap: 5px;
         margin: 0;
-        padding: 0 8px;
+        padding: 0;
     }
 
     .fixture-status {

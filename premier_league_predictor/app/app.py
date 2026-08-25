@@ -40,7 +40,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.21"
+APP_VERSION = "1.0.22"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -236,10 +236,13 @@ def goal_minute_label(goal):
 
 
 def parse_live_minute(value):
-    """Return normal and added minutes from SportScore values like 90+4."""
+    """Return normal and added minutes from SportScore live-clock text."""
     if value is None:
         return None, None
-    match = re.fullmatch(r"\s*(\d+)(?:\s*\+\s*(\d+))?\s*'?\s*", str(value))
+    match = re.search(
+        r"(?<!\d)(\d{1,3})(?:\s*\+\s*(\d{1,2}))?\s*[\'’′]?\s*$",
+        str(value),
+    )
     if not match:
         return None, None
     return int(match.group(1)), (
@@ -2070,6 +2073,10 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
             minute_value, injury_time_value = parse_live_minute(
                 details.get("live_minute")
             )
+            if minute_value is None:
+                minute_value, injury_time_value = parse_live_minute(
+                    details.get("status_text")
+                )
 
             conn.execute(
                 """
@@ -4554,7 +4561,7 @@ def history():
         WHERE season = ?
           AND matchday IS NOT NULL
         GROUP BY matchday
-        ORDER BY matchday DESC
+        ORDER BY matchday ASC
         """,
         (SEASON,),
     ).fetchall()
@@ -6827,6 +6834,10 @@ def admin_live_feed_test():
                     "This match is not listed as UEFA Champions League by SportScore."
                 )
             minute, injury_time = parse_live_minute(details.get("live_minute"))
+            if minute is None:
+                minute, injury_time = parse_live_minute(
+                    details.get("status_text")
+                )
             raw_status = (details.get("status") or "unknown").casefold()
             if raw_status == "live":
                 status_text = "LIVE"
@@ -6854,9 +6865,7 @@ def admin_live_feed_test():
                 "away_score": details.get("away_score"),
                 "status": raw_status,
                 "status_label": status_text,
-                "submeta": (
-                    kickoff_text if raw_status == "upcoming" else status_text
-                ),
+                "submeta": kickoff_text if raw_status == "upcoming" else None,
                 "raw_minute": details.get("live_minute"),
                 "competition": competition,
                 "scorers": fixture_scorers(

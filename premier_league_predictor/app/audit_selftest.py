@@ -386,6 +386,8 @@ assert api_goals[0]["scorer"]["name"] == "Backup Scorer"
 assert api_goals[0]["team"]["name"] == "Home FC"
 assert predictor.parse_live_minute("45+2") == (45, 2)
 assert predictor.parse_live_minute("90+7'") == (90, 7)
+assert predictor.parse_live_minute("Started 45+4′") == (45, 4)
+assert predictor.parse_live_minute("LIVE 90 + 6’") == (90, 6)
 assert predictor.parse_live_minute("86") == (86, None)
 assert predictor.status_label({
     "status": "IN_PLAY",
@@ -420,6 +422,7 @@ finally:
     predictor.get_sportscore_match_details = original_test_match_details
 assert live_test_response.status_code == 200
 assert b"LIVE 90+3" in live_test_response.data
+assert b'<div class="fixture-submeta">LIVE' not in live_test_response.data
 assert b"Test Scorer" in live_test_response.data
 assert b"never affect Predictor fixtures" in live_test_response.data
 assert b'class="fixture-scorers"' in live_test_response.data
@@ -516,6 +519,33 @@ assert backup_calls == [True]
 assert predictor.get_setting("last_database_optimize")
 leaderboard_response = client.get("/leaderboard")
 assert b"Season position changes" in leaderboard_response.data
+conn = database.get_db()
+for fixture_id, matchday in ((8701, 37), (8702, 38)):
+    conn.execute(
+        """INSERT INTO fixtures(
+            id, season, matchday, utc_date, status,
+            home_team, away_team, home_score, away_score
+        ) VALUES (?, ?, ?, ?, 'SCHEDULED', ?, ?, NULL, NULL)""",
+        (
+            fixture_id,
+            predictor.SEASON,
+            matchday,
+            datetime.now(timezone.utc).isoformat(),
+            f"History Home {matchday}",
+            f"History Away {matchday}",
+        ),
+    )
+conn.commit()
+conn.close()
+history_response = client.get("/history")
+history_gw37 = history_response.data.find(b"Gameweek 37")
+history_gw38 = history_response.data.find(b"Gameweek 38")
+assert history_gw37 >= 0 and history_gw38 >= 0
+assert history_gw37 < history_gw38
+conn = database.get_db()
+conn.execute("DELETE FROM fixtures WHERE id IN (8701, 8702)")
+conn.commit()
+conn.close()
 seasons_response = client.get("/seasons")
 assert b"Past Winners" in seasons_response.data
 assert b"Most League Wins" in seasons_response.data
