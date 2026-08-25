@@ -69,7 +69,8 @@
 </div>
 
 <div class="leader-points">
-{{ player.points }}
+{{ player.season_points }}
+<div class="small" style="text-align:right">{{ player.points }} GW pts</div>
 </div>
 
 </div>
@@ -77,6 +78,7 @@
 {% endfor %}
 
 <p class="small">
+Ordered by the current overall league position. The large total is the live season score.<br>
 Page and SportScore live data refresh every 60 seconds while matches are active.
 Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
 </p>
@@ -92,6 +94,7 @@ Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
 <div class="fixture-match live-fixture-match">
 
 <div class="fixture-home">
+{% if fixture.home_logo %}<img class="team-badge" src="{{ fixture.home_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
 <strong>{{ short_team_name(fixture.home_team) }}</strong>
 </div>
 
@@ -103,6 +106,7 @@ Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
 
 <div class="fixture-away">
 <strong>{{ short_team_name(fixture.away_team) }}</strong>
+{% if fixture.away_logo %}<img class="team-badge" src="{{ fixture.away_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
 </div>
 
 </div>

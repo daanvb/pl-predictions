@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Live Feed Test{% endblock %}
+{% block content %}
+
+<meta http-equiv="refresh" content="60">
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">ADMIN · DIAGNOSTICS</div>
+<h1>🧪 SportScore Live Feed Test</h1>
+<p>Read-only monitoring. These matches never affect Predictor fixtures, points or history.</p>
+</div>
+
+<div class="nav">
+<a href="/admin">← Admin</a>
+</div>
+
+<div class="card">
+<h2>Matches to monitor</h2>
+<form method="GET">
+{% for item in monitored %}
+<label><strong>SportScore match slug {{ loop.index }}</strong></label>
+<input name="slug" value="{{ item.slug }}" style="width:100%;margin:7px 0 13px">
+{% endfor %}
+<button class="primary" type="submit">Check now</button>
+</form>
+<p class="small">This page checks again every 60 seconds. Last page check: {{ checked_at }}</p>
+</div>
+
+{% for item in monitored %}
+<div class="card">
+{% if item.error %}
+<h2>{{ item.label }}</h2>
+<p style="color:#b91c1c">⚠️ {{ item.error }}</p>
+<p class="small">Slug: <code>{{ item.slug }}</code></p>
+{% else %}
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+<h2 style="margin:0">{{ item.home }} {{ item.home_score if item.home_score is not none else '–' }}–{{ item.away_score if item.away_score is not none else '–' }} {{ item.away }}</h2>
+<span class="badge {% if item.status == 'live' %}live{% endif %}">{{ item.status_label }}</span>
+</div>
+<p class="small">Raw status: {{ item.status }} · Raw minute: {{ item.raw_minute if item.raw_minute is not none else 'none' }}</p>
+{% if item.scorers.home or item.scorers.away %}
+<div class="grid">
+<div><strong>{{ item.home }}</strong>{% for scorer in item.scorers.home %}<div>{{ scorer.name }} {{ scorer.goals|join(', ') }}</div>{% endfor %}</div>
+<div><strong>{{ item.away }}</strong>{% for scorer in item.scorers.away %}<div>{{ scorer.name }} {{ scorer.goals|join(', ') }}</div>{% endfor %}</div>
+</div>
+{% else %}
+<p class="muted">No goalscorer events returned yet.</p>
+{% endif %}
+{% endif %}
+</div>
+{% endfor %}
+
+<p class="small">Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.</p>
+
+{% endblock %}

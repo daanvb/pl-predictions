@@ -14,7 +14,7 @@ import json
 import csv
 import io
 import zlib
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from html.parser import HTMLParser
 from html import unescape
 
@@ -65,8 +65,15 @@ AUTO_BACKUP_SECONDS = 6 * 60 * 60
 MAX_AUTO_BACKUPS = 5
 
 SIGNAL_NOTIFICATION_CHECK_SECONDS = 15 * 60
+SIGNAL_NEXT_GAMEWEEK_DELAY_SECONDS = 15 * 60
 SIGNAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF = 24
 SIGNAL_FINAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF = 2
+
+SPORTSCORE_TEST_MATCHES = (
+    ("Sabah v Hapoel Be'er Sheva", "sabah-vs-hapoel-beer-sheva"),
+    ("LASK v Celtic", "lask-vs-celtic"),
+    ("Bodø/Glimt v NEC Nijmegen", "bodo-glimt-vs-nec-nijmegen"),
+)
 
 PREMIER_LEAGUE_FIXTURE_SOURCE = (
     "https://www.premierleague.com/en/news/4675097/"
@@ -224,6 +231,52 @@ def goal_minute_label(goal):
     if injury_time:
         return f"{minute}+{injury_time}'"
     return f"{minute}'"
+
+
+def parse_live_minute(value):
+    """Return normal and added minutes from SportScore values like 90+4."""
+    if value is None:
+        return None, None
+    match = re.fullmatch(r"\s*(\d+)(?:\s*\+\s*(\d+))?\s*'?\s*", str(value))
+    if not match:
+        return None, None
+    return int(match.group(1)), (
+        int(match.group(2)) if match.group(2) is not None else None
+    )
+
+
+def format_file_size(byte_count):
+    value = float(max(0, byte_count or 0))
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024
+
+
+def database_health(conn=None):
+    owns_connection = conn is None
+    conn = conn or get_db()
+    try:
+        page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+        page_count = conn.execute("PRAGMA page_count").fetchone()[0]
+        free_pages = conn.execute("PRAGMA freelist_count").fetchone()[0]
+    finally:
+        if owns_connection:
+            conn.close()
+    database_bytes = os.path.getsize(DB) if os.path.exists(DB) else 0
+    wal_path = f"{DB}-wal"
+    wal_bytes = os.path.getsize(wal_path) if os.path.exists(wal_path) else 0
+    reclaimable_bytes = free_pages * page_size
+    return {
+        "database_bytes": database_bytes,
+        "database_size": format_file_size(database_bytes),
+        "wal_bytes": wal_bytes,
+        "wal_size": format_file_size(wal_bytes),
+        "reclaimable_bytes": reclaimable_bytes,
+        "reclaimable_size": format_file_size(reclaimable_bytes),
+        "free_pages": free_pages,
+        "page_count": page_count,
+    }
 
 
 def fixture_scorers(goals_json, home_team, away_team):
@@ -582,8 +635,15 @@ def status_label(fixture):
 
     if status in ("LIVE", "IN_PLAY"):
         minute = fixture["minute"]
+        injury_time = (
+            fixture["injury_time"]
+            if "injury_time" in fixture.keys()
+            else None
+        )
 
         if minute:
+            if injury_time:
+                return f"LIVE {minute}+{injury_time}'"
             return f"LIVE {minute}'"
 
         return "LIVE"
@@ -980,39 +1040,39 @@ def canonical_team_name(name):
 
 
 def short_team_name(name):
-    """Display-friendly club names; does not alter stored/API team names."""
+    """SportScore-style display names; does not alter stored/API team names."""
     key = canonical_team_name(name)
 
     names = {
         "arsenal": "Arsenal",
         "aston villa": "Aston Villa",
-        "bournemouth": "Bournemouth",
+        "bournemouth": "AFC Bournemouth",
         "brentford": "Brentford",
-        "brighton": "Brighton",
+        "brighton": "Brighton & Hove Albion",
         "burnley": "Burnley",
         "chelsea": "Chelsea",
         "crystal palace": "Crystal Palace",
         "everton": "Everton",
         "fulham": "Fulham",
-        "leeds": "Leeds",
+        "leeds": "Leeds United",
         "liverpool": "Liverpool",
-        "manchester city": "Man City",
-        "manchester united": "Man Utd",
-        "newcastle": "Newcastle",
-        "nottingham forest": "Nott'm Forest",
+        "manchester city": "Manchester City",
+        "manchester united": "Manchester United",
+        "newcastle": "Newcastle United",
+        "nottingham forest": "Nottingham Forest",
         "sunderland": "Sunderland",
-        "tottenham": "Spurs",
-        "west ham": "West Ham",
-        "wolves": "Wolves",
-        "leicester": "Leicester",
-        "ipswich": "Ipswich",
+        "tottenham": "Tottenham Hotspur",
+        "west ham": "West Ham United",
+        "wolves": "Wolverhampton Wanderers",
+        "leicester": "Leicester City",
+        "ipswich": "Ipswich Town",
         "southampton": "Southampton",
-        "luton": "Luton",
-        "sheffield united": "Sheffield Utd",
-        "coventry city": "Coventry",
-        "queens park rangers": "QPR",
-        "west brom": "West Brom",
-        "norwich": "Norwich",
+        "luton": "Luton Town",
+        "sheffield united": "Sheffield United",
+        "coventry city": "Coventry City",
+        "queens park rangers": "Queens Park Rangers",
+        "west brom": "West Bromwich Albion",
+        "norwich": "Norwich City",
         "watford": "Watford",
     }
 
@@ -1827,6 +1887,17 @@ def sportscore_team_slug(name):
     return aliases.get(normalized, normalized.replace(" ", "-"))
 
 
+def safe_team_logo_url(value):
+    """Only persist normal web image URLs supplied by SportScore."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return None
+    return value
+
+
 def import_live_matches_from_sportscore(force_current_gameweek=False):
     conn = get_db()
     updated = 0
@@ -1835,7 +1906,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
         fixtures = conn.execute(
             """
             SELECT id, home_team, away_team, home_score, away_score,
-                   status, goals_json, utc_date
+                   status, goals_json, utc_date, home_logo, away_logo
             FROM fixtures
             WHERE season = ?
               AND matchday = COALESCE(
@@ -1905,11 +1976,9 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
 
             goals = sportscore_goal_events(details)
             goals_json = json.dumps(goals) if goals else None
-            minute_value = details.get("live_minute")
-            try:
-                minute_value = int(minute_value) if minute_value is not None else None
-            except (TypeError, ValueError):
-                minute_value = None
+            minute_value, injury_time_value = parse_live_minute(
+                details.get("live_minute")
+            )
 
             conn.execute(
                 """
@@ -1918,7 +1987,10 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                     home_score = COALESCE(?, home_score),
                     away_score = COALESCE(?, away_score),
                     minute = COALESCE(?, minute),
+                    injury_time = COALESCE(?, injury_time),
                     goals_json = COALESCE(?, goals_json),
+                    home_logo = COALESCE(?, home_logo),
+                    away_logo = COALESCE(?, away_logo),
                     last_updated = ?,
                     live_data_source = 'SportScore'
                 WHERE id = ?
@@ -1932,7 +2004,10 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                     details.get("home_score"),
                     details.get("away_score"),
                     minute_value,
+                    injury_time_value,
                     goals_json,
+                    safe_team_logo_url(details.get("home_logo")),
+                    safe_team_logo_url(details.get("away_logo")),
                     now_utc().isoformat(),
                     stored["id"],
                 ),
@@ -2819,6 +2894,22 @@ def signal_gw_open_message(matchday, fixtures):
     ])
 
 
+def signal_next_gameweek_open_ready(matchday):
+    """Delay the next GW announcement until 15 minutes after prior results."""
+    previous_matchday = matchday - 1
+    if previous_matchday < 1:
+        return True
+    if get_setting("signal_last_results_gw") != str(previous_matchday):
+        return False
+    results_sent_at = parse_utc(get_setting("signal_last_results_at"))
+    if results_sent_at is None:
+        # Preserve compatibility with results notifications sent by older builds.
+        return True
+    return now_utc() >= results_sent_at + timedelta(
+        seconds=SIGNAL_NEXT_GAMEWEEK_DELAY_SECONDS
+    )
+
+
 def signal_reminder_message(
     matchday,
     fixtures,
@@ -3065,7 +3156,10 @@ def process_signal_notifications():
             )
 
             if fixtures:
-                if settings["notify_gw_open"]:
+                if (
+                    settings["notify_gw_open"]
+                    and signal_next_gameweek_open_ready(current_gw)
+                ):
                     last_open = get_setting(
                         "signal_last_open_gw"
                     )
@@ -3155,6 +3249,10 @@ def process_signal_notifications():
                 set_setting(
                     "signal_last_results_gw",
                     str(result_gw)
+                )
+                set_setting(
+                    "signal_last_results_at",
+                    now_utc().isoformat()
                 )
 
         set_setting(
@@ -4532,8 +4630,8 @@ def predictions(matchday):
             ):
                 errors.append(
                     "Enter both scores for "
-                    f"{fixture['home_team']} v "
-                    f"{fixture['away_team']}."
+                    f"{short_team_name(fixture['home_team'])} v "
+                    f"{short_team_name(fixture['away_team'])}."
                 )
                 continue
 
@@ -4552,8 +4650,8 @@ def predictions(matchday):
             except ValueError:
                 errors.append(
                     "Invalid score for "
-                    f"{fixture['home_team']} v "
-                    f"{fixture['away_team']}."
+                    f"{short_team_name(fixture['home_team'])} v "
+                    f"{short_team_name(fixture['away_team'])}."
                 )
                 continue
 
@@ -4700,9 +4798,11 @@ def predictions(matchday):
             f"/predict/{matchday}"
         )
 
-    fixture_stats = build_fixture_stats(
-        conn,
-        fixtures
+    show_match_stats = request.args.get("history") != "1"
+    fixture_stats = (
+        build_fixture_stats(conn, fixtures)
+        if show_match_stats
+        else {}
     )
 
     conn.close()
@@ -4713,6 +4813,7 @@ def predictions(matchday):
         matchday=matchday,
         locked_dp_fixture_id=locked_dp_fixture_id,
         fixture_stats=fixture_stats,
+        show_match_stats=show_match_stats,
     )
 
 
@@ -4765,6 +4866,11 @@ def gameweek(matchday):
         (SEASON, matchday),
     ).fetchall()
 
+    previous_league = overall_table_at_matchday(
+        conn,
+        matchday - 1,
+    )
+
     conn.close()
 
     prediction_map = {
@@ -4789,9 +4895,16 @@ def gameweek(matchday):
     }
 
     live_table = []
+    previous_by_player = {
+        row["id"]: row
+        for row in previous_league
+    }
+    baseline_positions = ranking_positions(previous_league)
 
     for player in players:
         provisional = 0
+        live_exact_draws = 0
+        live_exact_scores = 0
         finished = 0
         live = 0
 
@@ -4821,75 +4934,38 @@ def gameweek(matchday):
                 bool(pred["dp"]),
             )
 
+            if (
+                pred["home_score"] == fixture["home_score"]
+                and pred["away_score"] == fixture["away_score"]
+            ):
+                if fixture["home_score"] == fixture["away_score"]:
+                    live_exact_draws += 1
+                else:
+                    live_exact_scores += 1
+
             if fixture["status"] == "FINISHED":
                 finished += 1
             elif fixture["status"] in ("IN_PLAY", "PAUSED"):
                 live += 1
 
+        previous = previous_by_player.get(player["id"])
         live_table.append({
             "id": player["id"],
             "name": player["name"],
             "points": provisional,
+            "season_points": (previous["points"] if previous else 0) + provisional,
+            "exact_draws": (previous["exact_draws"] if previous else 0) + live_exact_draws,
+            "exact_scores": (previous["exact_scores"] if previous else 0) + live_exact_scores,
             "finished_matches": finished,
             "live_matches": live,
         })
 
     live_table.sort(
-        key=lambda x: (-x["points"], x["name"].lower())
-    )
-
-    # Compare the live table with the same GW using only fully
-    # finished fixtures. This makes arrows show movement caused by
-    # matches currently in play rather than unrelated season position.
-    completed_only_table = []
-
-    for player in players:
-        completed_points = 0
-
-        for fixture in fixtures:
-            if fixture["status"] != "FINISHED":
-                continue
-
-            pred = prediction_map.get(
-                (
-                    player["id"],
-                    fixture["id"]
-                )
-            )
-
-            if (
-                not pred
-                or fixture["home_score"] is None
-                or fixture["away_score"] is None
-            ):
-                continue
-
-            completed_points += (
-                calculate_prediction_points(
-                    pred["home_score"],
-                    pred["away_score"],
-                    fixture["home_score"],
-                    fixture["away_score"],
-                    bool(pred["dp"]),
-                )
-            )
-
-        completed_only_table.append({
-            "id": player["id"],
-            "name": player["name"],
-            "points": completed_points,
-        })
-
-    completed_only_table.sort(
         key=lambda x: (
-            -x["points"],
-            x["name"].lower()
-        )
-    )
-
-    baseline_positions = (
-        ranking_positions(
-            completed_only_table
+            -x["season_points"],
+            -x["exact_draws"],
+            -x["exact_scores"],
+            x["name"].lower(),
         )
     )
 
@@ -5456,6 +5532,8 @@ def admin():
         "SELECT COUNT(*) FROM predictions"
     ).fetchone()[0]
 
+    db_health = database_health(conn)
+
     conn.close()
 
     last_api_refresh = get_setting(
@@ -5494,6 +5572,12 @@ def admin():
         player_count=player_count,
         fixture_count=fixture_count,
         prediction_count=prediction_count,
+        db_health=db_health,
+        last_database_optimize=(
+            local_timestamp(get_setting("last_database_optimize"))
+            if get_setting("last_database_optimize")
+            else None
+        ),
         signal=signal,
         signal_status=signal_status,
         last_api_refresh=(
@@ -6585,6 +6669,119 @@ def admin_refresh_current_scorers():
     except Exception as exc:
         flash(f"SportScore scorer refresh failed: {exc}", "error")
 
+    return redirect("/admin")
+
+
+@app.route("/admin/live-feed-test")
+def admin_live_feed_test():
+    if not is_admin():
+        return redirect("/")
+
+    requested_slugs = [
+        value.strip().casefold()
+        for value in request.args.getlist("slug")
+        if value.strip()
+    ][:6]
+    configured = (
+        [(slug, slug.replace("-vs-", " v ").replace("-", " ").title())
+         for slug in requested_slugs]
+        if requested_slugs
+        else [(slug, label) for label, slug in SPORTSCORE_TEST_MATCHES]
+    )
+    monitored = []
+
+    for slug, label in configured:
+        item = {"slug": slug, "label": label, "error": None}
+        if not re.fullmatch(r"[a-z0-9-]+-vs-[a-z0-9-]+", slug):
+            item["error"] = "Enter a valid match slug such as lask-vs-celtic."
+            monitored.append(item)
+            continue
+        try:
+            details = get_sportscore_match_details({
+                "url": f"/football/match/{slug}/"
+            })
+            minute, injury_time = parse_live_minute(details.get("live_minute"))
+            raw_status = (details.get("status") or "unknown").casefold()
+            if raw_status == "live":
+                status_text = "LIVE"
+                if minute is not None:
+                    status_text += f" {minute}"
+                    if injury_time is not None:
+                        status_text += f"+{injury_time}"
+                    status_text += "'"
+            elif raw_status == "finished":
+                status_text = "FT"
+            else:
+                status_text = details.get("status_text") or raw_status.upper()
+            goals = sportscore_goal_events(details)
+            item.update({
+                "home": details.get("home") or "Home",
+                "away": details.get("away") or "Away",
+                "home_score": details.get("home_score"),
+                "away_score": details.get("away_score"),
+                "status": raw_status,
+                "status_label": status_text,
+                "raw_minute": details.get("live_minute"),
+                "scorers": fixture_scorers(
+                    json.dumps(goals),
+                    details.get("home") or "",
+                    details.get("away") or "",
+                ),
+            })
+        except Exception as exc:
+            item["error"] = str(exc)
+        monitored.append(item)
+
+    return render_template(
+        "live_feed_test.html",
+        monitored=monitored,
+        checked_at=local_datetime(now_utc().isoformat()),
+    )
+
+
+@app.route("/admin/database/optimize", methods=["POST"])
+def admin_optimize_database():
+    if not is_admin():
+        return redirect("/")
+
+    try:
+        backup_path = create_automatic_backup()
+        validate_predictor_database(backup_path, require_users=True)
+    except Exception as exc:
+        flash(
+            "Database optimization cancelled because its safety backup "
+            f"could not be created and verified: {exc}",
+            "error",
+        )
+        return redirect("/admin")
+
+    before = database_health()
+    conn = sqlite3.connect(DB, timeout=60)
+    try:
+        conn.execute("PRAGMA busy_timeout = 60000")
+        integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        if integrity != "ok":
+            raise RuntimeError(f"Integrity check failed: {integrity}")
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.execute("VACUUM")
+        conn.execute("ANALYZE")
+        conn.commit()
+    except Exception as exc:
+        flash(f"Database optimization failed: {exc}", "error")
+        return redirect("/admin")
+    finally:
+        conn.close()
+
+    after = database_health()
+    reclaimed = max(0, before["database_bytes"] - after["database_bytes"])
+    set_setting("last_database_optimize", now_utc().isoformat())
+    flash(
+        "Database optimization completed. "
+        f"Safety backup: {os.path.basename(backup_path)}. "
+        f"Active database: {before['database_size']} → {after['database_size']} "
+        f"({format_file_size(reclaimed)} reclaimed).",
+        "success",
+    )
     return redirect("/admin")
 
 

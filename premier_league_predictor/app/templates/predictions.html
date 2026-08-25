@@ -39,9 +39,9 @@ You can move your DP to another open fixture until your selected DP match kicks 
 <div class="fixture-row-grid" style="margin-bottom:12px">
 
 <div class="fixture-match">
-<div class="fixture-home"><strong>{{ short_team_name(fixture.home_team) }}</strong></div>
+<div class="fixture-home">{% if fixture.home_logo %}<img class="team-badge" src="{{ fixture.home_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}<strong>{{ short_team_name(fixture.home_team) }}</strong></div>
 <div class="fixture-centre">v</div>
-<div class="fixture-away"><strong>{{ short_team_name(fixture.away_team) }}</strong></div>
+<div class="fixture-away"><strong>{{ short_team_name(fixture.away_team) }}</strong>{% if fixture.away_logo %}<img class="team-badge" src="{{ fixture.away_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}</div>
 </div>
 
 <div class="fixture-submeta">
@@ -62,7 +62,7 @@ You can move your DP to another open fixture until your selected DP match kicks 
 
 <div class="scoreline">
 
-<div class="team">{{ short_team_name(fixture.home_team) }}</div>
+<div class="team">{% if fixture.home_logo %}<img class="team-badge" src="{{ fixture.home_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}{{ short_team_name(fixture.home_team) }}</div>
 
 {% if kickoff_passed(fixture.utc_date) %}
 <div class="locked-score">
@@ -96,7 +96,7 @@ You can move your DP to another open fixture until your selected DP match kicks 
 >
 {% endif %}
 
-<div class="team away fixture-team">{{ short_team_name(fixture.away_team) }}</div>
+<div class="team away fixture-team">{{ short_team_name(fixture.away_team) }}{% if fixture.away_logo %}<img class="team-badge" src="{{ fixture.away_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}</div>
 
 </div>
 
@@ -136,8 +136,10 @@ You can move your DP to another open fixture until your selected DP match kicks 
 
 </div>
 
-{% set stats = fixture_stats.get(fixture.id) %}
-{% include "_match_stats.html" %}
+{% if show_match_stats %}
+  {% set stats = fixture_stats.get(fixture.id) %}
+  {% include "_match_stats.html" %}
+{% endif %}
 
 </div>
 
