@@ -2,6 +2,11 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.21] - 2026-08-25
+
+### Changed
+- League Records cards now use the first part of multi-word usernames to prevent wrapped names looking like separate tied players.
+
 ## [1.0.20] - 2026-08-25
 
 ### Fixed

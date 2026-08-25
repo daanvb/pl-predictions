@@ -64,6 +64,9 @@ import app as predictor
 predictor.app.config["TESTING"] = True
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
+assert predictor.compact_record_name("Pendragon ⚔️") == "Pendragon"
+assert predictor.compact_record_name("Two Part Name") == "Two"
+assert predictor.compact_record_name("") == "—"
 assert predictor.sportscore_team_slug("Brighton & Hove Albion") == "brighton-hove-albion"
 assert predictor.sportscore_team_slug("Nott'm Forest") == "nottingham-forest"
 assert predictor.safe_team_logo_url(
@@ -446,6 +449,16 @@ predictor.get_sportscore_champions_league_matches = lambda: [
         "competition": "Premier League",
         "url": "/football/match/domestic-home-vs-domestic-away/",
     },
+    {
+        "home": "Upcoming Home",
+        "away": "Upcoming Away",
+        "status": "upcoming",
+        "status_text": "Not started",
+        "competition": "UEFA Champions League",
+        "time": "2026-08-25T20:00:00+00:00",
+        "url": "/football/match/upcoming-home-vs-upcoming-away/",
+        "_details_loaded": True,
+    },
 ]
 predictor.get_sportscore_match_details = lambda match: match
 try:
@@ -455,6 +468,7 @@ finally:
     predictor.get_sportscore_match_details = original_test_match_details
 assert discovered_test_response.status_code == 200
 assert b"Fresh Home" in discovered_test_response.data
+assert b"Upcoming Home" in discovered_test_response.data
 assert b"Domestic Home" not in discovered_test_response.data
 assert b"UEFA Champions League matches from SportScore" in discovered_test_response.data
 conn = database.get_db()
