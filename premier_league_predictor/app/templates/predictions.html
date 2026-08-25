@@ -54,7 +54,7 @@ You can move your DP to another open fixture until your selected DP match kicks 
 
 <div class="scoreline">
 
-<div class="team">{% if fixture.home_logo %}<img class="team-badge" src="{{ fixture.home_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}{{ short_team_name(fixture.home_team) }}</div>
+<div class="team">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}{{ short_team_name(fixture.home_team) }}</div>
 
 {% if kickoff_passed(fixture.utc_date) %}
 <div class="locked-score">
@@ -88,7 +88,7 @@ You can move your DP to another open fixture until your selected DP match kicks 
 >
 {% endif %}
 
-<div class="team away fixture-team">{{ short_team_name(fixture.away_team) }}{% if fixture.away_logo %}<img class="team-badge" src="{{ fixture.away_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}</div>
+<div class="team away fixture-team">{{ short_team_name(fixture.away_team) }}{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</div>
 
 </div>
 

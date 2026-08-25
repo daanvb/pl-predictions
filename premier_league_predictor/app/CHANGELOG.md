@@ -2,6 +2,16 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.23] - 2026-08-25
+
+### Added
+- Live fixture cards can now show penalties and red-card incidents beneath the relevant team.
+- Head-to-head history now includes previous Championship meetings between the same clubs.
+
+### Fixed
+- Club badges are now delivered reliably to mobile devices.
+- Improved spacing and alignment for live scores, goalscorers and match incidents.
+
 ## [1.0.22] - 2026-08-25
 
 ### Changed

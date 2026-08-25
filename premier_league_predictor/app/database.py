@@ -75,6 +75,7 @@ def init_db(seed_default_player=True):
     _add_column_if_missing(conn, "fixtures", "injury_time", "INTEGER")
     _add_column_if_missing(conn, "fixtures", "broadcaster", "TEXT")
     _add_column_if_missing(conn, "fixtures", "goals_json", "TEXT")
+    _add_column_if_missing(conn, "fixtures", "incidents_json", "TEXT")
     _add_column_if_missing(conn, "fixtures", "live_data_source", "TEXT")
     _add_column_if_missing(conn, "fixtures", "home_logo", "TEXT")
     _add_column_if_missing(conn, "fixtures", "away_logo", "TEXT")
@@ -95,6 +96,7 @@ def init_db(seed_default_player=True):
             status TEXT DEFAULT 'FINISHED'
         )
     """)
+    _add_column_if_missing(conn, "historical_fixtures", "competition", "TEXT")
 
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_historical_fixture_teams

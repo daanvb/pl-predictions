@@ -9,7 +9,6 @@
 PREMIER LEAGUE PREDICTOR
 </div>
 <h1>Welcome, {{ session.player_name }}</h1>
-<p>Make your picks, follow the gameweek, climb the table.</p>
 </div>
 </div>
 
@@ -157,7 +156,7 @@ No position yet
 
 <div class="fixture-match">
 <div class="fixture-home">
-{% if fixture.home_logo %}<img class="team-badge" src="{{ fixture.home_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}
 <strong>{{ short_team_name(fixture.home_team) }}</strong>
 </div>
 
@@ -171,7 +170,7 @@ v
 
 <div class="fixture-away">
 <strong>{{ short_team_name(fixture.away_team) }}</strong>
-{% if fixture.away_logo %}<img class="team-badge" src="{{ fixture.away_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}
 </div>
 </div>
 
@@ -206,16 +205,22 @@ v
 {% endif %}
 </div>
 
-{% if fixture.scorers.home or fixture.scorers.away %}
+{% if fixture.scorers.home or fixture.scorers.away or fixture.red_cards.home or fixture.red_cards.away %}
 <div class="fixture-scorers" aria-label="Goalscorers">
   <div class="fixture-scorers-home">
     {% for scorer in fixture.scorers.home %}
     <span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>
     {% endfor %}
+    {% for card in fixture.red_cards.home %}
+    <span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>
+    {% endfor %}
   </div>
   <div class="fixture-scorers-away">
     {% for scorer in fixture.scorers.away %}
     <span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>
+    {% endfor %}
+    {% for card in fixture.red_cards.away %}
+    <span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>
     {% endfor %}
   </div>
 </div>

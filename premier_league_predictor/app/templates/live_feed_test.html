@@ -49,7 +49,7 @@
 
 <div class="fixture-match">
 <div class="fixture-home">
-{% if item.home_logo %}<img class="team-badge" src="{{ item.home_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+{% if item.home_logo %}<img class="team-badge" src="{{ team_badge_url(item.home_logo) }}" alt="" loading="lazy">{% endif %}
 <strong>{{ item.home }}</strong>
 </div>
 <div class="fixture-centre">
@@ -61,7 +61,7 @@ v
 </div>
 <div class="fixture-away">
 <strong>{{ item.away }}</strong>
-{% if item.away_logo %}<img class="team-badge" src="{{ item.away_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+{% if item.away_logo %}<img class="team-badge" src="{{ team_badge_url(item.away_logo) }}" alt="" loading="lazy">{% endif %}
 </div>
 </div>
 
@@ -78,10 +78,10 @@ v
 {% endif %}
 </div>
 
-{% if item.scorers.home or item.scorers.away %}
+{% if item.scorers.home or item.scorers.away or item.red_cards.home or item.red_cards.away %}
 <div class="fixture-scorers" aria-label="Goalscorers">
-<div class="fixture-scorers-home">{% for scorer in item.scorers.home %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}</div>
-<div class="fixture-scorers-away">{% for scorer in item.scorers.away %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}</div>
+<div class="fixture-scorers-home">{% for scorer in item.scorers.home %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in item.red_cards.home %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div>
+<div class="fixture-scorers-away">{% for scorer in item.scorers.away %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in item.red_cards.away %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div>
 </div>
 {% endif %}
 

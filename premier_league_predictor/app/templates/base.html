@@ -447,7 +447,7 @@ th,td{
 .fixture-match {
     grid-area: match;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 50px minmax(0, 1fr);
     align-items: center;
     gap: 8px;
     min-width: 0;
@@ -530,7 +530,7 @@ th,td{
 .fixture-scorers {
     grid-area: scorers;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 50px minmax(0, 1fr);
     gap: 8px;
     margin-top: -2px;
     padding: 0;
@@ -554,6 +554,11 @@ th,td{
 .fixture-scorers-away {
     grid-column: 3;
     text-align: left;
+}
+
+.fixture-red-card {
+    color: #b91c1c;
+    font-weight: 700;
 }
 
 .fixture-broadcaster {
@@ -598,7 +603,7 @@ th,td{
     }
 
     .fixture-match {
-        grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr);
         gap: 5px;
         width: 100%;
     }
@@ -621,7 +626,7 @@ th,td{
     }
 
     .fixture-scorers {
-        grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr);
         gap: 5px;
         margin: 0;
         padding: 0;

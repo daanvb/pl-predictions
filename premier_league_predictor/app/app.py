@@ -14,7 +14,7 @@ import json
 import csv
 import io
 import zlib
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 from html.parser import HTMLParser
 from html import unescape
 
@@ -40,7 +40,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.22"
+APP_VERSION = "1.0.23"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -309,7 +309,7 @@ def fixture_scorers(goals_json, home_team, away_team):
         goal_type = (goal.get("type") or "").upper()
         marker = goal_minute_label(goal)
         if goal_type == "PENALTY":
-            marker = f"{marker} pen".strip()
+            marker = f"{marker} ⚽ penalty".strip()
         elif goal_type in ("OWN", "OWN_GOAL"):
             marker = f"{marker} og".strip()
 
@@ -322,6 +322,38 @@ def fixture_scorers(goals_json, home_team, away_team):
         if marker:
             entry["goals"].append(marker)
 
+    return grouped
+
+
+def fixture_red_cards(incidents_value, home_team, away_team):
+    if isinstance(incidents_value, str):
+        try:
+            incidents = json.loads(incidents_value or "[]")
+        except (TypeError, ValueError):
+            incidents = []
+    else:
+        incidents = incidents_value or []
+
+    grouped = {"home": [], "away": []}
+    for incident in incidents:
+        incident_type = (incident.get("type") or "").casefold()
+        if "red" not in incident_type and incident.get("type_id") not in (4, 5):
+            continue
+        side = incident.get("side")
+        if side not in grouped:
+            team = (incident.get("team") or {}).get("name")
+            if team and team.casefold() == home_team.casefold():
+                side = "home"
+            elif team and team.casefold() == away_team.casefold():
+                side = "away"
+            else:
+                continue
+        minute = incident.get("time")
+        minute_label = f"{minute}'" if minute is not None else ""
+        grouped[side].append({
+            "name": incident.get("player") or "Red card",
+            "minute": minute_label,
+        })
     return grouped
 
 
@@ -1098,14 +1130,14 @@ def football_data_co_uk_season_code(season):
     )
 
 
-def import_historical_csv_season(conn, season):
+def import_historical_csv_season(conn, season, division="E0"):
     season_code = football_data_co_uk_season_code(
         season
     )
 
     url = (
         "https://www.football-data.co.uk/"
-        f"mmz4281/{season_code}/E0.csv"
+        f"mmz4281/{season_code}/{division}.csv"
     )
 
     response = requests.get(
@@ -1180,7 +1212,7 @@ def import_historical_csv_season(conn, season):
             continue
 
         identity = (
-            f"{season}|{date_value}|"
+            f"{division}|{season}|{date_value}|"
             f"{home}|{away}|{row_number}"
         )
 
@@ -1202,9 +1234,10 @@ def import_historical_csv_season(conn, season):
                 away_team,
                 home_score,
                 away_score,
-                status
+                status,
+                competition
             )
-            VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'FINISHED')
+            VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'FINISHED', ?)
 
             ON CONFLICT(id)
             DO UPDATE SET
@@ -1214,7 +1247,8 @@ def import_historical_csv_season(conn, season):
                 away_team = excluded.away_team,
                 home_score = excluded.home_score,
                 away_score = excluded.away_score,
-                status = 'FINISHED'
+                status = 'FINISHED',
+                competition = excluded.competition
             """,
             (
                 match_id,
@@ -1224,6 +1258,7 @@ def import_historical_csv_season(conn, season):
                 away,
                 hs,
                 aas,
+                division,
             )
         )
 
@@ -1551,8 +1586,9 @@ def import_historical_results(
     seasons=None
 ):
     """
-    Import previous Premier League results from deterministic data sources.
-    Each season is independent so one unavailable year cannot abort all H2H.
+    Import previous Premier League and Championship results.
+    Championship matches broaden cross-division H2H without affecting the
+    Premier League-only form and season records.
     """
     token = get_setting(
         "football_api_token"
@@ -1676,6 +1712,25 @@ def import_historical_results(
                     errors.append(detail)
 
             imported += season_imported
+
+            try:
+                championship_imported = import_historical_csv_season(
+                    conn,
+                    season,
+                    "E1"
+                )
+                imported += championship_imported
+
+                if championship_imported:
+                    sources.append(
+                        f"{season}/{season + 1}: "
+                        "football-data.co.uk Championship"
+                    )
+
+            except Exception as exc:
+                errors.append(
+                    f"{season}/{season + 1}: Championship CSV {exc}"
+                )
 
             # Preserve every successful season even if a later one fails.
             conn.commit()
@@ -1905,6 +1960,16 @@ def safe_team_logo_url(value):
     return value
 
 
+def team_badge_url(value):
+    """Serve SportScore badges through Predictor for reliable mobile display."""
+    value = safe_team_logo_url(value)
+    if not value:
+        return None
+    if (urlparse(value).hostname or "").casefold() == "img.thesports.com":
+        return f"/team-badge?url={quote(value, safe='')}"
+    return value
+
+
 def compact_record_name(name):
     """Use the first name segment in narrow League Records cards only."""
     parts = str(name or "").strip().split()
@@ -2070,6 +2135,8 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
 
             goals = sportscore_goal_events(details)
             goals_json = json.dumps(goals) if goals else None
+            incidents = details.get("incidents") or []
+            incidents_json = json.dumps(incidents) if incidents else None
             minute_value, injury_time_value = parse_live_minute(
                 details.get("live_minute")
             )
@@ -2087,6 +2154,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                     minute = COALESCE(?, minute),
                     injury_time = COALESCE(?, injury_time),
                     goals_json = COALESCE(?, goals_json),
+                    incidents_json = COALESCE(?, incidents_json),
                     home_logo = COALESCE(?, home_logo),
                     away_logo = COALESCE(?, away_logo),
                     last_updated = ?,
@@ -2104,6 +2172,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                     minute_value,
                     injury_time_value,
                     goals_json,
+                    incidents_json,
                     safe_team_logo_url(details.get("home_logo")),
                     safe_team_logo_url(details.get("away_logo")),
                     now_utc().isoformat(),
@@ -3392,9 +3461,41 @@ def inject_globals():
         "app_version": APP_VERSION,
         "changelog_has_update": changelog_has_unread_update(),
         "broadcaster_logo_url": broadcaster_logo_url,
+        "team_badge_url": team_badge_url,
         "compact_record_name": compact_record_name,
         "is_logged_in": logged_in(),
     }
+
+
+@app.route("/team-badge")
+def team_badge():
+    if not logged_in():
+        return Response(status=401)
+
+    source = safe_team_logo_url(request.args.get("url"))
+    parsed = urlparse(source or "")
+    if parsed.scheme != "https" or parsed.hostname != "img.thesports.com":
+        return Response(status=404)
+
+    try:
+        upstream = requests.get(
+            source,
+            headers={"User-Agent": "PremierLeaguePredictor/1.0"},
+            timeout=10,
+        )
+        content_type = (upstream.headers.get("Content-Type") or "").split(";", 1)[0]
+        if (
+            upstream.status_code != 200
+            or not content_type.startswith("image/")
+            or len(upstream.content) > 1024 * 1024
+        ):
+            return Response(status=404)
+    except requests.RequestException:
+        return Response(status=404)
+
+    response = Response(upstream.content, mimetype=content_type)
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 
@@ -4429,6 +4530,11 @@ def dashboard():
             fixture = dict(row)
             fixture["scorers"] = fixture_scorers(
                 fixture.get("goals_json"),
+                fixture["home_team"],
+                fixture["away_team"],
+            )
+            fixture["red_cards"] = fixture_red_cards(
+                fixture.get("incidents_json"),
                 fixture["home_team"],
                 fixture["away_team"],
             )
@@ -6798,7 +6904,7 @@ def admin_live_feed_test():
                 if match.get("status") == "upcoming"
             ]
             active = live + upcoming
-            selected = (active or discovered)[:6]
+            selected = active or discovered
             configured = []
             for match in selected:
                 slug = (match.get("url") or "").rstrip("/").split("/")[-1]
@@ -6870,6 +6976,11 @@ def admin_live_feed_test():
                 "competition": competition,
                 "scorers": fixture_scorers(
                     json.dumps(goals),
+                    details.get("home") or "",
+                    details.get("away") or "",
+                ),
+                "red_cards": fixture_red_cards(
+                    details.get("incidents"),
                     details.get("home") or "",
                     details.get("away") or "",
                 ),
