@@ -2,18 +2,23 @@
 
 All notable changes to Premier League Predictor are documented here.
 
-## [1.21.21] - 2026-08-25
+## [1.0.19] - 2026-08-25
 
 ### Added
-- Added an admin-only SportScore live-feed test page with added-time support.
-- Added database health reporting and verified automatic backups before optimization.
+- Added automatic, low-rate SportScore badge discovery so missing team logos populate across fixtures and dashboards independently of live scoring.
+
+### Changed
+- Simplified Make Predictions cards by removing the duplicated fixture heading and using `v` between the score inputs.
+
+## [1.0.18] - 2026-08-25
+
+### Added
 - Added SportScore team names and club badges, plus the Predictor logo on the dashboard.
 
 ### Changed
 - Live gameweek players now follow the current league order.
 - Simplified gameweek history and delayed the existing Signal gameweek-open message by 15 minutes.
 - Refreshed the interface typography with SportScore's Inter font styling.
-- Aligned the in-app and Home Assistant package versions at `1.21.21`.
 
 ## [1.0.17] - 2026-08-24
 

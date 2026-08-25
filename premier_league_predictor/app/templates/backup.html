@@ -25,8 +25,8 @@ ADMIN · v{{ app_version }}
 
 <div class="stat">
 <div class="small">GOOGLE DRIVE RETENTION</div>
-<div class="stat-number">{{ cloud_retention_days }}</div>
-<div class="muted">days</div>
+<div class="stat-number">{{ cloud_backup_limit }}</div>
+<div class="muted">latest backups</div>
 </div>
 
 </div>
@@ -80,7 +80,8 @@ Last cloud error: {{ google_backup_error }}
 <p class="muted">
 Each 6-hour automatic local backup is also uploaded to
 <strong>Premier League Predictor Backups</strong> in Google Drive.
-Cloud backups older than {{ cloud_retention_days }} days are deleted automatically.
+Only the latest {{ cloud_backup_limit }} cloud backups are retained.
+Older Predictor backups are deleted after a successful upload.
 </p>
 
 <form

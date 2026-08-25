@@ -63,6 +63,83 @@ conn.close()
 import app as predictor
 predictor.app.config["TESTING"] = True
 assert predictor.LIVE_REFRESH_SECONDS == 60
+assert predictor.GOOGLE_BACKUP_LIMIT == 10
+assert predictor.sportscore_team_slug("Brighton & Hove Albion") == "brighton-hove-albion"
+assert predictor.sportscore_team_slug("Nott'm Forest") == "nottingham-forest"
+
+import sportscore
+original_sportscore_get = sportscore._get
+sportscore._get = lambda path, params: {
+    "team": {"name": "Badge FC", "logo": ""},
+    "matches": [{
+        "home": "Badge FC",
+        "away": "Visitors",
+        "home_logo": "https://img.example/badge.png",
+        "away_logo": "https://img.example/visitors.png",
+    }],
+}
+try:
+    assert sportscore.get_team_logo("badge-fc") == "https://img.example/badge.png"
+finally:
+    sportscore._get = original_sportscore_get
+
+sportscore._get = lambda path, params: {
+    "matches": [{"status": "upcoming"}, {"status": "live"}]
+}
+try:
+    assert [match["status"] for match in sportscore.get_live_matches()] == [
+        "upcoming",
+        "live",
+    ]
+finally:
+    sportscore._get = original_sportscore_get
+
+
+class FakeDriveRequest:
+    def __init__(self, result=None):
+        self.result = result or {}
+
+    def execute(self):
+        return self.result
+
+
+class FakeDriveFiles:
+    def __init__(self, pages):
+        self.pages = list(pages)
+        self.deleted = []
+
+    def list(self, **kwargs):
+        return FakeDriveRequest(self.pages.pop(0))
+
+    def delete(self, fileId):
+        self.deleted.append(fileId)
+        return FakeDriveRequest()
+
+
+class FakeDriveService:
+    def __init__(self, pages):
+        self.file_resource = FakeDriveFiles(pages)
+
+    def files(self):
+        return self.file_resource
+
+
+# Drive retention is count-based across all result pages. It retains the ten
+# newest Predictor backups and deletes only the older entries.
+drive_items = [
+    {
+        "id": f"backup-{number}",
+        "name": f"backup-{number}.db",
+        "createdTime": f"2026-08-{number:02d}T12:00:00Z",
+    }
+    for number in range(1, 13)
+]
+fake_drive = FakeDriveService([
+    {"files": drive_items[:6], "nextPageToken": "page-2"},
+    {"files": drive_items[6:]},
+])
+predictor.prune_google_backups(fake_drive)
+assert fake_drive.file_resource.deleted == ["backup-2", "backup-1"]
 
 # Each revealed fixture lists the highest-scoring prediction first, with
 # alphabetical ordering used for tied match points.
@@ -338,6 +415,32 @@ assert live_test_response.status_code == 200
 assert b"LIVE 90+3" in live_test_response.data
 assert b"Test Scorer" in live_test_response.data
 assert b"never affect Predictor fixtures" in live_test_response.data
+assert b'class="fixture-scorers"' in live_test_response.data
+
+# With no manual slugs, the diagnostics page discovers current matches from
+# SportScore instead of retrying expired, hard-coded match URLs.
+original_live_matches = predictor.get_sportscore_live_matches
+original_test_match_details = predictor.get_sportscore_match_details
+predictor.get_sportscore_live_matches = lambda: [{
+    "home": "Fresh Home",
+    "away": "Fresh Away",
+    "home_score": 0,
+    "away_score": 0,
+    "status": "live",
+    "status_text": "1st half",
+    "live_minute": "12",
+    "incidents": [],
+    "url": "/football/match/fresh-home-vs-fresh-away/",
+}]
+predictor.get_sportscore_match_details = lambda match: match
+try:
+    discovered_test_response = client.get("/admin/live-feed-test")
+finally:
+    predictor.get_sportscore_live_matches = original_live_matches
+    predictor.get_sportscore_match_details = original_test_match_details
+assert discovered_test_response.status_code == 200
+assert b"Fresh Home" in discovered_test_response.data
+assert b"Automatically showing live SportScore matches" in discovered_test_response.data
 conn = database.get_db()
 conn.execute("DELETE FROM fixtures WHERE id IN (8800, 8801)")
 conn.commit()
@@ -878,6 +981,8 @@ assert 'fixture.away_logo' in dashboard_template
 
 # Broadcaster logos are deliberately omitted from Predictions.
 assert 'broadcaster_logo_url' not in predictions_template
+assert 'class="fixture-match"' not in predictions_template
+assert '<div class="dash">v</div>' in predictions_template
 
 # Signal final reminder wording and missing-DP behaviour.
 assert msg.startswith("Lads. Footy")
