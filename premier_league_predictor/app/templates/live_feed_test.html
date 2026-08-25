@@ -65,7 +65,7 @@ v
 </div>
 </div>
 
-<div class="fixture-submeta">{{ item.submeta }}</div>
+{% if item.submeta %}<div class="fixture-submeta">{{ item.submeta }}</div>{% endif %}
 <div class="fixture-broadcaster"></div>
 
 <div class="fixture-status">

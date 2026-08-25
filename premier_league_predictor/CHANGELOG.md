@@ -2,6 +2,12 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.22] - 2026-08-25
+
+### Changed
+- Gameweek History now runs chronologically from GW1 through GW38.
+- Live match cards recognise added-time clocks such as 45+4 and 90+2, align goalscorers beneath their teams, and no longer repeat the live status below the score.
+
 ## [1.0.21] - 2026-08-25
 
 ### Changed

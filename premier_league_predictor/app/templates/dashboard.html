@@ -175,13 +175,11 @@ v
 </div>
 </div>
 
-<div class="fixture-submeta">
 {% if fixture.status not in ('LIVE','IN_PLAY','PAUSED','FINISHED') %}
+<div class="fixture-submeta">
 {{ local_datetime(fixture.utc_date) }}
-{% else %}
-{{ status_label(fixture) }}
-{% endif %}
 </div>
+{% endif %}
 
 <div class="fixture-broadcaster">
 {% if fixture.broadcaster %}
