@@ -2,6 +2,11 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.25] - 2026-08-25
+
+### Fixed
+- Added a verified fallback for Arsenal's badge when SportScore omits the team logo.
+
 ## [1.0.24] - 2026-08-25
 
 ### Fixed

@@ -77,6 +77,9 @@ assert predictor.sportscore_team_slug("Nott'm Forest") == "nottingham-forest"
 assert predictor.safe_team_logo_url(
     predictor.SPORTSCORE_TEAM_LOGO_FALLBACKS["chelsea"]
 ).endswith("a0cf8f551e9440acb3f4ff533dcc58a4.png")
+assert predictor.safe_team_logo_url(
+    predictor.SPORTSCORE_TEAM_LOGO_FALLBACKS["arsenal"]
+).endswith("d6f5debc456da1119256ab66462ab510.png")
 proxied_badge = predictor.team_badge_url(
     "https://img.thesports.com/football/team/example.png"
 )
@@ -462,7 +465,10 @@ response = client.get("/dashboard")
 assert response.status_code == 200
 assert b'action="/logout"' in response.data
 assert b"Log out" in response.data
-assert "2–0".encode() in response.data
+assert b'class="fixture-scoreline"' in response.data
+assert b"<span>2</span>" in response.data
+assert b'class="fixture-score-dash">\xe2\x80\x93</span>' in response.data
+assert b"<span>0</span>" in response.data
 assert b"Alex Striker" in response.data
 assert "45+2&#39; ⚽ penalty".encode() in response.data
 assert b"Dismissed Defender" in response.data
