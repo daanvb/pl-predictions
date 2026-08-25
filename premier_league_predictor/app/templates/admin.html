@@ -15,6 +15,7 @@ ADMIN · v{{ app_version }}
 <a href="/admin/players">👥 Players</a>
 <a href="/admin/fixtures">⚽ Fixtures</a>
 <a href="/admin/settings">🔑 API Settings</a>
+<a href="/admin/live-feed-test">🧪 Live Feed Test</a>
 <a href="/admin/backup">💾 Backups</a>
 </div>
 
@@ -42,6 +43,20 @@ v{{ app_version }}
 </div>
 </div>
 
+</div>
+
+<div class="card">
+<h2>🗄️ Database Health</h2>
+<div class="grid">
+<div class="stat"><div class="small">ACTIVE DATABASE</div><strong>{{ db_health.database_size }}</strong></div>
+<div class="stat"><div class="small">TEMPORARY WAL</div><strong>{{ db_health.wal_size }}</strong></div>
+<div class="stat"><div class="small">RECLAIMABLE SPACE</div><strong>{{ db_health.reclaimable_size }}</strong></div>
+</div>
+<p class="muted">Optimize first creates and verifies an automatic safety backup, then rewrites the SQLite file to reclaim unused pages and refresh its query statistics. It does not delete Predictor records or backup files.</p>
+<form method="POST" action="/admin/database/optimize">
+<button class="primary" type="submit">Back Up &amp; Optimize Database</button>
+</form>
+{% if last_database_optimize %}<p class="small">Last optimized: {{ last_database_optimize }}</p>{% endif %}
 </div>
 
 <div class="card">

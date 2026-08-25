@@ -2,12 +2,15 @@
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 
-<div class="hero">
+<div class="hero dashboard-hero">
+<img class="dashboard-logo" src="/static/predictor-icon.png" alt="Premier League Predictor logo">
+<div class="dashboard-hero-copy">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">
 PREMIER LEAGUE PREDICTOR
 </div>
 <h1>Welcome, {{ session.player_name }}</h1>
 <p>Make your picks, follow the gameweek, climb the table.</p>
+</div>
 </div>
 
 <div class="nav">
@@ -154,6 +157,7 @@ No position yet
 
 <div class="fixture-match">
 <div class="fixture-home">
+{% if fixture.home_logo %}<img class="team-badge" src="{{ fixture.home_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
 <strong>{{ short_team_name(fixture.home_team) }}</strong>
 </div>
 
@@ -167,6 +171,7 @@ v
 
 <div class="fixture-away">
 <strong>{{ short_team_name(fixture.away_team) }}</strong>
+{% if fixture.away_logo %}<img class="team-badge" src="{{ fixture.away_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
 </div>
 </div>
 

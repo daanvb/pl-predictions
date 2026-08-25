@@ -287,6 +287,8 @@ assert predictor.normalized_team_name("Manchester United FC") == "man united"
 assert predictor.normalized_team_name("Wolverhampton Wanderers") == "wolves"
 assert predictor.sportscore_team_slug("Nottingham Forest FC") == "nottingham-forest"
 assert predictor.sportscore_team_slug("Manchester United FC") == "manchester-united"
+assert predictor.safe_team_logo_url("https://sportscore.com/media/team.png")
+assert predictor.safe_team_logo_url("javascript:alert(1)") is None
 api_goals = predictor.sportscore_goal_events({
     "home": "Home FC",
     "away": "Away FC",
@@ -299,6 +301,43 @@ api_goals = predictor.sportscore_goal_events({
 }]})
 assert api_goals[0]["scorer"]["name"] == "Backup Scorer"
 assert api_goals[0]["team"]["name"] == "Home FC"
+assert predictor.parse_live_minute("45+2") == (45, 2)
+assert predictor.parse_live_minute("90+7'") == (90, 7)
+assert predictor.parse_live_minute("86") == (86, None)
+assert predictor.status_label({
+    "status": "IN_PLAY",
+    "minute": 90,
+    "injury_time": 4,
+    "utc_date": datetime.now(timezone.utc).isoformat(),
+}) == "LIVE 90+4'"
+
+original_test_match_details = predictor.get_sportscore_match_details
+predictor.get_sportscore_match_details = lambda match: {
+    "home": "LASK",
+    "away": "Celtic",
+    "home_score": "1",
+    "away_score": "2",
+    "status": "live",
+    "status_text": "2nd half",
+    "live_minute": "90+3",
+    "incidents": [{
+        "time": 75,
+        "type": "Goal",
+        "side": "away",
+        "player": "Test Scorer",
+        "is_goal": True,
+    }],
+}
+try:
+    live_test_response = client.get(
+        "/admin/live-feed-test?slug=lask-vs-celtic"
+    )
+finally:
+    predictor.get_sportscore_match_details = original_test_match_details
+assert live_test_response.status_code == 200
+assert b"LIVE 90+3" in live_test_response.data
+assert b"Test Scorer" in live_test_response.data
+assert b"never affect Predictor fixtures" in live_test_response.data
 conn = database.get_db()
 conn.execute("DELETE FROM fixtures WHERE id IN (8800, 8801)")
 conn.commit()
@@ -324,6 +363,24 @@ assert retired_test_response.headers["Location"].endswith("/dashboard")
 admin_response = client.get("/admin")
 assert b"API Settings" in admin_response.data
 assert b'href="/admin/settings"' in admin_response.data
+assert b'href="/admin/live-feed-test"' in admin_response.data
+assert b"Database Health" in admin_response.data
+health = predictor.database_health()
+assert health["database_bytes"] > 0
+assert health["page_count"] > 0
+original_create_automatic_backup = predictor.create_automatic_backup
+backup_calls = []
+predictor.create_automatic_backup = lambda: backup_calls.append(True) or tmp.name
+try:
+    optimize_response = client.post(
+        "/admin/database/optimize",
+        follow_redirects=False,
+    )
+finally:
+    predictor.create_automatic_backup = original_create_automatic_backup
+assert optimize_response.status_code == 302
+assert backup_calls == [True]
+assert predictor.get_setting("last_database_optimize")
 leaderboard_response = client.get("/leaderboard")
 assert b"Season position changes" in leaderboard_response.data
 seasons_response = client.get("/seasons")
@@ -389,6 +446,21 @@ for i in range(1, 3):
 conn.commit()
 assert predictor.signal_latest_completed_gameweek(conn) == 1
 conn.close()
+
+# The next-GW announcement waits one notification interval after results.
+predictor.set_setting("signal_last_results_gw", "1")
+predictor.set_setting("signal_last_results_at", datetime.now(timezone.utc).isoformat())
+assert predictor.signal_next_gameweek_open_ready(2) is False
+predictor.set_setting(
+    "signal_last_results_at",
+    (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat(),
+)
+assert predictor.signal_next_gameweek_open_ready(2) is True
+
+# Completed gameweeks opened from History no longer show Match Stats.
+past_predictions_response = client.get("/predict/1?history=1")
+assert past_predictions_response.status_code == 200
+assert b'<details class="match-stats">' not in past_predictions_response.data
 
 # Local Match Stats calculations: no network/AI is needed.
 conn = database.get_db()
@@ -576,11 +648,11 @@ conn.close()
 
 # Display-only short names must not alter canonical matching.
 assert predictor.short_team_name("Arsenal FC") == "Arsenal"
-assert predictor.short_team_name("Manchester City FC") == "Man City"
-assert predictor.short_team_name("Manchester United FC") == "Man Utd"
-assert predictor.short_team_name("Newcastle United FC") == "Newcastle"
-assert predictor.short_team_name("Wolverhampton Wanderers FC") == "Wolves"
-assert predictor.short_team_name("Sheffield United FC") == "Sheffield Utd"
+assert predictor.short_team_name("Manchester City FC") == "Manchester City"
+assert predictor.short_team_name("Manchester United FC") == "Manchester United"
+assert predictor.short_team_name("Newcastle United FC") == "Newcastle United"
+assert predictor.short_team_name("Wolverhampton Wanderers FC") == "Wolverhampton Wanderers"
+assert predictor.short_team_name("Sheffield United FC") == "Sheffield United"
 
 # Main-league historical baseline must use the same tie-break order as the
 # visible leaderboard. Two players can have equal points but different exact
@@ -760,9 +832,12 @@ with open(
     gameweek_template = handle.read()
 
 assert '_match_stats.html' in predictions_template
+assert '{% if show_match_stats %}' in predictions_template
 assert '_match_stats.html' not in dashboard_template
 assert '_match_stats.html' not in gameweek_template
 assert 'href="https://sportscore.com/" rel="dofollow"' in gameweek_template
+assert "Ordered by the current overall league position" in gameweek_template
+assert "player.season_points" in gameweek_template
 
 with open(
     os.path.join(templates_dir, "leaderboard.html"),
@@ -795,6 +870,11 @@ with open(
     base_template = handle.read()
 
 assert '/static/predictor-icon.png' in base_template
+assert 'family=Inter:wght@400;500;600;700' in base_template
+assert 'font-family:"Inter"' in base_template
+assert 'class="dashboard-logo"' in dashboard_template
+assert 'fixture.home_logo' in dashboard_template
+assert 'fixture.away_logo' in dashboard_template
 
 # Broadcaster logos are deliberately omitted from Predictions.
 assert 'broadcaster_logo_url' not in predictions_template
@@ -900,6 +980,8 @@ def fake_direct_match_details(match):
         "away_score": "3",
         "status": "live",
         "live_minute": "64",
+        "home_logo": "https://sportscore.com/media/fulham.png",
+        "away_logo": "https://sportscore.com/media/chelsea.png",
         "incidents": [{
             "time": 54,
             "type": "Goal",
@@ -920,11 +1002,15 @@ assert direct_calls == [
 ]
 conn = database.get_db()
 direct_fixture = conn.execute(
-    "SELECT home_score, away_score, minute, goals_json FROM fixtures WHERE id = 99002"
+    """SELECT home_score, away_score, minute, goals_json,
+              home_logo, away_logo
+       FROM fixtures WHERE id = 99002"""
 ).fetchone()
 assert (direct_fixture["home_score"], direct_fixture["away_score"]) == (2, 3)
 assert direct_fixture["minute"] == 64
 assert "Direct Scorer" in direct_fixture["goals_json"]
+assert direct_fixture["home_logo"].endswith("fulham.png")
+assert direct_fixture["away_logo"].endswith("chelsea.png")
 conn.execute("DELETE FROM fixtures WHERE id = 99002")
 conn.commit()
 conn.close()
