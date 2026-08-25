@@ -55,7 +55,7 @@ GW{{ fixture.matchday }}
 
 ·
 
-{% if fixture.home_logo %}<img class="team-badge" src="{{ fixture.home_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}
 {{ short_team_name(fixture.home_team) }}
 
 {{ fixture.home_score if fixture.home_score is not none else "–" }}
@@ -65,7 +65,7 @@ GW{{ fixture.matchday }}
 {{ fixture.away_score if fixture.away_score is not none else "–" }}
 
 {{ short_team_name(fixture.away_team) }}
-{% if fixture.away_logo %}<img class="team-badge" src="{{ fixture.away_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}
 
 ·
 

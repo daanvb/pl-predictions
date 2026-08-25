@@ -28,6 +28,7 @@ database.init_db()
 conn = database.get_db()
 assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(predictions)").fetchall()}
 assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
+assert "incidents_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "live_data_source" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "login_name" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
 assert "email" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
@@ -57,6 +58,10 @@ assert conn.execute("SELECT COUNT(*) FROM players WHERE login_name IS NULL").fet
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='historical_fixtures'"
 ).fetchone() is not None
+assert "competition" in {
+    row["name"]
+    for row in conn.execute("PRAGMA table_info(historical_fixtures)").fetchall()
+}
 conn.close()
 
 # Import the real Flask app after redirecting its database module.
@@ -72,6 +77,47 @@ assert predictor.sportscore_team_slug("Nott'm Forest") == "nottingham-forest"
 assert predictor.safe_team_logo_url(
     predictor.SPORTSCORE_TEAM_LOGO_FALLBACKS["chelsea"]
 ).endswith("a0cf8f551e9440acb3f4ff533dcc58a4.png")
+proxied_badge = predictor.team_badge_url(
+    "https://img.thesports.com/football/team/example.png"
+)
+assert proxied_badge.startswith("/team-badge?url=https%3A%2F%2Fimg.thesports.com")
+assert predictor.team_badge_url("https://example.com/badge.png") == (
+    "https://example.com/badge.png"
+)
+
+# Championship CSV results are retained for cross-division head-to-heads.
+class HistoricalCsvResponse:
+    status_code = 200
+    text = (
+        "Date,HomeTeam,AwayTeam,FTHG,FTAG\n"
+        "15/02/2025,Hull City,Coventry City,1,2\n"
+    )
+
+original_predictor_get = predictor.requests.get
+predictor.requests.get = lambda *args, **kwargs: HistoricalCsvResponse()
+try:
+    conn = database.get_db()
+    assert predictor.import_historical_csv_season(conn, 2024, "E1") == 1
+    championship_row = conn.execute(
+        "SELECT * FROM historical_fixtures WHERE competition = 'E1'"
+    ).fetchone()
+    assert championship_row["home_team"] == "Hull City"
+    assert championship_row["away_team"] == "Coventry City"
+    championship_h2h = predictor.match_stats_for_fixture(
+        conn,
+        {
+            "id": 99001,
+            "season": predictor.SEASON,
+            "matchday": 1,
+            "utc_date": datetime.now(timezone.utc).isoformat(),
+            "home_team": "Hull City",
+            "away_team": "Coventry City",
+        }
+    )
+    assert len(championship_h2h["head_to_head"]) == 1
+    conn.close()
+finally:
+    predictor.requests.get = original_predictor_get
 
 import sportscore
 original_sportscore_get = sportscore._get
@@ -88,6 +134,45 @@ try:
     assert sportscore.get_team_logo("badge-fc") == "https://img.example/badge.png"
 finally:
     sportscore._get = original_sportscore_get
+
+assert sportscore._match_slug("Bodø/Glimt", "NEC Nijmegen") == (
+    "bodo-glimt-vs-nec-nijmegen"
+)
+
+original_sportscore_requests_get = sportscore.requests.get
+today_text = datetime.now(timezone.utc).date().isoformat()
+tonight_matchups = [
+    {"home": f"Home {number}", "away": f"Away {number}"}
+    for number in range(1, 8)
+]
+
+class CompetitionPageResponse:
+    status_code = 200
+    text = ""
+
+def fake_champions_get(path, params):
+    if path == "bracket":
+        return {"rounds": [{"name": "Matches", "matchups": tonight_matchups}]}
+    slug = params["slug"]
+    number = int(slug.split("-vs-")[0].split("-")[-1])
+    return {"match": {
+        "home": f"Home {number}",
+        "away": f"Away {number}",
+        "status": "live" if number == 1 else "upcoming",
+        "time": f"{today_text}T20:00:00+00:00",
+        "competition": "UEFA Champions League",
+        "url": f"/football/match/{slug}/",
+    }}
+
+sportscore.requests.get = lambda *args, **kwargs: CompetitionPageResponse()
+sportscore._get = fake_champions_get
+try:
+    all_champions_matches = sportscore.get_champions_league_matches()
+finally:
+    sportscore.requests.get = original_sportscore_requests_get
+    sportscore._get = original_sportscore_get
+assert len(all_champions_matches) == 7
+assert all_champions_matches[0]["status"] == "live"
 
 sportscore._get = lambda path, params: {
     "matches": [{"status": "upcoming"}, {"status": "live"}]
@@ -262,6 +347,27 @@ with client.session_transaction() as sess:
     sess["player_name"] = admin["name"]
     sess["admin"] = True
 
+original_badge_get = predictor.requests.get
+badge_calls = []
+
+class BadgeResponse:
+    status_code = 200
+    headers = {"Content-Type": "image/png"}
+    content = b"badge-image"
+
+predictor.requests.get = lambda url, **kwargs: badge_calls.append(url) or BadgeResponse()
+try:
+    badge_response = client.get(proxied_badge)
+finally:
+    predictor.requests.get = original_badge_get
+assert badge_response.status_code == 200
+assert badge_response.data == b"badge-image"
+assert badge_response.headers["Cache-Control"] == "public, max-age=86400"
+assert badge_calls == ["https://img.thesports.com/football/team/example.png"]
+assert client.get(
+    "/team-badge?url=https%3A%2F%2Fexample.com%2Fbadge.png"
+).status_code == 404
+
 # Display names can change without changing the stable login identifier.
 conn = database.get_db()
 original_login = conn.execute(
@@ -321,16 +427,34 @@ scorers = predictor.fixture_scorers(
     json.dumps(goal_events), "Home FC", "Away FC"
 )
 assert scorers["home"][0]["name"] == "Alex Striker"
-assert scorers["home"][0]["goals"] == ["12'", "45+2' pen"]
+assert scorers["home"][0]["goals"] == ["12'", "45+2' ⚽ penalty"]
+card_events = [{
+    "time": "67+1",
+    "type": "Red card",
+    "type_id": 4,
+    "side": "away",
+    "player": "Dismissed Defender",
+}]
+red_cards = predictor.fixture_red_cards(card_events, "Home FC", "Away FC")
+assert red_cards["away"] == [{
+    "name": "Dismissed Defender",
+    "minute": "67+1'",
+}]
 
 conn = database.get_db()
 live_kickoff = datetime.now(timezone.utc).isoformat()
 conn.execute(
     """INSERT INTO fixtures(
            id, season, matchday, utc_date, status, home_team, away_team,
-           home_score, away_score, goals_json
-       ) VALUES (?, ?, 1, ?, 'IN_PLAY', 'Home FC', 'Away FC', 2, 0, ?)""",
-    (8800, predictor.SEASON, live_kickoff, json.dumps(goal_events)),
+           home_score, away_score, goals_json, incidents_json
+       ) VALUES (?, ?, 1, ?, 'IN_PLAY', 'Home FC', 'Away FC', 2, 0, ?, ?)""",
+    (
+        8800,
+        predictor.SEASON,
+        live_kickoff,
+        json.dumps(goal_events),
+        json.dumps(card_events),
+    ),
 )
 conn.commit()
 conn.close()
@@ -340,7 +464,8 @@ assert b'action="/logout"' in response.data
 assert b"Log out" in response.data
 assert "2–0".encode() in response.data
 assert b"Alex Striker" in response.data
-assert b"45+2&#39; pen" in response.data
+assert "45+2&#39; ⚽ penalty".encode() in response.data
+assert b"Dismissed Defender" in response.data
 assert b"window.setTimeout" in response.data
 
 # Finished scorers remain visible in the automatically selected current GW.
@@ -406,13 +531,22 @@ predictor.get_sportscore_match_details = lambda match: {
     "status_text": "2nd half",
     "competition": "UEFA Champions League",
     "live_minute": "90+3",
-    "incidents": [{
-        "time": 75,
-        "type": "Goal",
-        "side": "away",
-        "player": "Test Scorer",
-        "is_goal": True,
-    }],
+    "incidents": [
+        {
+            "time": 75,
+            "type": "Penalty Goal",
+            "side": "away",
+            "player": "Test Scorer",
+            "is_goal": True,
+        },
+        {
+            "time": 81,
+            "type": "Red card",
+            "type_id": 4,
+            "side": "home",
+            "player": "Test Defender",
+        },
+    ],
 }
 try:
     live_test_response = client.get(
@@ -424,6 +558,8 @@ assert live_test_response.status_code == 200
 assert b"LIVE 90+3" in live_test_response.data
 assert b'<div class="fixture-submeta">LIVE' not in live_test_response.data
 assert b"Test Scorer" in live_test_response.data
+assert "⚽ penalty".encode() in live_test_response.data
+assert b"Test Defender" in live_test_response.data
 assert b"never affect Predictor fixtures" in live_test_response.data
 assert b'class="fixture-scorers"' in live_test_response.data
 

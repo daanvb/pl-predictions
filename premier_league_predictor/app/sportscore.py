@@ -1,4 +1,7 @@
 import re
+import unicodedata
+from datetime import datetime, timezone
+from html import unescape
 import requests
 
 API_BASE = "https://sportscore.com/api/widget"
@@ -34,8 +37,78 @@ def get_live_matches():
     ]
 
 
-def get_champions_league_matches(limit=6):
-    """Discover current UEFA Champions League matches from its competition page."""
+def _match_slug(home, away):
+    def team_slug(value):
+        value = (value or "").replace("ø", "o").replace("Ø", "O")
+        value = unicodedata.normalize("NFKD", value or "")
+        value = value.encode("ascii", "ignore").decode("ascii").casefold()
+        return re.sub(r"[^a-z0-9]+", "-", value).strip("-")
+    return f"{team_slug(home)}-vs-{team_slug(away)}"
+
+
+def _competition_upcoming_matches(page_html):
+    """Read future fixture rows that the public match API cannot disambiguate."""
+    anchor_pattern = re.compile(
+        r'<a\s+href="(?P<url>/football/match/[a-z0-9-]+/)"\s+'
+        r'class="sc-stretched-link"\s+aria-label="(?P<label>[^"]+)"',
+        re.I,
+    )
+    anchors = list(anchor_pattern.finditer(page_html or ""))
+    upcoming = []
+    seen = set()
+    now = datetime.now(timezone.utc)
+    for index, anchor in enumerate(anchors):
+        label = unescape(anchor.group("label"))
+        if "— UEFA Champions League" not in label:
+            continue
+        teams = label.rsplit(" — ", 1)[0]
+        if " vs " not in teams:
+            continue
+        home, away = teams.split(" vs ", 1)
+        end = anchors[index + 1].start() if index + 1 < len(anchors) else len(page_html)
+        row_html = page_html[anchor.end():end]
+        kickoff_match = re.search(r'data-utc="([^"]+)"', row_html, re.I)
+        if not kickoff_match:
+            continue
+        kickoff_text = unescape(kickoff_match.group(1))
+        try:
+            kickoff = datetime.fromisoformat(kickoff_text.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if kickoff.tzinfo is None:
+            kickoff = kickoff.replace(tzinfo=timezone.utc)
+        if kickoff <= now:
+            continue
+        key = (home, away, kickoff.isoformat())
+        if key in seen:
+            continue
+        seen.add(key)
+        logo_urls = []
+        for image_tag in re.findall(r"<img\b[^>]*>", row_html, re.I):
+            if not re.search(r'alt="[^"]+ logo"', image_tag, re.I):
+                continue
+            source = re.search(r'src="([^"]+)"', image_tag, re.I)
+            if source and source.group(1) not in logo_urls:
+                logo_urls.append(unescape(source.group(1)))
+        upcoming.append({
+            "home": home,
+            "away": away,
+            "home_logo": logo_urls[0] if logo_urls else None,
+            "away_logo": logo_urls[1] if len(logo_urls) > 1 else None,
+            "home_score": None,
+            "away_score": None,
+            "status": "upcoming",
+            "status_text": "Not started",
+            "time": kickoff.isoformat(),
+            "competition": "UEFA Champions League",
+            "url": anchor.group("url"),
+            "_details_loaded": True,
+        })
+    return upcoming
+
+
+def get_champions_league_matches(limit=None):
+    """Discover all of today's UEFA Champions League matches."""
     try:
         response = requests.get(
             CHAMPIONS_LEAGUE_URL,
@@ -53,8 +126,35 @@ def get_champions_league_matches(limit=6):
         response.text,
         flags=re.I,
     )
-    matches = []
+
+    # The competition page initially renders only part of its fixture list.
+    # Its bracket feed contains the full current round, so use the latest
+    # matchups to discover the remaining match-detail slugs.
+    try:
+        bracket = _get("bracket", {"slug": "uefa-champions-league"})
+        matchups = [
+            matchup
+            for round_data in bracket.get("rounds", [])
+            for matchup in round_data.get("matchups", [])
+        ]
+        for matchup in matchups[-16:]:
+            for home, away in (
+                (matchup.get("home"), matchup.get("away")),
+                (matchup.get("away"), matchup.get("home")),
+            ):
+                slug = _match_slug(home, away)
+                if slug:
+                    paths.append(f"/football/match/{slug}/")
+    except SportScoreError:
+        pass
+
+    matches = _competition_upcoming_matches(response.text)
     seen = set()
+    seen_matches = {
+        (match.get("home"), match.get("away"), match.get("time"))
+        for match in matches
+    }
+    today = datetime.now(timezone.utc).date()
     for path in paths:
         slug = path.rstrip("/").split("/")[-1]
         if slug in seen:
@@ -68,11 +168,34 @@ def get_champions_league_matches(limit=6):
             details.get("competition") or ""
         ).casefold():
             continue
+        try:
+            match_date = datetime.fromisoformat(
+                (details.get("time") or "").replace("Z", "+00:00")
+            ).date()
+        except ValueError:
+            continue
+        if match_date != today:
+            continue
+        match_key = (
+            details.get("home"),
+            details.get("away"),
+            details.get("time"),
+        )
+        if match_key in seen_matches:
+            continue
+        seen_matches.add(match_key)
         details["_details_loaded"] = True
         matches.append(details)
-        if len(matches) >= limit:
+        if limit is not None and len(matches) >= limit:
             break
-    return matches
+    status_order = {"live": 0, "upcoming": 1, "finished": 2}
+    return sorted(
+        matches,
+        key=lambda match: (
+            status_order.get(match.get("status"), 3),
+            match.get("time") or "",
+        ),
+    )
 
 
 def get_team_matches(team_slug):

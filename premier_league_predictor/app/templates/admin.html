@@ -107,9 +107,9 @@ Open Backup & Restore
 <h2>📊 Match Stats History</h2>
 
 <p>
-Match Stats are calculated locally from stored completed results.
-The app will try to download the previous five Premier League seasons once
-when historical data is first enabled.
+The app will try to download the previous five Premier League and Championship
+seasons when historical data is first enabled. Championship matches are used
+for head-to-head history when clubs have previously met outside the Premier League.
 </p>
 
 <form method="POST" action="/admin/match-stats/refresh">
@@ -121,7 +121,6 @@ when historical data is first enabled.
 <p class="muted">
 Older seasons are tried through football-data.org first, with a deterministic
 football-data.co.uk results fallback if the API plan does not expose them.
-No AI is used.
 </p>
 
 {% if historical_results_last_refresh %}
