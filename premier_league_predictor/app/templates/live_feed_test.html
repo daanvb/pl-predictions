@@ -37,28 +37,57 @@
 </div>
 
 {% for item in monitored %}
-<div class="card">
 {% if item.error %}
+<div class="card">
 <h2>{{ item.label }}</h2>
 <p style="color:#b91c1c">⚠️ {{ item.error }}</p>
 <p class="small">Slug: <code>{{ item.slug }}</code></p>
-{% else %}
-<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-<h2 style="margin:0">{{ item.home }} {{ item.home_score if item.home_score is not none else '–' }}–{{ item.away_score if item.away_score is not none else '–' }} {{ item.away }}</h2>
-<span class="badge {% if item.status == 'live' %}live{% endif %}">{{ item.status_label }}</span>
 </div>
-<p class="small">Raw status: {{ item.status }} · Raw minute: {{ item.raw_minute if item.raw_minute is not none else 'none' }}</p>
-<p class="small">Competition: {{ item.competition }}</p>
+{% else %}
+<div class="fixture fixture-set">
+<div class="fixture-row-grid">
+
+<div class="fixture-match">
+<div class="fixture-home">
+{% if item.home_logo %}<img class="team-badge" src="{{ item.home_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+<strong>{{ item.home }}</strong>
+</div>
+<div class="fixture-centre">
+{% if item.status in ('live', 'finished') and item.home_score is not none and item.away_score is not none %}
+{{ item.home_score }}–{{ item.away_score }}
+{% else %}
+v
+{% endif %}
+</div>
+<div class="fixture-away">
+<strong>{{ item.away }}</strong>
+{% if item.away_logo %}<img class="team-badge" src="{{ item.away_logo }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+</div>
+</div>
+
+<div class="fixture-submeta">{{ item.submeta }}</div>
+<div class="fixture-broadcaster"></div>
+
+<div class="fixture-status">
+{% if item.status == 'live' %}
+<span class="badge live">{{ item.status_label }}</span>
+{% elif item.status == 'finished' %}
+<span class="badge">FT</span>
+{% else %}
+<span class="badge open">● Upcoming</span>
+{% endif %}
+</div>
+
 {% if item.scorers.home or item.scorers.away %}
 <div class="fixture-scorers" aria-label="Goalscorers">
 <div class="fixture-scorers-home">{% for scorer in item.scorers.home %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}</div>
 <div class="fixture-scorers-away">{% for scorer in item.scorers.away %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}</div>
 </div>
-{% else %}
-<p class="muted">No goalscorer events returned yet.</p>
 {% endif %}
-{% endif %}
+
 </div>
+</div>
+{% endif %}
 {% endfor %}
 
 <p class="small">Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.</p>

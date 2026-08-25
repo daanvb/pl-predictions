@@ -40,7 +40,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.20"
+APP_VERSION = "1.0.21"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -1902,6 +1902,12 @@ def safe_team_logo_url(value):
     return value
 
 
+def compact_record_name(name):
+    """Use the first name segment in narrow League Records cards only."""
+    parts = str(name or "").strip().split()
+    return parts[0] if parts else "—"
+
+
 def populate_missing_team_logos():
     """Fill missing fixture badges independently of live-match updates."""
     conn = get_db()
@@ -3379,6 +3385,7 @@ def inject_globals():
         "app_version": APP_VERSION,
         "changelog_has_update": changelog_has_unread_update(),
         "broadcaster_logo_url": broadcaster_logo_url,
+        "compact_record_name": compact_record_name,
         "is_logged_in": logged_in(),
     }
 
@@ -6783,7 +6790,8 @@ def admin_live_feed_test():
                 match for match in discovered
                 if match.get("status") == "upcoming"
             ]
-            selected = (live or upcoming or discovered)[:6]
+            active = live + upcoming
+            selected = (active or discovered)[:6]
             configured = []
             for match in selected:
                 slug = (match.get("url") or "").rstrip("/").split("/")[-1]
@@ -6832,13 +6840,23 @@ def admin_live_feed_test():
             else:
                 status_text = details.get("status_text") or raw_status.upper()
             goals = sportscore_goal_events(details)
+            kickoff_text = (
+                local_datetime(details.get("time"))
+                if details.get("time")
+                else "Kickoff time unavailable"
+            )
             item.update({
                 "home": details.get("home") or "Home",
                 "away": details.get("away") or "Away",
+                "home_logo": safe_team_logo_url(details.get("home_logo")),
+                "away_logo": safe_team_logo_url(details.get("away_logo")),
                 "home_score": details.get("home_score"),
                 "away_score": details.get("away_score"),
                 "status": raw_status,
                 "status_label": status_text,
+                "submeta": (
+                    kickoff_text if raw_status == "upcoming" else status_text
+                ),
                 "raw_minute": details.get("live_minute"),
                 "competition": competition,
                 "scorers": fixture_scorers(

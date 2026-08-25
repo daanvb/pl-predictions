@@ -82,7 +82,7 @@ GW{{ best_gameweek.matchday }} — {{ best_gameweek.points }} pts
 <div style="font-size:20px;font-weight:900;margin-top:6px;line-height:1.3">
 {% if top_scorers %}
 {% for player in top_scorers %}
-{{ player.name }}{% if not loop.last %}<br>{% endif %}
+{{ compact_record_name(player.name) }}{% if not loop.last %}<br>{% endif %}
 {% endfor %}
 {% else %}
 —
@@ -103,7 +103,7 @@ GW{{ best_gameweek.matchday }} — {{ best_gameweek.points }} pts
 <div style="font-size:20px;font-weight:900;margin-top:6px;line-height:1.3">
 {% if most_exact_draws %}
 {% for player in most_exact_draws %}
-{{ player.name }}{% if not loop.last %}<br>{% endif %}
+{{ compact_record_name(player.name) }}{% if not loop.last %}<br>{% endif %}
 {% endfor %}
 {% else %}
 —
@@ -124,7 +124,7 @@ GW{{ best_gameweek.matchday }} — {{ best_gameweek.points }} pts
 <div style="font-size:20px;font-weight:900;margin-top:6px;line-height:1.3">
 {% if most_exact_scores %}
 {% for player in most_exact_scores %}
-{{ player.name }}{% if not loop.last %}<br>{% endif %}
+{{ compact_record_name(player.name) }}{% if not loop.last %}<br>{% endif %}
 {% endfor %}
 {% else %}
 —
@@ -145,7 +145,7 @@ GW{{ best_gameweek.matchday }} — {{ best_gameweek.points }} pts
 <div style="font-size:20px;font-weight:900;margin-top:6px;line-height:1.3">
 {% if most_correct_results %}
 {% for player in most_correct_results %}
-{{ player.name }}{% if not loop.last %}<br>{% endif %}
+{{ compact_record_name(player.name) }}{% if not loop.last %}<br>{% endif %}
 {% endfor %}
 {% else %}
 —
@@ -166,7 +166,7 @@ GW{{ best_gameweek.matchday }} — {{ best_gameweek.points }} pts
 <div style="font-size:20px;font-weight:900;margin-top:6px;line-height:1.3">
 {% if most_dp_exact_scores %}
 {% for player in most_dp_exact_scores %}
-{{ player.name }}{% if not loop.last %}<br>{% endif %}
+{{ compact_record_name(player.name) }}{% if not loop.last %}<br>{% endif %}
 {% endfor %}
 {% else %}
 —
@@ -188,7 +188,7 @@ GW{{ best_gameweek.matchday }} — {{ best_gameweek.points }} pts
 {% if best_gameweeks_overall %}
 {% for record in best_gameweeks_overall %}
 <div>
-{{ record.name }}
+{{ compact_record_name(record.name) }}
 <span class="muted" style="font-size:13px;font-weight:700">
 GW{{ record.matchday }}
 </span>
