@@ -40,7 +40,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.24"
+APP_VERSION = "1.0.25"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -54,6 +54,10 @@ GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 GOOGLE_BACKUP_FOLDER = "Premier League Predictor Backups"
 GOOGLE_BACKUP_LIMIT = 10
 SPORTSCORE_TEAM_LOGO_FALLBACKS = {
+    "arsenal": (
+        "https://img.thesports.com/football/team/"
+        "d6f5debc456da1119256ab66462ab510.png"
+    ),
     "chelsea": (
         "https://img.thesports.com/football/team/"
         "a0cf8f551e9440acb3f4ff533dcc58a4.png"
