@@ -596,6 +596,30 @@ assert b"never affect Predictor fixtures" in live_test_response.data
 assert b'class="fixture-scorers"' in live_test_response.data
 
 predictor.get_sportscore_match_details = lambda match: {
+    "home": "Europa Home",
+    "away": "Europa Away",
+    "home_score": "2",
+    "away_score": "1",
+    "status": "finished",
+    "status_text": "FT",
+    "competition": "UEFA Europa League",
+    "live_minute": None,
+    "incidents": [],
+}
+try:
+    manual_match_response = client.get(
+        "/admin/live-feed-test?match="
+        "https%3A%2F%2Fsportscore.com%2Ffootball%2Fmatch%2F"
+        "europa-home-vs-europa-away%2F"
+    )
+finally:
+    predictor.get_sportscore_match_details = original_test_match_details
+assert manual_match_response.status_code == 200
+assert b"Europa Home" in manual_match_response.data
+assert b"UEFA Champions League by SportScore" not in manual_match_response.data
+assert b"Manual matches remain read-only" in manual_match_response.data
+
+predictor.get_sportscore_match_details = lambda match: {
     "home": "LASK",
     "away": "Celtic",
     "home_score": "1",
