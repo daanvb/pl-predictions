@@ -150,6 +150,23 @@ input{
   font-size:34px;
   font-weight:700
 }
+
+.dashboard-stats .stat {
+    text-align: center;
+}
+
+@media (max-width: 640px) {
+    .dashboard-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-stats .stat:last-child:nth-child(odd) {
+        grid-column: 1 / -1;
+        justify-self: center;
+        width: calc(50% - 6px);
+        box-sizing: border-box;
+    }
+}
 .fixture{
   padding:15px 0;
   border-bottom:1px solid var(--line)
@@ -608,14 +625,15 @@ th,td{
         flex-basis: 18px;
     }
     .fixture-row-grid {
-        grid-template-columns: minmax(0, 1fr) 70px;
+        position: relative;
+        grid-template-columns: minmax(0, 1fr);
         grid-template-areas:
-            "match match"
-            "scorers scorers"
-            "meta broadcaster"
-            "status status";
+            "match"
+            "scorers"
+            "meta"
+            "status";
         row-gap: 4px;
-        column-gap: 8px;
+        column-gap: 0;
     }
 
     .fixture-match {
@@ -640,6 +658,7 @@ th,td{
     }
 
     .fixture-submeta {
+        grid-area: meta;
         justify-self: stretch;
         text-align: center;
         font-size: 11px;
@@ -666,9 +685,12 @@ th,td{
     }
 
     .fixture-broadcaster {
+        grid-area: meta;
         justify-self: end;
-        min-width: 70px;
+        align-self: center;
+        min-width: 0;
         min-height: 18px;
+        z-index: 1;
     }
 
     .fixture-broadcaster .tv-logo {
