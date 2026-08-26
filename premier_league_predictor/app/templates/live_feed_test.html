@@ -82,10 +82,9 @@ v
 </div>
 </div>
 
-{% if item.submeta or item.sources %}
+{% if item.submeta %}
 <div class="fixture-submeta">
-{% if item.submeta %}<span>{{ item.submeta }}</span>{% endif %}
-{% if item.sources %}<span>Sources: {{ item.sources|join(' + ') }}</span>{% endif %}
+<span>{{ item.submeta }}</span>
 </div>
 {% endif %}
 <div class="fixture-broadcaster"></div>
@@ -99,6 +98,10 @@ v
 <span class="badge open">● Upcoming</span>
 {% endif %}
 </div>
+
+{% if item.sources %}
+<div class="fixture-sources">Sources: {{ item.sources|join(' + ') }}</div>
+{% endif %}
 
 {% if item.scorers.home or item.scorers.away or item.red_cards.home or item.red_cards.away %}
 <div class="fixture-scorers" aria-label="Goalscorers">

@@ -476,7 +476,7 @@ def fixture_scorers(goals_json, home_team, away_team):
         goal_type = (goal.get("type") or "").upper()
         marker = goal_minute_label(goal)
         if goal_type == "PENALTY":
-            marker = f"{marker} ⚽ penalty".strip()
+            marker = f"{marker} (Pen)".strip()
         elif goal_type in ("OWN", "OWN_GOAL"):
             marker = f"{marker} og".strip()
 
