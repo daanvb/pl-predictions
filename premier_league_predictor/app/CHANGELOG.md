@@ -22,6 +22,8 @@ All notable changes to Premier League Predictor are documented here.
 - Refined live dashboard fixture spacing and team sizing on mobile while retaining the kickoff-above-status layout.
 - Player names in the season position chart can now be selected to highlight an individual line, and longer display names use their compact form.
 - Centred the dashboard season total, league position and current gameweek summary cards, including the final card on mobile.
+- Standardised club badge columns across fixture cards so team logos remain aligned when names wrap.
+- Reworked the season leaderboard into compact mobile rows with points immediately visible and no horizontal scrolling.
 
 ## [1.0.29] - 2026-08-26
 
