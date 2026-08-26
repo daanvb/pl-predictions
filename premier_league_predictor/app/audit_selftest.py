@@ -578,7 +578,7 @@ scorers = predictor.fixture_scorers(
     json.dumps(goal_events), "Home FC", "Away FC"
 )
 assert scorers["home"][0]["name"] == "Alex Striker"
-assert scorers["home"][0]["goals"] == ["12'", "45+2' ⚽ penalty"]
+assert scorers["home"][0]["goals"] == ["12'", "45+2' (Pen)"]
 card_events = [{
     "time": "67+1",
     "type": "Red card",
@@ -618,7 +618,7 @@ assert b"<span>2</span>" in response.data
 assert b'class="fixture-score-dash">\xe2\x80\x93</span>' in response.data
 assert b"<span>0</span>" in response.data
 assert b"Alex Striker" in response.data
-assert "45+2&#39; ⚽ penalty".encode() in response.data
+assert "45+2&#39; (Pen)".encode() in response.data
 assert b"Dismissed Defender" in response.data
 assert b"window.setTimeout" in response.data
 
@@ -730,7 +730,7 @@ assert live_test_response.status_code == 200
 assert b"LIVE 90+3" in live_test_response.data
 assert b'<div class="fixture-submeta">LIVE' not in live_test_response.data
 assert b"Test Scorer" in live_test_response.data
-assert "⚽ penalty".encode() in live_test_response.data
+assert "(Pen)".encode() in live_test_response.data
 assert b"Test Defender" in live_test_response.data
 assert b"never affect Predictor fixtures" in live_test_response.data
 assert b'class="fixture-scorers"' in live_test_response.data
@@ -873,8 +873,7 @@ assert b"Upcoming Home" in discovered_test_response.data
 assert b"Football Only Home" in discovered_test_response.data
 assert b"Domestic Home" not in discovered_test_response.data
 assert b"Sources: SportScore + football-data.org" in discovered_test_response.data
-assert b'<div class="fixture-submeta">' in discovered_test_response.data
-assert b"<span>Sources: SportScore + football-data.org</span>" in discovered_test_response.data
+assert b'<div class="fixture-sources">Sources: SportScore + football-data.org</div>' in discovered_test_response.data
 assert b"football-data.org Champions League comparison is enabled" in discovered_test_response.data
 assert b"available SportScore and football-data.org feeds" in discovered_test_response.data
 conn = database.get_db()

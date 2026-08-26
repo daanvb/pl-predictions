@@ -26,6 +26,8 @@ All notable changes to Premier League Predictor are documented here.
 - Reworked the season leaderboard into compact mobile rows with points immediately visible and no horizontal scrolling.
 - Brought club badges directly beside team names with consistent spacing on mobile and desktop fixture cards.
 - Aligned broadcaster logos with the fixture status row and aligned the dashboard prediction and Live GW actions with the fixture-card edges.
+- Tightened crest and team-name alignment, added clearer kickoff/status spacing and moved diagnostic source labels below the status.
+- Simplified penalty goals to an inline `(Pen)` marker beside the scoring minute.
 
 ## [1.0.29] - 2026-08-26
 
