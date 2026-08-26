@@ -5805,7 +5805,11 @@ def leaderboard():
         ).fetchall()
     ]
     chart_players = {
-        player["id"]: {"name": player["name"], "positions": []}
+        player["id"]: {
+            "id": player["id"],
+            "name": compact_record_name(player["name"]),
+            "positions": [],
+        }
         for player in players
     }
     for matchday in completed_matchdays:

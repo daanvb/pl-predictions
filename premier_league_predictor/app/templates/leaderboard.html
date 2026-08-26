@@ -155,6 +155,7 @@
   const legend = document.getElementById('position-chart-legend');
   const colours = ['#2563eb','#dc2626','#16a34a','#9333ea','#ea580c','#0891b2','#db2777','#65a30d','#4f46e5','#b45309','#0f766e','#7c3aed'];
   const ratio = window.devicePixelRatio || 1;
+  let selectedPlayerId = null;
 
   function draw() {
     const box = canvas.parentElement.getBoundingClientRect();
@@ -189,6 +190,7 @@
     });
     data.players.forEach((player, playerIndex) => {
       const colour = colours[playerIndex % colours.length];
+      ctx.globalAlpha = selectedPlayerId == null || selectedPlayerId === player.id ? 1 : 0.12;
       ctx.strokeStyle = colour; ctx.fillStyle = colour; ctx.lineWidth = 3;
       ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.beginPath();
       player.positions.forEach((position, index) => {
@@ -201,12 +203,30 @@
         ctx.beginPath(); ctx.arc(x(index), y(position), 4, 0, Math.PI * 2); ctx.fill();
       });
     });
+    ctx.globalAlpha = 1;
   }
 
   data.players.forEach((player, index) => {
-    const item = document.createElement('span');
-    item.innerHTML = '<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:' + colours[index % colours.length] + ';margin-right:5px"></span>' + player.name;
-    legend.appendChild(item);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'position-chart-player';
+    button.setAttribute('aria-pressed', 'false');
+    const swatch = document.createElement('span');
+    swatch.style.background = colours[index % colours.length];
+    button.appendChild(swatch);
+    button.appendChild(document.createTextNode(player.name));
+    button.addEventListener('click', () => {
+      selectedPlayerId = selectedPlayerId === player.id ? null : player.id;
+      legend.querySelectorAll('button').forEach(item => {
+        item.setAttribute(
+          'aria-pressed',
+          String(selectedPlayerId !== null && Number(item.dataset.player) === selectedPlayerId)
+        );
+      });
+      draw();
+    });
+    button.dataset.player = player.id;
+    legend.appendChild(button);
   });
   draw();
   window.addEventListener('resize', draw);

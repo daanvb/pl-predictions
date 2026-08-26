@@ -1453,6 +1453,9 @@ assert 'role="table" aria-label="Season league table"' in leaderboard_template
 assert 'data-label="Exact draws"' in leaderboard_template
 assert 'data-label="Exact wins"' in leaderboard_template
 assert 'data-label="Other correct"' in leaderboard_template
+assert "position-chart-player" in leaderboard_template
+assert "selectedPlayerId" in leaderboard_template
+assert "item.innerHTML" not in leaderboard_template
 
 with open(
     os.path.join(templates_dir, "stats.html"),
