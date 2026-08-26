@@ -6,8 +6,6 @@ All notable changes to Premier League Predictor are documented here.
 
 ### Fixed
 - Live match cards now reproduce SportScore's added-time clock, including values such as 45+3 and 90+2.
-- Champions League source comparison now retries football-data.org's supported competition identifiers when its short code is unavailable.
-- Kickoff and source details in the admin live-test cards no longer overlap.
 
 ## [1.0.28] - 2026-08-26
 
