@@ -514,6 +514,16 @@ th,td{
     max-width: calc(100% - 31px);
 }
 
+/* Keep wrapped lettering beside its crest instead of aligning it to the
+   far edge of the available team column. */
+.fixture-team-cluster-home strong {
+    text-align: left;
+}
+
+.fixture-team-cluster-away strong {
+    text-align: right;
+}
+
 .fixture-home,
 .team:not(.away) {
     justify-content: flex-end;

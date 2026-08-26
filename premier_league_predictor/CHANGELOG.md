@@ -28,6 +28,7 @@ All notable changes to Premier League Predictor are documented here.
 - Aligned broadcaster logos with the fixture status row and aligned the dashboard prediction and Live GW actions with the fixture-card edges.
 - Tightened crest and team-name alignment, added clearer kickoff/status spacing and moved diagnostic source labels below the status.
 - Simplified penalty goals to an inline `(Pen)` marker beside the scoring minute.
+- Corrected wrapped team-name alignment so each club crest remains visually attached to its name.
 
 ## [1.0.29] - 2026-08-26
 
