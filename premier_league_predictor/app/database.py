@@ -174,6 +174,36 @@ def init_db(seed_default_player=True):
         ON predictions(fixture_id)
     """)
 
+    # Change-only snapshots power the live Gameweek position chart and remain
+    # available when the completed Gameweek is viewed later.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS live_position_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season INTEGER NOT NULL,
+            matchday INTEGER NOT NULL,
+            captured_at TEXT NOT NULL,
+            state_signature TEXT NOT NULL,
+            UNIQUE(season, matchday, state_signature)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS live_position_snapshot_rows (
+            snapshot_id INTEGER NOT NULL,
+            player_id INTEGER NOT NULL,
+            player_name TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            season_points INTEGER NOT NULL,
+            gameweek_points INTEGER NOT NULL,
+            PRIMARY KEY (snapshot_id, player_id),
+            FOREIGN KEY(snapshot_id)
+                REFERENCES live_position_snapshots(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_live_position_snapshots_gameweek
+        ON live_position_snapshots(season, matchday, captured_at)
+    """)
+
     # Permanent end-of-season snapshots. Player names are copied rather than
     # linked so later account edits cannot rewrite historical tables.
     conn.execute("""

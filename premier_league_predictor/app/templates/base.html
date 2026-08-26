@@ -964,6 +964,97 @@ th,td{
     overflow: hidden;
 }
 
+/* Match the existing LIVE badge red without tinting the fixture surface. */
+.fixture.fixture-set.fixture-live,
+.card.fixture-set.fixture-live {
+    border: 2px solid #b91c1c;
+}
+
+.position-chart {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.position-chart-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 10px;
+}
+
+.position-chart-heading h3,
+.position-chart-heading p {
+    margin: 0 0 4px;
+}
+
+.position-chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px 10px;
+}
+
+.position-chart-player {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 5px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #334155;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.position-chart-player span {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+}
+
+.position-chart-player[aria-pressed="true"] {
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.position-chart-stage {
+    width: 100%;
+}
+
+.position-chart-stage svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 210px;
+}
+
+.position-chart-grid {
+    stroke: #e2e8f0;
+    stroke-width: 1;
+}
+
+.position-chart-axis-label {
+    fill: #64748b;
+    font-size: 12px;
+}
+
+[data-chart-player] {
+    transition: opacity .18s ease;
+}
+
+[data-chart-player].is-muted {
+    opacity: .13;
+}
+
+[data-chart-player].is-selected polyline {
+    stroke-width: 4;
+}
+
 /* Keep Match Stats visually subordinate to the outer fixture card. */
 .fixture-set .match-stats {
     margin-top: 12px;
@@ -987,6 +1078,23 @@ th,td{
 
     .card.fixture-set {
         border-radius: 12px;
+    }
+
+    .position-chart-heading {
+        display: block;
+    }
+
+    .position-chart-legend {
+        justify-content: flex-start;
+        margin-top: 8px;
+    }
+
+    .position-chart-stage {
+        overflow-x: auto;
+    }
+
+    .position-chart-stage svg {
+        min-width: 560px;
     }
 }
 

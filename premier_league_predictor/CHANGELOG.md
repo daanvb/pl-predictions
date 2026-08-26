@@ -2,6 +2,24 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.1.0] - 2026-08-26
+
+### Added
+- Added a live gameweek position chart that records how provisional league positions change as scores and points move.
+- Position changes remain available from the completed gameweek's Results / Table history view.
+
+### Improved
+- Live fixture cards now use a red border matching the existing LIVE indicator.
+- Gameweek progress text now clearly distinguishes completed matches from matches currently in progress.
+
+### What's new since Gameweek 1
+- The live dashboard now follows scores, match clocks, added time, scorers, penalties and red cards as games unfold.
+- The live gameweek table recalculates provisional points and league positions throughout each match.
+- Predictions remain private until each individual fixture kicks off, then become visible to the league.
+- Prediction cards now include club badges, clearer score entry and expanded form and head-to-head information.
+- Player stats, league records and gameweek history provide a clearer view of performance across the season.
+- Completed gameweeks remain visible overnight, with the next round and its Signal announcement opening at 09:00 the following day.
+
 ## [1.0.29] - 2026-08-26
 
 ### Fixed

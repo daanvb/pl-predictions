@@ -41,6 +41,14 @@ assert "live_data_source" in {r["name"] for r in conn.execute("PRAGMA table_info
 assert "login_name" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
 assert "email" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
 assert conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' "
+    "AND name='live_position_snapshots'"
+).fetchone() is not None
+assert conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' "
+    "AND name='live_position_snapshot_rows'"
+).fetchone() is not None
+assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='season_archives'"
 ).fetchone() is not None
 assert conn.execute(
@@ -78,6 +86,19 @@ predictor.app.config["TESTING"] = True
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
 assert predictor.compact_record_name("Pendragon ⚔️") == "Pendragon"
+assert predictor.gameweek_progress_label([]) == ""
+assert predictor.gameweek_progress_label([
+    {"status": "FINISHED"},
+]) == "After 1 game"
+assert predictor.gameweek_progress_label([
+    {"status": "FINISHED"},
+    {"status": "FINISHED"},
+    {"status": "IN_PLAY"},
+    {"status": "PAUSED"},
+]) == "After 2 completed games · 2 games in progress"
+assert predictor.gameweek_progress_label([
+    {"status": "IN_PLAY"},
+]) == "1 game in progress"
 assert predictor.compact_record_name("Two Part Name") == "Two"
 assert predictor.compact_record_name("") == "—"
 assert predictor.sportscore_team_slug("Brighton & Hove Albion") == "brighton-hove-albion"
@@ -95,6 +116,52 @@ assert proxied_badge.startswith("/team-badge?url=https%3A%2F%2Fimg.thesports.com
 assert predictor.team_badge_url("https://example.com/badge.png") == (
     "https://example.com/badge.png"
 )
+
+# The live position chart stores a baseline and only records changed states.
+conn = database.get_db()
+snapshot_player = conn.execute(
+    "SELECT id FROM players ORDER BY id LIMIT 1"
+).fetchone()["id"]
+conn.execute(
+    """INSERT INTO fixtures
+       (id, season, matchday, utc_date, status, home_team, away_team,
+        home_score, away_score)
+       VALUES (99001, ?, 99, ?, 'IN_PLAY', 'Snapshot Home',
+               'Snapshot Away', 1, 0)""",
+    (predictor.SEASON, (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()),
+)
+conn.execute(
+    """INSERT INTO predictions
+       (player_id, fixture_id, home_score, away_score, dp)
+       VALUES (?, 99001, 1, 0, 0)""",
+    (snapshot_player,),
+)
+assert predictor.record_live_position_snapshot(conn, 99)
+assert not predictor.record_live_position_snapshot(conn, 99)
+chart = predictor.live_position_chart(conn, 99)
+assert len(chart["snapshots"]) == 2
+assert chart["snapshots"][-1]["rows"][0]["gameweek_points"] == 5
+conn.execute(
+    "UPDATE fixtures SET away_score = 1 WHERE id = 99001"
+)
+assert predictor.record_live_position_snapshot(conn, 99)
+assert len(predictor.live_position_chart(conn, 99)["snapshots"]) == 3
+snapshot_ids = [
+    row["id"] for row in conn.execute(
+        "SELECT id FROM live_position_snapshots WHERE matchday = 99"
+    ).fetchall()
+]
+if snapshot_ids:
+    placeholders = ",".join("?" for _ in snapshot_ids)
+    conn.execute(
+        f"DELETE FROM live_position_snapshot_rows WHERE snapshot_id IN ({placeholders})",
+        snapshot_ids,
+    )
+conn.execute("DELETE FROM live_position_snapshots WHERE matchday = 99")
+conn.execute("DELETE FROM predictions WHERE fixture_id = 99001")
+conn.execute("DELETE FROM fixtures WHERE id = 99001")
+conn.commit()
+conn.close()
 
 # Championship CSV results are retained for cross-division head-to-heads.
 class HistoricalCsvResponse:
@@ -667,6 +734,7 @@ assert "⚽ penalty".encode() in live_test_response.data
 assert b"Test Defender" in live_test_response.data
 assert b"never affect Predictor fixtures" in live_test_response.data
 assert b'class="fixture-scorers"' in live_test_response.data
+assert b'class="fixture fixture-set fixture-live"' in live_test_response.data
 
 predictor.get_sportscore_match_details = lambda match: {
     "home": "Europa Home",
@@ -1368,6 +1436,11 @@ assert '_match_stats.html' not in gameweek_template
 assert 'href="https://sportscore.com/" rel="dofollow"' in gameweek_template
 assert "Ordered by the current overall league position" in gameweek_template
 assert "player.season_points" in gameweek_template
+assert "Position during this gameweek" in gameweek_template
+assert "position-chart-data" in gameweek_template
+assert "button.innerHTML" not in gameweek_template
+assert "fixture-live" in gameweek_template
+assert "fixture-live" in dashboard_template
 
 with open(
     os.path.join(templates_dir, "leaderboard.html"),
