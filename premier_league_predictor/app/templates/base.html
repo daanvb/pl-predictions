@@ -603,31 +603,31 @@ th,td{
     }
 
     .team-badge {
-        width: 20px;
-        height: 20px;
-        flex-basis: 20px;
+        width: 18px;
+        height: 18px;
+        flex-basis: 18px;
     }
     .fixture-row-grid {
-        grid-template-columns: 1fr 70px;
+        grid-template-columns: minmax(0, 1fr) 70px;
         grid-template-areas:
             "match match"
             "scorers scorers"
             "meta broadcaster"
             "status status";
-        row-gap: 8px;
+        row-gap: 4px;
         column-gap: 8px;
     }
 
     .fixture-match {
-        grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
         gap: 5px;
         width: 100%;
     }
 
     .fixture-home,
     .fixture-away {
-        font-size: 14px;
-        overflow-wrap: anywhere;
+        font-size: 13px;
+        overflow-wrap: normal;
     }
 
     .fixture-centre {
@@ -635,8 +635,8 @@ th,td{
     }
 
     .fixture-scoreline {
-        gap: 7px;
-        min-width: 58px;
+        gap: 6px;
+        min-width: 34px;
     }
 
     .fixture-submeta {
@@ -655,12 +655,13 @@ th,td{
 
     .fixture-status {
         justify-self: stretch;
+        align-self: center;
         text-align: center;
     }
 
     .fixture-status .badge {
         display: inline-block;
-        min-width: 92px;
+        min-width: 0;
         text-align: center;
     }
 
