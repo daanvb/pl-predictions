@@ -490,6 +490,24 @@ th,td{
     gap: 7px;
 }
 
+.fixture-home {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+}
+
+.fixture-away {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 24px;
+}
+
+.team-badge-slot {
+    width: 24px;
+    min-width: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .fixture-home,
 .team:not(.away) {
     justify-content: flex-end;
@@ -623,6 +641,18 @@ th,td{
         width: 18px;
         height: 18px;
         flex-basis: 18px;
+    }
+    .team-badge-slot {
+        width: 18px;
+        min-width: 18px;
+    }
+
+    .fixture-home {
+        grid-template-columns: 18px minmax(0, 1fr);
+    }
+
+    .fixture-away {
+        grid-template-columns: minmax(0, 1fr) 18px;
     }
     .fixture-row-grid {
         position: relative;

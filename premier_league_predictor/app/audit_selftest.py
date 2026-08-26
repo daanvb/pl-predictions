@@ -1441,6 +1441,8 @@ assert "position-chart-data" in gameweek_template
 assert "button.innerHTML" not in gameweek_template
 assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
+assert "team-badge-slot" in gameweek_template
+assert "team-badge-slot" in dashboard_template
 
 with open(
     os.path.join(templates_dir, "leaderboard.html"),
@@ -1456,6 +1458,7 @@ assert 'data-label="Other correct"' in leaderboard_template
 assert "position-chart-player" in leaderboard_template
 assert "selectedPlayerId" in leaderboard_template
 assert "item.innerHTML" not in leaderboard_template
+assert "league-mobile-details" in leaderboard_template
 
 with open(
     os.path.join(templates_dir, "stats.html"),

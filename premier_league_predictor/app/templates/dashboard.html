@@ -156,7 +156,7 @@ No position yet
 
 <div class="fixture-match">
 <div class="fixture-home">
-{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}
+<span class="team-badge-slot">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}</span>
 <strong>{{ short_team_name(fixture.home_team) }}</strong>
 </div>
 
@@ -170,7 +170,7 @@ v
 
 <div class="fixture-away">
 <strong>{{ short_team_name(fixture.away_team) }}</strong>
-{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}
+<span class="team-badge-slot">{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</span>
 </div>
 </div>
 
