@@ -6996,12 +6996,32 @@ def admin_live_feed_test():
     if not is_admin():
         return redirect("/")
 
+    manual_match = request.args.get("match", "").strip()
     requested_slugs = [
         value.strip().casefold()
         for value in request.args.getlist("slug")
         if value.strip()
     ][:6]
     discovery_error = None
+    manual_requested = bool(manual_match or requested_slugs)
+    if manual_match:
+        parsed = urlparse(manual_match)
+        candidate = None
+        if parsed.scheme or parsed.netloc:
+            allowed_hosts = {"sportscore.com", "www.sportscore.com"}
+            if parsed.scheme not in ("http", "https") or parsed.hostname not in allowed_hosts:
+                discovery_error = "Enter a SportScore match URL or a match slug."
+            else:
+                candidate = parsed.path.rstrip("/").split("/")[-1]
+        else:
+            candidate = manual_match.strip("/").split("/")[-1]
+        candidate = candidate.casefold() if candidate else ""
+        if candidate and re.fullmatch(r"[a-z0-9-]+-vs-[a-z0-9-]+", candidate):
+            requested_slugs.insert(0, candidate)
+            requested_slugs = list(dict.fromkeys(requested_slugs))[:6]
+        elif discovery_error is None:
+            discovery_error = "Enter a valid match slug such as lask-vs-celtic."
+
     if requested_slugs:
         configured = [
             (
@@ -7011,6 +7031,8 @@ def admin_live_feed_test():
             )
             for slug in requested_slugs
         ]
+    elif manual_requested:
+        configured = []
     else:
         try:
             discovered = [
@@ -7056,7 +7078,10 @@ def admin_live_feed_test():
                 )
             )
             competition = details.get("competition") or ""
-            if "uefa champions league" not in competition.casefold():
+            if (
+                not manual_requested
+                and "uefa champions league" not in competition.casefold()
+            ):
                 raise SportScoreError(
                     "This match is not listed as UEFA Champions League by SportScore."
                 )
@@ -7117,7 +7142,8 @@ def admin_live_feed_test():
         "live_feed_test.html",
         monitored=monitored,
         discovery_error=discovery_error,
-        automatic_discovery=not requested_slugs,
+        automatic_discovery=not manual_requested,
+        manual_match=manual_match,
         checked_at=local_datetime(now_utc().isoformat()),
     )
 
