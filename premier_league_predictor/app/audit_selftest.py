@@ -8,6 +8,11 @@ from datetime import datetime, timezone, timedelta
 
 # Use a disposable DB for build-time tests.
 import database
+legacy_pin_hash = __import__("hashlib").sha256(b"2468").hexdigest()
+assert database.is_legacy_pin_hash(legacy_pin_hash)
+assert database.verify_pin("2468", legacy_pin_hash)
+assert not database.verify_pin("1357", legacy_pin_hash)
+
 tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 tmp.close()
 database.DB = tmp.name
@@ -26,6 +31,9 @@ assert calculate_prediction_points(1, 1, 1, 1, True) == 12
 # Database creation/migration.
 database.init_db()
 conn = database.get_db()
+assert conn.execute("PRAGMA journal_mode").fetchone()[0].casefold() == "wal"
+assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 30000
 assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(predictions)").fetchall()}
 assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "incidents_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
@@ -398,6 +406,14 @@ response = client.post(
 )
 assert response.status_code == 302 and response.headers["Location"].endswith("/dashboard")
 conn = database.get_db()
+migrated_pin_hash = conn.execute(
+    "SELECT pin_hash FROM players WHERE id = ?", (admin["id"],)
+).fetchone()["pin_hash"]
+conn.close()
+assert migrated_pin_hash.startswith("scrypt:")
+assert database.verify_pin("1234", migrated_pin_hash)
+assert not database.verify_pin("9999", migrated_pin_hash)
+conn = database.get_db()
 conn.execute("UPDATE players SET email = ? WHERE id = ?", ("dan@example.com", admin["id"]))
 conn.commit()
 conn.close()
@@ -519,7 +535,17 @@ assert predictor.parse_live_minute("45+2") == (45, 2)
 assert predictor.parse_live_minute("90+7'") == (90, 7)
 assert predictor.parse_live_minute("Started 45+4′") == (45, 4)
 assert predictor.parse_live_minute("LIVE 90 + 6’") == (90, 6)
+assert predictor.parse_live_minute("Started 45+3 (HT)") == (45, 3)
+assert predictor.parse_live_minute("2nd half") == (None, None)
 assert predictor.parse_live_minute("86") == (86, None)
+assert predictor.sportscore_fixture_status({
+    "status": "live",
+    "status_text": "HT",
+}) == "PAUSED"
+assert predictor.sportscore_fixture_status({
+    "status": "live",
+    "status_text": "Half-time",
+}) == "PAUSED"
 assert predictor.status_label({
     "status": "IN_PLAY",
     "minute": 90,
@@ -568,6 +594,26 @@ assert "⚽ penalty".encode() in live_test_response.data
 assert b"Test Defender" in live_test_response.data
 assert b"never affect Predictor fixtures" in live_test_response.data
 assert b'class="fixture-scorers"' in live_test_response.data
+
+predictor.get_sportscore_match_details = lambda match: {
+    "home": "LASK",
+    "away": "Celtic",
+    "home_score": "1",
+    "away_score": "2",
+    "status": "live",
+    "status_text": "HT",
+    "competition": "UEFA Champions League",
+    "live_minute": None,
+    "incidents": [],
+}
+try:
+    halftime_test_response = client.get(
+        "/admin/live-feed-test?slug=lask-vs-celtic"
+    )
+finally:
+    predictor.get_sportscore_match_details = original_test_match_details
+assert halftime_test_response.status_code == 200
+assert b'<span class="badge live">HT</span>' in halftime_test_response.data
 
 # With no manual slugs, the diagnostics page discovers current matches from
 # SportScore instead of retrying expired, hard-coded match URLs.
@@ -750,17 +796,39 @@ for i in range(1, 3):
     )
 conn.commit()
 assert predictor.signal_latest_completed_gameweek(conn) == 1
+conn.execute(
+    """INSERT INTO fixtures(id, season, matchday, utc_date, status,
+           home_team, away_team)
+           VALUES (9010, ?, 2, ?, 'SCHEDULED', 'Next Home', 'Next Away')""",
+    (season, (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()),
+)
+conn.commit()
+gw2_opens_at = predictor.gameweek_open_at(conn, 2)
+assert gw2_opens_at.hour == 9
 conn.close()
 
-# The next-GW announcement waits one notification interval after results.
+# The completed GW stays on the dashboard until 09:00 UK time the next day;
+# the next-GW Signal announcement uses the same opening boundary.
 predictor.set_setting("signal_last_results_gw", "1")
-predictor.set_setting("signal_last_results_at", datetime.now(timezone.utc).isoformat())
-assert predictor.signal_next_gameweek_open_ready(2) is False
-predictor.set_setting(
-    "signal_last_results_at",
-    (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat(),
-)
-assert predictor.signal_next_gameweek_open_ready(2) is True
+original_now_utc = predictor.now_utc
+try:
+    predictor.now_utc = lambda: (
+        gw2_opens_at.astimezone(timezone.utc) - timedelta(minutes=1)
+    )
+    conn = database.get_db()
+    assert predictor.dashboard_current_gameweek(conn) == 1
+    assert predictor.signal_current_gameweek(conn) is None
+    conn.close()
+    assert predictor.signal_next_gameweek_open_ready(2) is False
+
+    predictor.now_utc = lambda: gw2_opens_at.astimezone(timezone.utc)
+    conn = database.get_db()
+    assert predictor.dashboard_current_gameweek(conn) == 2
+    assert predictor.signal_current_gameweek(conn) == 2
+    conn.close()
+    assert predictor.signal_next_gameweek_open_ready(2) is True
+finally:
+    predictor.now_utc = original_now_utc
 
 # Completed gameweeks opened from History no longer show Match Stats.
 past_predictions_response = client.get("/predict/1?history=1")

@@ -24,7 +24,16 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-from database import init_db, get_db, hash_pin, get_setting, set_setting, DB
+from database import (
+    DB,
+    get_db,
+    get_setting,
+    hash_pin,
+    init_db,
+    is_legacy_pin_hash,
+    set_setting,
+    verify_pin,
+)
 from database_restore import (
     database_has_users,
     install_database,
@@ -40,7 +49,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.25"
+APP_VERSION = "1.0.26"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -73,11 +82,15 @@ LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
 MIN_REFRESH_SLEEP_SECONDS = 60
 
+LOGIN_ATTEMPT_WINDOW_SECONDS = 10 * 60
+LOGIN_ATTEMPT_LIMIT = 5
+login_attempts = {}
+login_attempts_lock = threading.Lock()
+
 AUTO_BACKUP_SECONDS = 6 * 60 * 60
 MAX_AUTO_BACKUPS = 5
 
 SIGNAL_NOTIFICATION_CHECK_SECONDS = 15 * 60
-SIGNAL_NEXT_GAMEWEEK_DELAY_SECONDS = 15 * 60
 SIGNAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF = 24
 SIGNAL_FINAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF = 2
 
@@ -162,6 +175,34 @@ def logged_in():
     return "player_id" in session
 
 
+def login_attempt_key():
+    return request.remote_addr or "unknown"
+
+
+def login_is_rate_limited(key):
+    cutoff = time.monotonic() - LOGIN_ATTEMPT_WINDOW_SECONDS
+    with login_attempts_lock:
+        recent = [stamp for stamp in login_attempts.get(key, []) if stamp > cutoff]
+        if recent:
+            login_attempts[key] = recent
+        else:
+            login_attempts.pop(key, None)
+        return len(recent) >= LOGIN_ATTEMPT_LIMIT
+
+
+def record_failed_login(key):
+    cutoff = time.monotonic() - LOGIN_ATTEMPT_WINDOW_SECONDS
+    with login_attempts_lock:
+        recent = [stamp for stamp in login_attempts.get(key, []) if stamp > cutoff]
+        recent.append(time.monotonic())
+        login_attempts[key] = recent
+
+
+def clear_failed_logins(key):
+    with login_attempts_lock:
+        login_attempts.pop(key, None)
+
+
 def is_admin():
     return bool(session.get("admin"))
 
@@ -243,15 +284,35 @@ def parse_live_minute(value):
     """Return normal and added minutes from SportScore live-clock text."""
     if value is None:
         return None, None
-    match = re.search(
-        r"(?<!\d)(\d{1,3})(?:\s*\+\s*(\d{1,2}))?\s*[\'’′]?\s*$",
-        str(value),
-    )
-    if not match:
+    matches = list(re.finditer(
+        r"(?<!\d)(\d{1,3})(?:\s*\+\s*(\d{1,2}))?"
+        r"\s*[\'’′]?(?![a-z0-9])",
+        str(value).casefold(),
+    ))
+    if not matches:
         return None, None
+    match = matches[-1]
     return int(match.group(1)), (
         int(match.group(2)) if match.group(2) is not None else None
     )
+
+
+def sportscore_fixture_status(details, fallback=None):
+    """Map SportScore's live state and secondary phase text to app statuses."""
+    raw_status = str(details.get("status") or "").strip().casefold()
+    phase = re.sub(
+        r"[^a-z]+",
+        " ",
+        str(details.get("status_text") or "").strip().casefold(),
+    ).strip()
+
+    if raw_status == "finished" or phase in ("ft", "full time", "finished"):
+        return "FINISHED"
+    if phase in ("ht", "half time", "halftime", "interval"):
+        return "PAUSED"
+    if raw_status == "live":
+        return "IN_PLAY"
+    return fallback
 
 
 def format_file_size(byte_count):
@@ -2170,11 +2231,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                 WHERE id = ?
                 """,
                 (
-                    (
-                        "FINISHED" if details.get("status") == "finished"
-                        else "IN_PLAY" if details.get("status") == "live"
-                        else stored["status"]
-                    ),
+                    sportscore_fixture_status(details, stored["status"]),
                     details.get("home_score"),
                     details.get("away_score"),
                     minute_value,
@@ -2922,7 +2979,7 @@ def send_signal_message(message):
 
 
 
-def signal_current_gameweek(conn):
+def next_unfinished_gameweek(conn):
     row = conn.execute(
         """
         SELECT MIN(matchday) AS matchday
@@ -2939,6 +2996,74 @@ def signal_current_gameweek(conn):
         if row and row["matchday"] is not None
         else None
     )
+
+
+def gameweek_open_at(conn, matchday):
+    """Open a GW at 09:00 UK time the day after the previous GW ends."""
+    previous = conn.execute(
+        """
+        SELECT matchday, MAX(utc_date) AS final_kickoff
+        FROM fixtures
+        WHERE season = ?
+          AND matchday < ?
+          AND matchday IS NOT NULL
+        GROUP BY matchday
+        ORDER BY matchday DESC
+        LIMIT 1
+        """,
+        (SEASON, matchday),
+    ).fetchone()
+    if not previous or not previous["final_kickoff"]:
+        return None
+
+    final_kickoff = parse_utc(previous["final_kickoff"])
+    if final_kickoff is None:
+        return None
+
+    final_local = final_kickoff.astimezone(UK)
+    return (
+        final_local.replace(hour=9, minute=0, second=0, microsecond=0)
+        + timedelta(days=1)
+    )
+
+
+def signal_current_gameweek(conn):
+    matchday = next_unfinished_gameweek(conn)
+    if matchday is None:
+        return None
+    opens_at = gameweek_open_at(conn, matchday)
+    if opens_at is not None and now_utc() < opens_at.astimezone(timezone.utc):
+        return None
+    return matchday
+
+
+def dashboard_current_gameweek(conn):
+    """Keep the completed GW visible until the next GW opens."""
+    matchday = next_unfinished_gameweek(conn)
+    if matchday is None:
+        row = conn.execute(
+            """
+            SELECT MAX(matchday) AS matchday
+            FROM fixtures
+            WHERE season = ? AND matchday IS NOT NULL
+            """,
+            (SEASON,),
+        ).fetchone()
+        return row["matchday"] if row else None
+
+    opens_at = gameweek_open_at(conn, matchday)
+    if opens_at is None or now_utc() >= opens_at.astimezone(timezone.utc):
+        return matchday
+
+    previous = conn.execute(
+        """
+        SELECT MAX(matchday) AS matchday
+        FROM fixtures
+        WHERE season = ? AND matchday < ?
+        """,
+        (SEASON, matchday),
+    ).fetchone()
+    return previous["matchday"] if previous and previous["matchday"] else matchday
 
 
 def signal_latest_completed_gameweek(conn):
@@ -3063,18 +3188,20 @@ def signal_gw_open_message(matchday, fixtures):
 
 
 def signal_next_gameweek_open_ready(matchday):
-    """Delay the next GW announcement until 15 minutes after prior results."""
+    """Announce the next GW from 09:00 UK time on the following day."""
     previous_matchday = matchday - 1
     if previous_matchday < 1:
         return True
     if get_setting("signal_last_results_gw") != str(previous_matchday):
         return False
-    results_sent_at = parse_utc(get_setting("signal_last_results_at"))
-    if results_sent_at is None:
-        # Preserve compatibility with results notifications sent by older builds.
-        return True
-    return now_utc() >= results_sent_at + timedelta(
-        seconds=SIGNAL_NEXT_GAMEWEEK_DELAY_SECONDS
+    conn = get_db()
+    try:
+        opens_at = gameweek_open_at(conn, matchday)
+    finally:
+        conn.close()
+    return (
+        opens_at is None
+        or now_utc() >= opens_at.astimezone(timezone.utc)
     )
 
 
@@ -3529,6 +3656,17 @@ def login():
     )
 
     if request.method == "POST":
+        attempt_key = login_attempt_key()
+        if login_is_rate_limited(attempt_key):
+            flash(
+                "Too many unsuccessful attempts. Please wait 10 minutes and try again.",
+                "error",
+            )
+            return render_template(
+                "login.html",
+                registration_enabled=registration_enabled,
+            ), 429
+
         identifier = request.form.get(
             "identifier",
             ""
@@ -3549,18 +3687,22 @@ def login():
                 LOWER(email) = LOWER(?)
                 OR (email IS NULL AND LOWER(COALESCE(login_name, name)) = LOWER(?))
             )
-              AND pin_hash = ?
             """,
             (
                 identifier,
                 identifier,
-                hash_pin(pin)
             ),
         ).fetchone()
 
-        conn.close()
-
-        if player:
+        if player and verify_pin(pin, player["pin_hash"]):
+            if is_legacy_pin_hash(player["pin_hash"]):
+                conn.execute(
+                    "UPDATE players SET pin_hash = ? WHERE id = ?",
+                    (hash_pin(pin), player["id"]),
+                )
+                conn.commit()
+            conn.close()
+            clear_failed_logins(attempt_key)
             session.clear()
 
             session["player_id"] = player["id"]
@@ -3572,6 +3714,9 @@ def login():
             return redirect(
                 "/dashboard"
             )
+
+        conn.close()
+        record_failed_login(attempt_key)
 
         flash(
             "Incorrect email or PIN.",
@@ -4467,41 +4612,7 @@ def dashboard():
 
     conn = get_db()
 
-    # Current GW = first gameweek that still has at least one unfinished fixture.
-    current_row = conn.execute(
-        """
-        SELECT MIN(matchday) AS matchday
-        FROM fixtures
-        WHERE season = ?
-          AND matchday IS NOT NULL
-          AND status NOT IN ('FINISHED', 'CANCELLED')
-        """,
-        (SEASON,),
-    ).fetchone()
-
-    automatic_matchday = (
-        current_row["matchday"]
-        if current_row
-        else None
-    )
-
-    # If the season is fully complete, show the final gameweek.
-    if automatic_matchday is None:
-        latest_row = conn.execute(
-            """
-            SELECT MAX(matchday) AS matchday
-            FROM fixtures
-            WHERE season = ?
-              AND matchday IS NOT NULL
-            """,
-            (SEASON,),
-        ).fetchone()
-
-        automatic_matchday = (
-            latest_row["matchday"]
-            if latest_row
-            else None
-        )
+    automatic_matchday = dashboard_current_gameweek(conn)
 
     available_matchdays = [
         row["matchday"]
@@ -6953,7 +7064,10 @@ def admin_live_feed_test():
                     details.get("status_text")
                 )
             raw_status = (details.get("status") or "unknown").casefold()
-            if raw_status == "live":
+            normalized_status = sportscore_fixture_status(details)
+            if normalized_status == "PAUSED":
+                status_text = "HT"
+            elif raw_status == "live":
                 status_text = "LIVE"
                 if minute is not None:
                     status_text += f" {minute}"

@@ -1,4 +1,4 @@
-FROM ghcr.io/home-assistant/base:latest
+FROM ghcr.io/home-assistant/base:3.23
 
 RUN apk add --no-cache \
     python3 \
@@ -11,12 +11,12 @@ COPY app/ /app/
 RUN pip3 install \
     --no-cache-dir \
     --break-system-packages \
-    flask \
-    requests \
-    google-api-python-client \
-    google-auth \
-    google-auth-httplib2 \
-    google-auth-oauthlib
+    flask==3.1.3 \
+    requests==2.34.2 \
+    google-api-python-client==2.199.0 \
+    google-auth==2.57.0 \
+    google-auth-httplib2==0.4.2 \
+    google-auth-oauthlib==1.4.1
 
 # Build-time regression tests run with the same Flask/Jinja dependencies as runtime.
 RUN python3 -m py_compile /app/app.py /app/database.py /app/database_restore.py /app/scoring.py /app/football_api.py /app/sportscore.py \
