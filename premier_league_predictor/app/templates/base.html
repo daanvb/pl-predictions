@@ -451,12 +451,14 @@ th,td{
 /* v1.18.1 structured fixture layout */
 .fixture-row-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-        "match status"
-        "scorers ."
-        "meta broadcaster";
-    column-gap: 14px;
+        "match"
+        "scorers"
+        "meta"
+        "status";
+    column-gap: 0;
     row-gap: 7px;
     align-items: center;
 }
@@ -490,22 +492,28 @@ th,td{
     gap: 7px;
 }
 
-.fixture-home {
-    display: grid;
-    grid-template-columns: 24px minmax(0, 1fr);
-}
-
-.fixture-away {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 24px;
-}
-
 .team-badge-slot {
     width: 24px;
     min-width: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.fixture-team-cluster {
+    display: grid;
+    align-items: center;
+    gap: 7px;
+    width: max-content;
+    max-width: 100%;
+}
+
+.fixture-team-cluster-home {
+    grid-template-columns: 24px minmax(0, auto);
+}
+
+.fixture-team-cluster-away {
+    grid-template-columns: minmax(0, auto) 24px;
 }
 
 .fixture-home,
@@ -565,7 +573,8 @@ th,td{
 
 .fixture-status {
     grid-area: status;
-    justify-self: end;
+    justify-self: stretch;
+    text-align: center;
 }
 
 .fixture-submeta {
@@ -613,17 +622,32 @@ th,td{
 }
 
 .fixture-broadcaster {
-    grid-area: broadcaster;
-    justify-self: center;
+    grid-area: status;
+    justify-self: end;
+    align-self: center;
     min-width: 82px;
     min-height: 22px;
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 1;
 }
 
 .fixture-broadcaster .tv-logo {
     margin: 0;
+}
+
+.dashboard-gameweek-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    margin-top: 14px;
+}
+
+.dashboard-gameweek-actions a:last-child {
+    margin-left: auto;
 }
 
 @media (max-width: 640px) {
@@ -647,15 +671,14 @@ th,td{
         min-width: 18px;
     }
 
-    .fixture-home {
-        grid-template-columns: 18px minmax(0, 1fr);
+    .fixture-team-cluster-home {
+        grid-template-columns: 18px minmax(0, auto);
     }
 
-    .fixture-away {
-        grid-template-columns: minmax(0, 1fr) 18px;
+    .fixture-team-cluster-away {
+        grid-template-columns: minmax(0, auto) 18px;
     }
     .fixture-row-grid {
-        position: relative;
         grid-template-columns: minmax(0, 1fr);
         grid-template-areas:
             "match"
@@ -715,7 +738,7 @@ th,td{
     }
 
     .fixture-broadcaster {
-        grid-area: meta;
+        grid-area: status;
         justify-self: end;
         align-self: center;
         min-width: 0;

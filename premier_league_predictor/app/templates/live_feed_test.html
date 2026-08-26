@@ -62,8 +62,10 @@
 
 <div class="fixture-match">
 <div class="fixture-home">
+<span class="fixture-team-cluster fixture-team-cluster-home">
 <span class="team-badge-slot">{% if item.home_logo %}<img class="team-badge" src="{{ team_badge_url(item.home_logo) }}" alt="" loading="lazy">{% endif %}</span>
 <strong>{{ item.home }}</strong>
+</span>
 </div>
 <div class="fixture-centre">
 {% if item.status in ('live', 'finished') and item.home_score is not none and item.away_score is not none %}
@@ -73,8 +75,10 @@ v
 {% endif %}
 </div>
 <div class="fixture-away">
+<span class="fixture-team-cluster fixture-team-cluster-away">
 <strong>{{ item.away }}</strong>
 <span class="team-badge-slot">{% if item.away_logo %}<img class="team-badge" src="{{ team_badge_url(item.away_logo) }}" alt="" loading="lazy">{% endif %}</span>
+</span>
 </div>
 </div>
 

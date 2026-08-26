@@ -219,8 +219,10 @@ Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
 <div class="fixture-match live-fixture-match">
 
 <div class="fixture-home">
+<span class="fixture-team-cluster fixture-team-cluster-home">
 <span class="team-badge-slot">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}</span>
 <strong>{{ short_team_name(fixture.home_team) }}</strong>
+</span>
 </div>
 
 <div class="fixture-centre live-score live-score-grid">
@@ -230,8 +232,10 @@ Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
 </div>
 
 <div class="fixture-away">
+<span class="fixture-team-cluster fixture-team-cluster-away">
 <strong>{{ short_team_name(fixture.away_team) }}</strong>
 <span class="team-badge-slot">{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</span>
+</span>
 </div>
 
 </div>
