@@ -27,10 +27,17 @@
 <div class="card">
 <h2>{% if automatic_discovery %}Champions League matches{% else %}Match being monitored{% endif %}</h2>
 {% if automatic_discovery %}
-<p class="muted">Automatically showing UEFA Champions League matches from SportScore: live first, then upcoming, then recently completed.</p>
+<p class="muted">Automatically showing UEFA Champions League matches from the available SportScore and football-data.org feeds: live first, then upcoming, then recently completed.</p>
 {% endif %}
 {% if discovery_error %}
 <p style="color:#b91c1c">⚠️ Live match discovery failed: {{ discovery_error }}</p>
+{% endif %}
+{% if football_data_error %}
+<p style="color:#b45309">⚠️ football-data.org Champions League feed unavailable: {{ football_data_error }}</p>
+{% elif football_data_enabled %}
+<p class="small">football-data.org Champions League comparison is enabled.</p>
+{% else %}
+<p class="small">Add a football-data.org token in Settings to enable Champions League source comparison.</p>
 {% endif %}
 {% if not monitored %}
 {% if automatic_discovery %}
@@ -72,6 +79,7 @@ v
 </div>
 
 {% if item.submeta %}<div class="fixture-submeta">{{ item.submeta }}</div>{% endif %}
+{% if item.sources %}<div class="fixture-submeta">Sources: {{ item.sources|join(' + ') }}</div>{% endif %}
 <div class="fixture-broadcaster"></div>
 
 <div class="fixture-status">

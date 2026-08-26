@@ -10,6 +10,10 @@
 <a href="/dashboard">← Dashboard</a>
 </div>
 <div class="card">
+<h2>🔒 Your league data</h2>
+<p>Changing your name or PIN does not affect your predictions, points, stats or history.</p>
+</div>
+<div class="card">
 <form method="POST">
 <label><strong>Login email</strong></label>
 <input style="width:100%;margin:7px 0 6px" name="email" type="email" value="{{ player.email or '' }}" required>
@@ -23,9 +27,5 @@
 <input style="width:100%;margin:7px 0 18px" name="pin_confirm" type="password" inputmode="numeric" minlength="4" maxlength="8" placeholder="Repeat new PIN">
 <button class="primary">💾 Save Changes</button>
 </form>
-</div>
-<div class="card">
-<h2>🔒 Your league data</h2>
-<p>Changing your name or PIN does not affect your predictions, points, stats or history.</p>
 </div>
 {% endblock %}

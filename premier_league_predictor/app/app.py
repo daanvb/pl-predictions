@@ -39,7 +39,13 @@ from database_restore import (
     install_database,
     validate_predictor_database,
 )
-from football_api import test_connection, get_match, get_matches, FootballAPIError
+from football_api import (
+    FootballAPIError,
+    get_competition_matches,
+    get_match,
+    get_matches,
+    test_connection,
+)
 from sportscore import (
     SportScoreError,
     get_champions_league_matches as get_sportscore_champions_league_matches,
@@ -49,7 +55,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.27"
+APP_VERSION = "1.0.28"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -297,6 +303,22 @@ def parse_live_minute(value):
     )
 
 
+def sportscore_live_clock(details):
+    """Combine SportScore's base minute with richer added-time status text."""
+    minute, injury_time = parse_live_minute(details.get("live_minute"))
+    status_minute, status_injury_time = parse_live_minute(
+        details.get("status_text")
+    )
+    if (
+        status_injury_time is not None
+        and (minute is None or status_minute == minute)
+    ):
+        return status_minute, status_injury_time
+    if minute is not None:
+        return minute, injury_time
+    return status_minute, status_injury_time
+
+
 def sportscore_fixture_status(details, fallback=None):
     """Map SportScore's live state and secondary phase text to app statuses."""
     raw_status = str(details.get("status") or "").strip().casefold()
@@ -313,6 +335,86 @@ def sportscore_fixture_status(details, fallback=None):
     if raw_status == "live":
         return "IN_PLAY"
     return fallback
+
+
+def stored_fixture_for_teams(home_team, away_team):
+    """Find the imported Predictor fixture matching a diagnostic feed match."""
+    wanted = (
+        normalized_team_name(home_team),
+        normalized_team_name(away_team),
+    )
+    conn = get_db()
+    try:
+        fixtures = conn.execute(
+            "SELECT * FROM fixtures WHERE season = ? ORDER BY utc_date DESC",
+            (SEASON,),
+        ).fetchall()
+        for fixture in fixtures:
+            candidate = (
+                normalized_team_name(fixture["home_team"]),
+                normalized_team_name(fixture["away_team"]),
+            )
+            if candidate == wanted:
+                return dict(fixture)
+    finally:
+        conn.close()
+    return None
+
+
+def football_data_fixture_for_teams(matches, home_team, away_team):
+    wanted = (
+        normalized_team_name(home_team),
+        normalized_team_name(away_team),
+    )
+    for match in matches or []:
+        candidate = (
+            normalized_team_name((match.get("homeTeam") or {}).get("name")),
+            normalized_team_name((match.get("awayTeam") or {}).get("name")),
+        )
+        if candidate == wanted:
+            return match
+    return None
+
+
+def football_data_diagnostic_details(match):
+    home = match.get("homeTeam") or {}
+    away = match.get("awayTeam") or {}
+    score = (match.get("score") or {}).get("fullTime") or {}
+    provider_status = (match.get("status") or "").upper()
+    if provider_status == "FINISHED":
+        status = "finished"
+    elif provider_status in ("SCHEDULED", "TIMED", "POSTPONED"):
+        status = "upcoming"
+    else:
+        status = "live"
+    minute = match.get("minute")
+    injury_time = match.get("injuryTime")
+    live_minute = None
+    if minute is not None:
+        live_minute = str(minute)
+        if injury_time is not None:
+            live_minute += f"+{injury_time}"
+    return {
+        "home": home.get("name") or "Home",
+        "away": away.get("name") or "Away",
+        "home_logo": home.get("crest"),
+        "away_logo": away.get("crest"),
+        "home_score": score.get("home"),
+        "away_score": score.get("away"),
+        "status": status,
+        "status_text": provider_status.replace("_", " ").title(),
+        "competition": "UEFA Champions League",
+        "live_minute": live_minute,
+        "time": match.get("utcDate"),
+        "incidents": match.get("goals") or [],
+        "_details_loaded": True,
+        "_diagnostic_sources": ["football-data.org"],
+        "url": (
+            "/football/match/"
+            f"{sportscore_team_slug(home.get('name'))}-vs-"
+            f"{sportscore_team_slug(away.get('name'))}/"
+        ),
+    }
 
 
 def format_file_size(byte_count):
@@ -2206,13 +2308,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
             goals_json = json.dumps(goals) if goals else None
             incidents = details.get("incidents") or []
             incidents_json = json.dumps(incidents) if incidents else None
-            minute_value, injury_time_value = parse_live_minute(
-                details.get("live_minute")
-            )
-            if minute_value is None:
-                minute_value, injury_time_value = parse_live_minute(
-                    details.get("status_text")
-                )
+            minute_value, injury_time_value = sportscore_live_clock(details)
 
             conn.execute(
                 """
@@ -2221,7 +2317,10 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                     home_score = COALESCE(?, home_score),
                     away_score = COALESCE(?, away_score),
                     minute = COALESCE(?, minute),
-                    injury_time = COALESCE(?, injury_time),
+                    injury_time = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE injury_time
+                    END,
                     goals_json = COALESCE(?, goals_json),
                     incidents_json = COALESCE(?, incidents_json),
                     home_logo = COALESCE(?, home_logo),
@@ -2234,6 +2333,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                     sportscore_fixture_status(details, stored["status"]),
                     details.get("home_score"),
                     details.get("away_score"),
+                    minute_value,
                     minute_value,
                     injury_time_value,
                     goals_json,
@@ -7003,6 +7103,8 @@ def admin_live_feed_test():
         if value.strip()
     ][:6]
     discovery_error = None
+    football_data_error = None
+    football_data_matches = []
     manual_requested = bool(manual_match or requested_slugs)
     if manual_match:
         parsed = urlparse(manual_match)
@@ -7022,6 +7124,15 @@ def admin_live_feed_test():
         elif discovery_error is None:
             discovery_error = "Enter a valid match slug such as lask-vs-celtic."
 
+    football_token = get_setting("football_api_token")
+    if football_token:
+        try:
+            football_data_matches = get_competition_matches(
+                football_token, "CL", season=SEASON
+            )
+        except FootballAPIError as exc:
+            football_data_error = str(exc)
+
     if requested_slugs:
         configured = [
             (
@@ -7035,31 +7146,48 @@ def admin_live_feed_test():
         configured = []
     else:
         try:
-            discovered = [
+            sportscore_discovered = [
                 match for match in get_sportscore_champions_league_matches()
                 if "uefa champions league" in (
                     match.get("competition") or ""
                 ).casefold()
             ]
-            live = [match for match in discovered if match.get("status") == "live"]
-            upcoming = [
-                match for match in discovered
-                if match.get("status") == "upcoming"
-            ]
-            active = live + upcoming
-            selected = active or discovered
-            configured = []
-            for match in selected:
-                slug = (match.get("url") or "").rstrip("/").split("/")[-1]
-                label = (
-                    f"{match.get('home') or 'Home'} v "
-                    f"{match.get('away') or 'Away'}"
-                )
-                if slug:
-                    configured.append((slug, label, match))
         except Exception as exc:
-            configured = []
+            sportscore_discovered = []
             discovery_error = str(exc)
+        discovered = list(sportscore_discovered)
+        discovered_keys = {
+            (
+                normalized_team_name(match.get("home")),
+                normalized_team_name(match.get("away")),
+            )
+            for match in discovered
+        }
+        for football_match in football_data_matches:
+            converted = football_data_diagnostic_details(football_match)
+            key = (
+                normalized_team_name(converted.get("home")),
+                normalized_team_name(converted.get("away")),
+            )
+            if key not in discovered_keys:
+                discovered.append(converted)
+                discovered_keys.add(key)
+        live = [match for match in discovered if match.get("status") == "live"]
+        upcoming = [
+            match for match in discovered
+            if match.get("status") == "upcoming"
+        ]
+        active = live + upcoming
+        selected = active or discovered
+        configured = []
+        for match in selected:
+            slug = (match.get("url") or "").rstrip("/").split("/")[-1]
+            label = (
+                f"{match.get('home') or 'Home'} v "
+                f"{match.get('away') or 'Away'}"
+            )
+            if slug:
+                configured.append((slug, label, match))
     monitored = []
 
     for slug, label, discovered_match in configured:
@@ -7085,13 +7213,43 @@ def admin_live_feed_test():
                 raise SportScoreError(
                     "This match is not listed as UEFA Champions League by SportScore."
                 )
-            minute, injury_time = parse_live_minute(details.get("live_minute"))
-            if minute is None:
-                minute, injury_time = parse_live_minute(
-                    details.get("status_text")
+            stored_fixture = stored_fixture_for_teams(
+                details.get("home") or "",
+                details.get("away") or "",
+            )
+            football_fixture = football_data_fixture_for_teams(
+                football_data_matches,
+                details.get("home") or "",
+                details.get("away") or "",
+            )
+            football_details = (
+                football_data_diagnostic_details(football_fixture)
+                if football_fixture else None
+            )
+            minute, injury_time = sportscore_live_clock(details)
+            if football_details:
+                football_minute, football_injury_time = sportscore_live_clock(
+                    football_details
                 )
+                if minute is None:
+                    minute = football_minute
+                    injury_time = football_injury_time
+                elif injury_time is None and football_minute == minute:
+                    injury_time = football_injury_time
+            if stored_fixture:
+                if minute is None:
+                    minute = stored_fixture.get("minute")
+                    injury_time = stored_fixture.get("injury_time")
+                elif (
+                    injury_time is None
+                    and stored_fixture.get("minute") == minute
+                ):
+                    injury_time = stored_fixture.get("injury_time")
             raw_status = (details.get("status") or "unknown").casefold()
-            normalized_status = sportscore_fixture_status(details)
+            normalized_status = sportscore_fixture_status(
+                details,
+                stored_fixture.get("status") if stored_fixture else None,
+            )
             if normalized_status == "PAUSED":
                 status_text = "HT"
             elif raw_status == "live":
@@ -7106,6 +7264,41 @@ def admin_live_feed_test():
             else:
                 status_text = details.get("status_text") or raw_status.upper()
             goals = sportscore_goal_events(details)
+            if not goals and football_details:
+                goals = football_details.get("incidents") or []
+            goals_json = json.dumps(goals) if goals else (
+                stored_fixture.get("goals_json") if stored_fixture else None
+            )
+            incidents = details.get("incidents") or []
+            if not incidents and football_details:
+                incidents = football_details.get("incidents") or []
+            if not incidents and stored_fixture and stored_fixture.get("incidents_json"):
+                try:
+                    incidents = json.loads(stored_fixture["incidents_json"])
+                except (TypeError, ValueError):
+                    incidents = []
+            home_score = details.get("home_score")
+            away_score = details.get("away_score")
+            if football_details:
+                if home_score is None:
+                    home_score = football_details.get("home_score")
+                if away_score is None:
+                    away_score = football_details.get("away_score")
+            if stored_fixture:
+                if home_score is None:
+                    home_score = stored_fixture.get("home_score")
+                if away_score is None:
+                    away_score = stored_fixture.get("away_score")
+            sources = list(details.get("_diagnostic_sources") or ["SportScore"])
+            if football_details and "football-data.org" not in sources:
+                sources.append("football-data.org")
+            if stored_fixture:
+                stored_source = (
+                    stored_fixture.get("live_data_source")
+                    or "Predictor stored fixture"
+                )
+                if stored_source not in sources:
+                    sources.append(stored_source)
             kickoff_text = (
                 local_datetime(details.get("time"))
                 if details.get("time")
@@ -7116,20 +7309,21 @@ def admin_live_feed_test():
                 "away": details.get("away") or "Away",
                 "home_logo": safe_team_logo_url(details.get("home_logo")),
                 "away_logo": safe_team_logo_url(details.get("away_logo")),
-                "home_score": details.get("home_score"),
-                "away_score": details.get("away_score"),
+                "home_score": home_score,
+                "away_score": away_score,
                 "status": raw_status,
                 "status_label": status_text,
                 "submeta": kickoff_text if raw_status == "upcoming" else None,
                 "raw_minute": details.get("live_minute"),
                 "competition": competition,
+                "sources": sources,
                 "scorers": fixture_scorers(
-                    json.dumps(goals),
+                    goals_json,
                     details.get("home") or "",
                     details.get("away") or "",
                 ),
                 "red_cards": fixture_red_cards(
-                    details.get("incidents"),
+                    incidents,
                     details.get("home") or "",
                     details.get("away") or "",
                 ),
@@ -7142,6 +7336,8 @@ def admin_live_feed_test():
         "live_feed_test.html",
         monitored=monitored,
         discovery_error=discovery_error,
+        football_data_error=football_data_error,
+        football_data_enabled=bool(football_token),
         automatic_discovery=not manual_requested,
         manual_match=manual_match,
         checked_at=local_datetime(now_utc().isoformat()),

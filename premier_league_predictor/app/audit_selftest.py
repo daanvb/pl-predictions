@@ -538,6 +538,14 @@ assert predictor.parse_live_minute("LIVE 90 + 6’") == (90, 6)
 assert predictor.parse_live_minute("Started 45+3 (HT)") == (45, 3)
 assert predictor.parse_live_minute("2nd half") == (None, None)
 assert predictor.parse_live_minute("86") == (86, None)
+assert predictor.sportscore_live_clock({
+    "live_minute": "90",
+    "status_text": "Started 90+3",
+}) == (90, 3)
+assert predictor.sportscore_live_clock({
+    "live_minute": "46",
+    "status_text": "2nd half",
+}) == (46, None)
 assert predictor.sportscore_fixture_status({
     "status": "live",
     "status_text": "HT",
@@ -560,9 +568,9 @@ predictor.get_sportscore_match_details = lambda match: {
     "home_score": "1",
     "away_score": "2",
     "status": "live",
-    "status_text": "2nd half",
+    "status_text": "Started 90+3",
     "competition": "UEFA Champions League",
-    "live_minute": "90+3",
+    "live_minute": "90",
     "incidents": [
         {
             "time": 75,
@@ -620,6 +628,28 @@ assert b"UEFA Champions League by SportScore" not in manual_match_response.data
 assert b"Manual matches remain read-only" in manual_match_response.data
 
 predictor.get_sportscore_match_details = lambda match: {
+    "home": "Home FC",
+    "away": "Away FC",
+    "home_score": None,
+    "away_score": None,
+    "status": "live",
+    "status_text": "Started 90+3",
+    "competition": "Premier League",
+    "live_minute": "90",
+    "incidents": [],
+}
+try:
+    combined_feed_response = client.get(
+        "/admin/live-feed-test?match=home-fc-vs-away-fc"
+    )
+finally:
+    predictor.get_sportscore_match_details = original_test_match_details
+assert combined_feed_response.status_code == 200
+assert b"Sources: SportScore + Predictor stored fixture" in combined_feed_response.data
+assert b"LIVE 90+3" in combined_feed_response.data
+assert b"Alex Striker" in combined_feed_response.data
+
+predictor.get_sportscore_match_details = lambda match: {
     "home": "LASK",
     "away": "Celtic",
     "home_score": "1",
@@ -643,6 +673,27 @@ assert b'<span class="badge live">HT</span>' in halftime_test_response.data
 # SportScore instead of retrying expired, hard-coded match URLs.
 original_live_matches = predictor.get_sportscore_champions_league_matches
 original_test_match_details = predictor.get_sportscore_match_details
+original_competition_matches = predictor.get_competition_matches
+predictor.set_setting("football_api_token", "test-token")
+predictor.get_competition_matches = lambda token, competition, season: [
+    {
+        "id": 7001,
+        "homeTeam": {"name": "Fresh Home"},
+        "awayTeam": {"name": "Fresh Away"},
+        "score": {"fullTime": {"home": 1, "away": 0}},
+        "status": "IN_PLAY",
+        "minute": 12,
+        "utcDate": "2026-08-26T19:00:00Z",
+    },
+    {
+        "id": 7002,
+        "homeTeam": {"name": "Football Only Home"},
+        "awayTeam": {"name": "Football Only Away"},
+        "score": {"fullTime": {"home": None, "away": None}},
+        "status": "TIMED",
+        "utcDate": "2026-08-26T20:00:00Z",
+    },
+]
 predictor.get_sportscore_champions_league_matches = lambda: [
     {
         "home": "Fresh Home",
@@ -681,11 +732,16 @@ try:
 finally:
     predictor.get_sportscore_champions_league_matches = original_live_matches
     predictor.get_sportscore_match_details = original_test_match_details
+    predictor.get_competition_matches = original_competition_matches
+    predictor.set_setting("football_api_token", "")
 assert discovered_test_response.status_code == 200
 assert b"Fresh Home" in discovered_test_response.data
 assert b"Upcoming Home" in discovered_test_response.data
+assert b"Football Only Home" in discovered_test_response.data
 assert b"Domestic Home" not in discovered_test_response.data
-assert b"UEFA Champions League matches from SportScore" in discovered_test_response.data
+assert b"Sources: SportScore + football-data.org" in discovered_test_response.data
+assert b"football-data.org Champions League comparison is enabled" in discovered_test_response.data
+assert b"available SportScore and football-data.org feeds" in discovered_test_response.data
 conn = database.get_db()
 conn.execute("DELETE FROM fixtures WHERE id IN (8800, 8801)")
 conn.commit()
