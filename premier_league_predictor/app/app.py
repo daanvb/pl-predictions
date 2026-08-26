@@ -49,7 +49,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.26"
+APP_VERSION = "1.0.27"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -3407,6 +3407,7 @@ def signal_results_message(matchday, gw_table, overall_table):
             "🥇" if index == 1
             else "🥈" if index == 2
             else "🥉" if index == 3
+            else "💩" if index == 4
             else f"{index}."
         )
         lines.append(
@@ -3420,8 +3421,9 @@ def signal_results_message(matchday, gw_table, overall_table):
     ]
 
     for index, row in enumerate(overall_table, start=1):
+        prefix = "💩" if index == 4 else f"{index}."
         lines.append(
-            f"{index}. {row['name']} — {row['points']} pts"
+            f"{prefix} {row['name']} — {row['points']} pts"
         )
 
     lines += [
