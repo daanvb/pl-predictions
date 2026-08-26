@@ -55,7 +55,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.29"
+APP_VERSION = "1.1.0"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -535,6 +535,30 @@ def ranking_positions(rows):
     }
 
 
+def gameweek_progress_label(fixtures):
+    completed = sum(
+        1 for fixture in fixtures
+        if fixture["status"] == "FINISHED"
+    )
+    in_progress = sum(
+        1 for fixture in fixtures
+        if fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
+    )
+    if not completed and not in_progress:
+        return ""
+    if in_progress:
+        live_word = "game" if in_progress == 1 else "games"
+        if not completed:
+            return f"{in_progress} {live_word} in progress"
+        completed_word = "game" if completed == 1 else "games"
+        return (
+            f"After {completed} completed {completed_word} · "
+            f"{in_progress} {live_word} in progress"
+        )
+    game_word = "game" if completed == 1 else "games"
+    return f"After {completed} {game_word}"
+
+
 def season_label(season):
     return f"{season}/{str(season + 1)[-2:]}"
 
@@ -760,6 +784,238 @@ def table_position_change(
         previous_position
         - current_position
     )
+
+
+def build_live_table(fixtures, players, predictions, previous_league):
+    prediction_map = {
+        (prediction["player_id"], prediction["fixture_id"]): prediction
+        for prediction in predictions
+    }
+    reveal_map = {
+        fixture["id"]: fixture_is_locked(fixture)
+        for fixture in fixtures
+    }
+    previous_by_player = {
+        row["id"]: row
+        for row in previous_league
+    }
+    baseline_positions = ranking_positions(previous_league)
+    live_table = []
+
+    for player in players:
+        provisional = 0
+        live_exact_draws = 0
+        live_exact_scores = 0
+
+        for fixture in fixtures:
+            prediction = prediction_map.get(
+                (player["id"], fixture["id"])
+            )
+            if not prediction or not reveal_map[fixture["id"]]:
+                continue
+            if (
+                fixture["home_score"] is None
+                or fixture["away_score"] is None
+            ):
+                continue
+
+            provisional += calculate_prediction_points(
+                prediction["home_score"],
+                prediction["away_score"],
+                fixture["home_score"],
+                fixture["away_score"],
+                bool(prediction["dp"]),
+            )
+            if (
+                prediction["home_score"] == fixture["home_score"]
+                and prediction["away_score"] == fixture["away_score"]
+            ):
+                if fixture["home_score"] == fixture["away_score"]:
+                    live_exact_draws += 1
+                else:
+                    live_exact_scores += 1
+
+        previous = previous_by_player.get(player["id"])
+        live_table.append({
+            "id": player["id"],
+            "name": player["name"],
+            "points": provisional,
+            "season_points": (
+                previous["points"] if previous else 0
+            ) + provisional,
+            "exact_draws": (
+                previous["exact_draws"] if previous else 0
+            ) + live_exact_draws,
+            "exact_scores": (
+                previous["exact_scores"] if previous else 0
+            ) + live_exact_scores,
+        })
+
+    live_table.sort(
+        key=lambda row: (
+            -row["season_points"],
+            -row["exact_draws"],
+            -row["exact_scores"],
+            row["name"].lower(),
+        )
+    )
+    for position, player in enumerate(live_table, start=1):
+        player["position"] = position
+        player["position_change"] = table_position_change(
+            position,
+            baseline_positions.get(player["id"]),
+        )
+    return live_table
+
+
+def _snapshot_rows(conn, matchday):
+    fixtures = conn.execute(
+        """SELECT * FROM fixtures
+           WHERE season = ? AND matchday = ?
+           ORDER BY utc_date""",
+        (SEASON, matchday),
+    ).fetchall()
+    players = conn.execute(
+        "SELECT id, name FROM players ORDER BY name COLLATE NOCASE"
+    ).fetchall()
+    predictions = conn.execute(
+        """SELECT p.player_id, p.fixture_id, p.home_score, p.away_score,
+                  COALESCE(p.dp, 0) AS dp
+           FROM predictions p
+           JOIN fixtures f ON f.id = p.fixture_id
+           WHERE f.season = ? AND f.matchday = ?""",
+        (SEASON, matchday),
+    ).fetchall()
+    previous_league = overall_table_at_matchday(conn, matchday - 1)
+    return (
+        fixtures,
+        build_live_table(fixtures, players, predictions, previous_league),
+        previous_league,
+    )
+
+
+def _insert_position_snapshot(conn, matchday, captured_at, signature, rows):
+    cursor = conn.execute(
+        """INSERT OR IGNORE INTO live_position_snapshots
+           (season, matchday, captured_at, state_signature)
+           VALUES (?, ?, ?, ?)""",
+        (SEASON, matchday, captured_at, signature),
+    )
+    if cursor.rowcount != 1:
+        return False
+    conn.executemany(
+        """INSERT INTO live_position_snapshot_rows
+           (snapshot_id, player_id, player_name, position,
+            season_points, gameweek_points)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [
+            (
+                cursor.lastrowid,
+                row["id"],
+                row["name"],
+                row["position"],
+                row["season_points"],
+                row.get("points", 0),
+            )
+            for row in rows
+        ],
+    )
+    return True
+
+
+def record_live_position_snapshot(conn, matchday):
+    fixtures, live_table, previous_league = _snapshot_rows(conn, matchday)
+    if not fixtures or not any(
+        fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED", "FINISHED")
+        for fixture in fixtures
+    ):
+        return False
+
+    existing = conn.execute(
+        """SELECT COUNT(*) FROM live_position_snapshots
+           WHERE season = ? AND matchday = ?""",
+        (SEASON, matchday),
+    ).fetchone()[0]
+    if not existing:
+        baseline = []
+        for position, row in enumerate(previous_league, start=1):
+            baseline.append({
+                "id": row["id"],
+                "name": row["name"],
+                "position": position,
+                "season_points": row["points"],
+                "points": 0,
+            })
+        _insert_position_snapshot(
+            conn,
+            matchday,
+            fixtures[0]["utc_date"],
+            "baseline",
+            baseline,
+        )
+
+    signature = json.dumps(
+        [
+            [
+                row["id"], row["position"],
+                row["season_points"], row["points"],
+            ]
+            for row in live_table
+        ],
+        separators=(",", ":"),
+    )
+    return _insert_position_snapshot(
+        conn,
+        matchday,
+        now_utc().isoformat(),
+        signature,
+        live_table,
+    )
+
+
+def live_position_chart(conn, matchday):
+    rows = conn.execute(
+        """SELECT s.id AS snapshot_id, s.captured_at,
+                  r.player_id, r.player_name, r.position,
+                  r.season_points, r.gameweek_points
+           FROM live_position_snapshots s
+           JOIN live_position_snapshot_rows r ON r.snapshot_id = s.id
+           WHERE s.season = ? AND s.matchday = ?
+           ORDER BY s.captured_at, s.id, r.position""",
+        (SEASON, matchday),
+    ).fetchall()
+    snapshots = []
+    by_snapshot = {}
+    players = {}
+    for row in rows:
+        snapshot = by_snapshot.get(row["snapshot_id"])
+        if snapshot is None:
+            captured = parse_utc(row["captured_at"])
+            snapshot = {
+                "captured_at": row["captured_at"],
+                "label": (
+                    captured.astimezone(UK).strftime("%H:%M")
+                    if captured else ""
+                ),
+                "rows": [],
+            }
+            by_snapshot[row["snapshot_id"]] = snapshot
+            snapshots.append(snapshot)
+        point = {
+            "player_id": row["player_id"],
+            "position": row["position"],
+            "season_points": row["season_points"],
+            "gameweek_points": row["gameweek_points"],
+        }
+        snapshot["rows"].append(point)
+        players[row["player_id"]] = {
+            "id": row["player_id"],
+            "name": row["player_name"],
+        }
+    return {
+        "players": list(players.values()),
+        "snapshots": snapshots,
+    }
 
 
 def local_datetime(utc_date):
@@ -2235,7 +2491,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
     try:
         fixtures = conn.execute(
             """
-            SELECT id, home_team, away_team, home_score, away_score,
+            SELECT id, matchday, home_team, away_team, home_score, away_score,
                    status, goals_json, utc_date, home_logo, away_logo
             FROM fixtures
             WHERE season = ?
@@ -2348,6 +2604,10 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
 
         if updated:
             refresh_points(conn)
+            record_live_position_snapshot(
+                conn,
+                fixtures[0]["matchday"],
+            )
             archive_completed_season(conn, SEASON)
         conn.commit()
     finally:
@@ -5290,8 +5550,6 @@ def gameweek(matchday):
         matchday - 1,
     )
 
-    conn.close()
-
     prediction_map = {
         (p["player_id"], p["fixture_id"]): p
         for p in predictions
@@ -5313,94 +5571,14 @@ def gameweek(matchday):
         for fixture in fixtures
     }
 
-    live_table = []
-    previous_by_player = {
-        row["id"]: row
-        for row in previous_league
-    }
-    baseline_positions = ranking_positions(previous_league)
-
-    for player in players:
-        provisional = 0
-        live_exact_draws = 0
-        live_exact_scores = 0
-        finished = 0
-        live = 0
-
-        for fixture in fixtures:
-            pred = prediction_map.get(
-                (player["id"], fixture["id"])
-            )
-
-            if not pred:
-                continue
-
-            # Future fixtures stay hidden and never contribute live points.
-            if not reveal_map[fixture["id"]]:
-                continue
-
-            if (
-                fixture["home_score"] is None
-                or fixture["away_score"] is None
-            ):
-                continue
-
-            provisional += calculate_prediction_points(
-                pred["home_score"],
-                pred["away_score"],
-                fixture["home_score"],
-                fixture["away_score"],
-                bool(pred["dp"]),
-            )
-
-            if (
-                pred["home_score"] == fixture["home_score"]
-                and pred["away_score"] == fixture["away_score"]
-            ):
-                if fixture["home_score"] == fixture["away_score"]:
-                    live_exact_draws += 1
-                else:
-                    live_exact_scores += 1
-
-            if fixture["status"] == "FINISHED":
-                finished += 1
-            elif fixture["status"] in ("IN_PLAY", "PAUSED"):
-                live += 1
-
-        previous = previous_by_player.get(player["id"])
-        live_table.append({
-            "id": player["id"],
-            "name": player["name"],
-            "points": provisional,
-            "season_points": (previous["points"] if previous else 0) + provisional,
-            "exact_draws": (previous["exact_draws"] if previous else 0) + live_exact_draws,
-            "exact_scores": (previous["exact_scores"] if previous else 0) + live_exact_scores,
-            "finished_matches": finished,
-            "live_matches": live,
-        })
-
-    live_table.sort(
-        key=lambda x: (
-            -x["season_points"],
-            -x["exact_draws"],
-            -x["exact_scores"],
-            x["name"].lower(),
-        )
+    live_table = build_live_table(
+        fixtures,
+        players,
+        predictions,
+        previous_league,
     )
-
-    for position, player in enumerate(
-        live_table,
-        start=1
-    ):
-        player["position"] = position
-        player["position_change"] = (
-            table_position_change(
-                position,
-                baseline_positions.get(
-                    player["id"]
-                )
-            )
-        )
+    position_chart = live_position_chart(conn, matchday)
+    conn.close()
 
     return render_template(
         "gameweek.html",
@@ -5411,6 +5589,8 @@ def gameweek(matchday):
         prediction_map=prediction_map,
         reveal_map=reveal_map,
         live_table=live_table,
+        gameweek_progress=gameweek_progress_label(fixtures),
+        position_chart=position_chart,
     )
 
 

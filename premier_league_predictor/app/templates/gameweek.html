@@ -59,12 +59,7 @@
 
 <strong>{{ player.name }}</strong>
 
-<div class="small">
-{% if player.live_matches %}
-{{ player.live_matches }} live ·
-{% endif %}
-{{ player.finished_matches }} finished
-</div>
+{% if gameweek_progress %}<div class="small">{{ gameweek_progress }}</div>{% endif %}
 
 </div>
 
@@ -77,6 +72,22 @@
 
 {% endfor %}
 
+{% if position_chart.snapshots|length > 1 %}
+<section class="position-chart" aria-labelledby="position-chart-title">
+<div class="position-chart-heading">
+<div>
+<h3 id="position-chart-title">Position during this gameweek</h3>
+<p class="small">Tracks provisional league positions whenever live points change.</p>
+</div>
+<div class="position-chart-legend" id="position-chart-legend"></div>
+</div>
+<div class="position-chart-stage">
+<svg id="position-chart-svg" role="img" aria-label="League position changes during this gameweek"></svg>
+</div>
+</section>
+<script type="application/json" id="position-chart-data">{{ position_chart|tojson }}</script>
+{% endif %}
+
 <p class="small">
 Ordered by the current overall league position. The large total is the live season score.<br>
 Page and SportScore live data refresh every 60 seconds while matches are active.
@@ -85,9 +96,123 @@ Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
 
 </div>
 
+{% if position_chart.snapshots|length > 1 %}
+<script>
+(() => {
+    const dataNode = document.getElementById("position-chart-data");
+    const svg = document.getElementById("position-chart-svg");
+    const legend = document.getElementById("position-chart-legend");
+    if (!dataNode || !svg || !legend) return;
+
+    const data = JSON.parse(dataNode.textContent);
+    const snapshots = data.snapshots || [];
+    const players = data.players || [];
+    if (snapshots.length < 2 || !players.length) return;
+
+    const colours = ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2"];
+    const ns = "http://www.w3.org/2000/svg";
+    const width = 760;
+    const height = Math.max(230, 150 + players.length * 18);
+    const margin = {top: 22, right: 26, bottom: 42, left: 48};
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    const x = index => margin.left + (snapshots.length === 1 ? 0 : index * innerWidth / (snapshots.length - 1));
+    const y = position => margin.top + (players.length === 1 ? innerHeight / 2 : (position - 1) * innerHeight / (players.length - 1));
+    const make = (name, attrs = {}) => {
+        const node = document.createElementNS(ns, name);
+        Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+        return node;
+    };
+
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.replaceChildren();
+
+    for (let position = 1; position <= players.length; position += 1) {
+        svg.appendChild(make("line", {
+            x1: margin.left, x2: width - margin.right,
+            y1: y(position), y2: y(position),
+            class: "position-chart-grid"
+        }));
+        const label = make("text", {
+            x: margin.left - 12, y: y(position) + 4,
+            "text-anchor": "end", class: "position-chart-axis-label"
+        });
+        label.textContent = position;
+        svg.appendChild(label);
+    }
+
+    const labelIndexes = new Set([0, snapshots.length - 1]);
+    if (snapshots.length > 3) labelIndexes.add(Math.floor((snapshots.length - 1) / 2));
+    snapshots.forEach((snapshot, index) => {
+        if (!labelIndexes.has(index)) return;
+        const label = make("text", {
+            x: x(index), y: height - 13,
+            "text-anchor": index === 0 ? "start" : (index === snapshots.length - 1 ? "end" : "middle"),
+            class: "position-chart-axis-label"
+        });
+        label.textContent = index === 0 ? "Kick-off" : snapshot.label;
+        svg.appendChild(label);
+    });
+
+    players.forEach((player, playerIndex) => {
+        const colour = colours[playerIndex % colours.length];
+        const points = snapshots.map((snapshot, index) => {
+            const row = snapshot.rows.find(item => item.player_id === player.id);
+            return row ? {x: x(index), y: y(row.position), row, snapshot} : null;
+        }).filter(Boolean);
+        if (!points.length) return;
+
+        const group = make("g", {"data-chart-player": player.id});
+        const path = make("polyline", {
+            points: points.map(point => `${point.x},${point.y}`).join(" "),
+            fill: "none", stroke: colour, "stroke-width": 3,
+            "stroke-linejoin": "round", "stroke-linecap": "round",
+            "vector-effect": "non-scaling-stroke"
+        });
+        group.appendChild(path);
+        points.forEach(point => {
+            const circle = make("circle", {
+                cx: point.x, cy: point.y, r: 5,
+                fill: colour, stroke: "white", "stroke-width": 2,
+                "vector-effect": "non-scaling-stroke"
+            });
+            const title = make("title");
+            title.textContent = `${player.name}: ${point.row.position}${point.row.position === 1 ? "st" : point.row.position === 2 ? "nd" : point.row.position === 3 ? "rd" : "th"}, ${point.row.gameweek_points} GW pts at ${point.snapshot.label}`;
+            circle.appendChild(title);
+            group.appendChild(circle);
+        });
+        svg.appendChild(group);
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "position-chart-player";
+        button.dataset.player = player.id;
+        button.setAttribute("aria-pressed", "false");
+        const swatch = document.createElement("span");
+        swatch.style.background = colour;
+        button.appendChild(swatch);
+        button.appendChild(document.createTextNode(player.name));
+        button.addEventListener("click", () => {
+            const selected = button.getAttribute("aria-pressed") !== "true";
+            legend.querySelectorAll("button").forEach(item => item.setAttribute("aria-pressed", "false"));
+            svg.querySelectorAll("[data-chart-player]").forEach(item => item.classList.remove("is-muted", "is-selected"));
+            if (selected) {
+                button.setAttribute("aria-pressed", "true");
+                svg.querySelectorAll("[data-chart-player]").forEach(item => {
+                    item.classList.toggle("is-selected", item.dataset.chartPlayer === String(player.id));
+                    item.classList.toggle("is-muted", item.dataset.chartPlayer !== String(player.id));
+                });
+            }
+        });
+        legend.appendChild(button);
+    });
+})();
+</script>
+{% endif %}
+
 {% for fixture in fixtures %}
 
-<div class="card fixture-set">
+<div class="card fixture-set{% if fixture.status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
 
 <div class="fixture-row-grid">
 

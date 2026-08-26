@@ -57,7 +57,7 @@
 <p class="small">Slug: <code>{{ item.slug }}</code></p>
 </div>
 {% else %}
-<div class="fixture fixture-set">
+<div class="fixture fixture-set{% if item.status == 'live' %} fixture-live{% endif %}">
 <div class="fixture-row-grid">
 
 <div class="fixture-match">

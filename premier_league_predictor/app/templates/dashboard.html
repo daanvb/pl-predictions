@@ -150,7 +150,7 @@ No position yet
 
 {% for fixture in current_fixtures %}
 
-<div class="fixture fixture-set">
+<div class="fixture fixture-set{% if fixture.status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
 
 <div class="fixture-row-grid">
 
