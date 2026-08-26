@@ -21,6 +21,7 @@ All notable changes to Premier League Predictor are documented here.
 - Gameweek progress text now clearly distinguishes completed matches from matches currently in progress.
 - Refined live dashboard fixture spacing and team sizing on mobile while retaining the kickoff-above-status layout.
 - Player names in the season position chart can now be selected to highlight an individual line, and longer display names use their compact form.
+- Centred the dashboard season total, league position and current gameweek summary cards, including the final card on mobile.
 
 ## [1.0.29] - 2026-08-26
 
