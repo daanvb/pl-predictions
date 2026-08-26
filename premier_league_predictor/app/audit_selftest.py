@@ -830,6 +830,16 @@ try:
 finally:
     predictor.now_utc = original_now_utc
 
+signal_positions = [
+    {"name": f"Player {index}", "points": 10 - index}
+    for index in range(1, 6)
+]
+results_message = predictor.signal_results_message(
+    1, signal_positions, signal_positions
+)
+assert "💩 Player 4" in results_message
+assert "4. Player 4" not in results_message
+
 # Completed gameweeks opened from History no longer show Match Stats.
 past_predictions_response = client.get("/predict/1?history=1")
 assert past_predictions_response.status_code == 200

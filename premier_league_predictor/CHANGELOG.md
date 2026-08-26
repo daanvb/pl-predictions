@@ -2,6 +2,11 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.27] - 2026-08-26
+
+### Changed
+- Simplified the Your Stats cards by removing the explanatory point-value text beneath each total.
+
 ## [1.0.26] - 2026-08-26
 
 ### Fixed
