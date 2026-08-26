@@ -78,8 +78,12 @@ v
 </div>
 </div>
 
-{% if item.submeta %}<div class="fixture-submeta">{{ item.submeta }}</div>{% endif %}
-{% if item.sources %}<div class="fixture-submeta">Sources: {{ item.sources|join(' + ') }}</div>{% endif %}
+{% if item.submeta or item.sources %}
+<div class="fixture-submeta">
+{% if item.submeta %}<span>{{ item.submeta }}</span>{% endif %}
+{% if item.sources %}<span>Sources: {{ item.sources|join(' + ') }}</span>{% endif %}
+</div>
+{% endif %}
 <div class="fixture-broadcaster"></div>
 
 <div class="fixture-status">

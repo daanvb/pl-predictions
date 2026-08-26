@@ -229,11 +229,67 @@ def get_team_logo(team_slug):
     return None
 
 
+def snapshot_live_minute(snapshot, now=None):
+    """Mirror SportScore's browser clock using its live phase kickoff."""
+    try:
+        status_id = int(((snapshot or {}).get("status") or {}).get("id") or 0)
+    except (TypeError, ValueError):
+        return None
+    if status_id not in (2, 4):
+        return None
+    kickoff = (snapshot or {}).get("kickoff")
+    try:
+        kickoff = float(kickoff)
+    except (TypeError, ValueError):
+        return None
+    if kickoff < 1_000_000_000_000:
+        kickoff *= 1000
+    current = now or datetime.now(timezone.utc)
+    elapsed = int((current.timestamp() * 1000 - kickoff) // 60000)
+    if elapsed < 0:
+        return None
+    if status_id == 2:
+        minute = elapsed + 1
+        return f"45+{minute - 45}" if minute > 45 else str(minute)
+    minute = elapsed + 46
+    return f"90+{minute - 90}" if minute > 90 else str(minute)
+
+
+def _live_snapshot(slug):
+    try:
+        response = requests.get(
+            f"https://sportscore.com/football/match/{slug}/live/",
+            headers={
+                "User-Agent": "PremierLeaguePredictor/1.0",
+                "X-Requested-With": "XMLHttpRequest",
+            },
+            timeout=15,
+        )
+        if response.status_code == 200:
+            return response.json()
+    except (requests.RequestException, ValueError, AttributeError):
+        pass
+    return None
+
+
 def get_match_details(match):
     slug = (match.get("url") or "").rstrip("/").split("/")[-1]
     if not slug or not re.fullmatch(r"[a-z0-9-]+", slug):
         return match
-    return (_get("match", {"slug": slug}).get("match") or match)
+    details = _get("match", {"slug": slug}).get("match") or match
+    if (details.get("status") or "").casefold() == "live":
+        snapshot = _live_snapshot(slug)
+        if snapshot and snapshot.get("ok"):
+            live_minute = snapshot_live_minute(snapshot)
+            if live_minute:
+                details["live_minute"] = live_minute
+                details["status_text"] = live_minute
+            score = snapshot.get("score") or {}
+            if score.get("home") is not None:
+                details["home_score"] = score["home"]
+            if score.get("away") is not None:
+                details["away_score"] = score["away"]
+    return details
 
 
 def goal_events(match):

@@ -41,7 +41,7 @@ from database_restore import (
 )
 from football_api import (
     FootballAPIError,
-    get_competition_matches,
+    get_champions_league_matches as get_football_champions_league_matches,
     get_match,
     get_matches,
     test_connection,
@@ -55,7 +55,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.0.28"
+APP_VERSION = "1.0.29"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -7127,8 +7127,8 @@ def admin_live_feed_test():
     football_token = get_setting("football_api_token")
     if football_token:
         try:
-            football_data_matches = get_competition_matches(
-                football_token, "CL", season=SEASON
+            football_data_matches = get_football_champions_league_matches(
+                football_token, season=SEASON
             )
         except FootballAPIError as exc:
             football_data_error = str(exc)

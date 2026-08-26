@@ -45,10 +45,14 @@ def get_competition_matches(token, competition, season=2026):
     if not token:
         raise FootballAPIError("No API token has been configured.")
 
+    params = {"limit": 500}
+    if season is not None:
+        params["season"] = season
+
     response = requests.get(
         f"{API_BASE}/competitions/{competition}/matches",
         headers=headers(token),
-        params={"season": season, "limit": 500},
+        params=params,
         timeout=30,
     )
 
@@ -70,6 +74,25 @@ def get_competition_matches(token, competition, season=2026):
 
 def get_matches(token, season=2026):
     return get_competition_matches(token, COMPETITION, season)
+
+
+def get_champions_league_matches(token, season=2026):
+    """Try the documented CL code, numeric ID and provider-current season."""
+    attempts = (("CL", season), (2001, season), (2001, None))
+    last_error = None
+    for competition, requested_season in attempts:
+        try:
+            return get_competition_matches(
+                token, competition, requested_season
+            )
+        except FootballAPIError as exc:
+            last_error = exc
+            if "HTTP 404" not in str(exc):
+                raise
+    raise FootballAPIError(
+        "Champions League data is not available from the configured "
+        "football-data.org account."
+    ) from last_error
 
 
 def get_match(token, match_id):

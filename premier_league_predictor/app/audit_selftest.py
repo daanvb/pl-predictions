@@ -131,6 +131,71 @@ finally:
     predictor.requests.get = original_predictor_get
 
 import sportscore
+import football_api
+
+second_half_now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+assert sportscore.snapshot_live_minute({
+    "kickoff": (
+        second_half_now - timedelta(minutes=46)
+    ).timestamp() * 1000,
+    "status": {"id": 4},
+}, second_half_now) == "90+2"
+assert sportscore.snapshot_live_minute({
+    "kickoff": (
+        second_half_now - timedelta(minutes=47)
+    ).timestamp() * 1000,
+    "status": {"id": 2},
+}, second_half_now) == "45+3"
+assert sportscore.snapshot_live_minute({
+    "kickoff": second_half_now.timestamp() * 1000,
+    "status": {"id": "unknown"},
+}, second_half_now) is None
+
+original_sportscore_get = sportscore._get
+original_live_snapshot = sportscore._live_snapshot
+original_snapshot_minute = sportscore.snapshot_live_minute
+sportscore._get = lambda path, params: {
+    "match": {
+        "status": "live",
+        "live_minute": "90",
+        "status_text": "90",
+        "home_score": 5,
+        "away_score": 1,
+    }
+}
+sportscore._live_snapshot = lambda slug: {
+    "ok": True,
+    "score": {"home": 6, "away": 1},
+}
+sportscore.snapshot_live_minute = lambda snapshot: "90+2"
+try:
+    snapshot_match = sportscore.get_match_details({
+        "url": "/football/match/sang-mustang-fc-vs-dzongri-fc/"
+    })
+    assert snapshot_match["live_minute"] == "90+2"
+    assert snapshot_match["status_text"] == "90+2"
+    assert snapshot_match["home_score"] == 6
+finally:
+    sportscore._get = original_sportscore_get
+    sportscore._live_snapshot = original_live_snapshot
+    sportscore.snapshot_live_minute = original_snapshot_minute
+
+original_competition_loader = football_api.get_competition_matches
+competition_attempts = []
+def fake_competition_loader(token, competition, season):
+    competition_attempts.append((competition, season))
+    if len(competition_attempts) < 3:
+        raise football_api.FootballAPIError("Football API returned HTTP 404")
+    return [{"id": 2001}]
+football_api.get_competition_matches = fake_competition_loader
+try:
+    assert football_api.get_champions_league_matches("token", 2026) == [
+        {"id": 2001}
+    ]
+finally:
+    football_api.get_competition_matches = original_competition_loader
+assert competition_attempts == [("CL", 2026), (2001, 2026), (2001, None)]
+
 original_sportscore_get = sportscore._get
 sportscore._get = lambda path, params: {
     "team": {"name": "Badge FC", "logo": ""},
@@ -673,9 +738,9 @@ assert b'<span class="badge live">HT</span>' in halftime_test_response.data
 # SportScore instead of retrying expired, hard-coded match URLs.
 original_live_matches = predictor.get_sportscore_champions_league_matches
 original_test_match_details = predictor.get_sportscore_match_details
-original_competition_matches = predictor.get_competition_matches
+original_competition_matches = predictor.get_football_champions_league_matches
 predictor.set_setting("football_api_token", "test-token")
-predictor.get_competition_matches = lambda token, competition, season: [
+predictor.get_football_champions_league_matches = lambda token, season: [
     {
         "id": 7001,
         "homeTeam": {"name": "Fresh Home"},
@@ -732,7 +797,7 @@ try:
 finally:
     predictor.get_sportscore_champions_league_matches = original_live_matches
     predictor.get_sportscore_match_details = original_test_match_details
-    predictor.get_competition_matches = original_competition_matches
+    predictor.get_football_champions_league_matches = original_competition_matches
     predictor.set_setting("football_api_token", "")
 assert discovered_test_response.status_code == 200
 assert b"Fresh Home" in discovered_test_response.data
@@ -740,6 +805,8 @@ assert b"Upcoming Home" in discovered_test_response.data
 assert b"Football Only Home" in discovered_test_response.data
 assert b"Domestic Home" not in discovered_test_response.data
 assert b"Sources: SportScore + football-data.org" in discovered_test_response.data
+assert b'<div class="fixture-submeta">' in discovered_test_response.data
+assert b"<span>Sources: SportScore + football-data.org</span>" in discovered_test_response.data
 assert b"football-data.org Champions League comparison is enabled" in discovered_test_response.data
 assert b"available SportScore and football-data.org feeds" in discovered_test_response.data
 conn = database.get_db()
