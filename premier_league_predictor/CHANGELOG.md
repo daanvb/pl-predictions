@@ -2,6 +2,17 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.26] - 2026-08-26
+
+### Fixed
+- Live match clocks now preserve added time such as 45+3 and 90+2, and show HT correctly at half-time.
+
+### Improved
+- The completed gameweek now remains on the dashboard overnight; the next gameweek and its Signal announcement open together at 09:00 the following day.
+- Improved database responsiveness when live updates and users access the app at the same time.
+- Strengthened PIN security and added protection against repeated unsuccessful login attempts.
+- Made Home Assistant builds more reliable by locking release dependencies to tested versions.
+
 ## [1.0.25] - 2026-08-25
 
 ### Fixed

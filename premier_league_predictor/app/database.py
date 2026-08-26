@@ -1,19 +1,42 @@
 import sqlite3
 import os
 import hashlib
+import hmac
+import re
+
+from werkzeug.security import check_password_hash, generate_password_hash
 
 DB = "/data/predictor.db"
 
 
 def get_db():
     os.makedirs(os.path.dirname(DB) or ".", exist_ok=True)
-    conn = sqlite3.connect(DB, check_same_thread=False)
+    conn = sqlite3.connect(DB, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 30000")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 
 def hash_pin(pin):
-    return hashlib.sha256(pin.encode()).hexdigest()
+    return generate_password_hash(pin, method="scrypt")
+
+
+def is_legacy_pin_hash(value):
+    return bool(re.fullmatch(r"[0-9a-f]{64}", value or ""))
+
+
+def verify_pin(pin, stored_hash):
+    """Accept old SHA-256 PINs while accounts migrate to salted scrypt."""
+    if is_legacy_pin_hash(stored_hash):
+        legacy_hash = hashlib.sha256(pin.encode()).hexdigest()
+        return hmac.compare_digest(legacy_hash, stored_hash)
+
+    try:
+        return check_password_hash(stored_hash, pin)
+    except (ValueError, TypeError):
+        return False
 
 
 def _add_column_if_missing(conn, table, column, definition):
@@ -30,6 +53,7 @@ def _add_column_if_missing(conn, table, column, definition):
 
 def init_db(seed_default_player=True):
     conn = get_db()
+    conn.execute("PRAGMA journal_mode = WAL")
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS players (
@@ -79,6 +103,16 @@ def init_db(seed_default_player=True):
     _add_column_if_missing(conn, "fixtures", "live_data_source", "TEXT")
     _add_column_if_missing(conn, "fixtures", "home_logo", "TEXT")
     _add_column_if_missing(conn, "fixtures", "away_logo", "TEXT")
+
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_fixtures_season_matchday_date
+        ON fixtures(season, matchday, utc_date)
+    """)
+
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_fixtures_season_status_date
+        ON fixtures(season, status, utc_date)
+    """)
 
     # Historical results are stored separately so they can power local
     # form/head-to-head statistics without ever interfering with the live
