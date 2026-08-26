@@ -125,14 +125,12 @@ No position yet
 
 <div class="card">
 
-<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
-
 <div>
 <h2 style="margin-bottom:6px">⚽ Gameweek {{ current_matchday }}</h2>
 <p class="muted" style="margin-top:0">Your current round.</p>
 </div>
 
-<div style="display:flex;gap:8px;flex-wrap:wrap">
+<div class="dashboard-gameweek-actions">
 
 <a href="/predict/{{ current_matchday }}">
 <button class="primary">✍️ Make Predictions</button>
@@ -141,8 +139,6 @@ No position yet
 <a href="/gameweek/{{ current_matchday }}">
 <button>📊 Live GW</button>
 </a>
-
-</div>
 
 </div>
 
@@ -156,8 +152,10 @@ No position yet
 
 <div class="fixture-match">
 <div class="fixture-home">
+<span class="fixture-team-cluster fixture-team-cluster-home">
 <span class="team-badge-slot">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}</span>
 <strong>{{ short_team_name(fixture.home_team) }}</strong>
+</span>
 </div>
 
 <div class="fixture-centre">
@@ -169,8 +167,10 @@ v
 </div>
 
 <div class="fixture-away">
+<span class="fixture-team-cluster fixture-team-cluster-away">
 <strong>{{ short_team_name(fixture.away_team) }}</strong>
 <span class="team-badge-slot">{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</span>
+</span>
 </div>
 </div>
 
