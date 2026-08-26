@@ -2,6 +2,14 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.0.28] - 2026-08-26
+
+### Fixed
+- Live match clocks now retain SportScore added time when the base minute and added-time value arrive in separate fields.
+
+### Changed
+- Moved the account data notice and prediction reveal rule directly below their Dashboard buttons for better visibility.
+
 ## [1.0.27] - 2026-08-26
 
 ### Changed

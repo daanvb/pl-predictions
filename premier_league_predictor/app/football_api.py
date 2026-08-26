@@ -41,12 +41,12 @@ def test_connection(token):
     )
 
 
-def get_matches(token, season=2026):
+def get_competition_matches(token, competition, season=2026):
     if not token:
         raise FootballAPIError("No API token has been configured.")
 
     response = requests.get(
-        f"{API_BASE}/competitions/{COMPETITION}/matches",
+        f"{API_BASE}/competitions/{competition}/matches",
         headers=headers(token),
         params={"season": season, "limit": 500},
         timeout=30,
@@ -66,6 +66,10 @@ def get_matches(token, season=2026):
         )
 
     return response.json().get("matches", [])
+
+
+def get_matches(token, season=2026):
+    return get_competition_matches(token, COMPETITION, season)
 
 
 def get_match(token, match_id):
