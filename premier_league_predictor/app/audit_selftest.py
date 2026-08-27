@@ -890,6 +890,7 @@ for route in [
     "/dashboard",
     "/rules",
     "/stats",
+    "/league-stats",
     "/leaderboard",
     "/history",
     "/changelog",
@@ -933,6 +934,13 @@ assert b"Correct Winners" in leaderboard_response.data
 assert b"Positions are ranked by total points" in leaderboard_response.data
 stats_response = client.get("/stats")
 assert b"PREDICTIONS SCORED" not in stats_response.data
+assert b"Your Stats" in stats_response.data
+assert b"BEST GAMEWEEK" in stats_response.data
+assert b"CURRENT LEADER" not in stats_response.data
+league_stats_response = client.get("/league-stats")
+assert league_stats_response.status_code == 200
+assert b"League Stats" in league_stats_response.data
+assert b"CURRENT LEADER" in league_stats_response.data
 conn = database.get_db()
 for fixture_id, matchday in ((8701, 37), (8702, 38)):
     conn.execute(
@@ -1490,8 +1498,18 @@ with open(
     stats_template = handle.read()
 
 assert "DPs USED" not in stats_template
-assert "MOST OTHER CORRECT RESULTS" in stats_template
-assert "MOST EXACT SCORES WITH DP" in stats_template
+assert "BEST GAMEWEEK" in stats_template
+assert "CURRENT LEADER" not in stats_template
+
+with open(
+    os.path.join(templates_dir, "league_stats.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    league_stats_template = handle.read()
+
+assert "MOST CORRECT WINNERS" in league_stats_template
+assert "MOST EXACT SCORES WITH DP" in league_stats_template
 
 with open(
     os.path.join(templates_dir, "base.html"),
@@ -1716,4 +1734,4 @@ releases = predictor.read_app_changelog()
 assert releases and releases[0]["version"] == predictor.APP_VERSION
 
 os.remove(tmp.name)
-print("Premier League Predictor self-test: PASS")
+print("Preddies self-test: PASS")

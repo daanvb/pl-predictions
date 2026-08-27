@@ -55,7 +55,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -3571,7 +3571,7 @@ def signal_gw_open_message(matchday, fixtures):
         return None
 
     return "\n".join([
-        f"⚽ Premier League Predictor — GW{matchday}",
+        f"⚽ Preddies — GW{matchday}",
         "",
         "Predictions are now open!",
         "",
@@ -4644,6 +4644,7 @@ def historical_season(season):
 
 
 @app.route("/stats")
+@app.route("/league-stats")
 def stats():
     if not logged_in():
         return redirect("/")
@@ -4770,6 +4771,20 @@ def stats():
             session["player_id"],
         ),
     ).fetchone()
+
+    if request.path == "/stats":
+        conn.close()
+        avg_points = (
+            round(personal["total_points"] / personal["predictions_made"], 2)
+            if personal["predictions_made"]
+            else 0
+        )
+        return render_template(
+            "stats.html",
+            personal=personal,
+            best_gameweek=best_gameweek,
+            avg_points=avg_points,
+        )
 
     # --------------------------------------------------------
     # Tie-aware league records
@@ -5003,9 +5018,7 @@ def stats():
         )
 
     return render_template(
-        "stats.html",
-        personal=personal,
-        best_gameweek=best_gameweek,
+        "league_stats.html",
         top_scorers=top_scorers,
         leader_value=leader_value,
         most_exact_draws=most_exact_draws,
@@ -5019,7 +5032,6 @@ def stats():
         best_gameweeks_overall=best_gameweeks_overall,
         best_gameweek_value=best_gameweek_value,
         completed_matches=completed_matches["total"],
-        avg_points=avg_points,
     )
 
 
@@ -6199,7 +6211,7 @@ def admin_signal_test():
     if not is_admin():
         return redirect("/")
     try:
-        send_signal_message("⚽ Premier League Predictor\n\nSignal integration is working! ✅")
+        send_signal_message("⚽ Preddies\n\nSignal integration is working! ✅")
         set_setting("last_signal_test", now_utc().isoformat())
         set_setting("last_signal_error", "")
         flash("Signal test message sent successfully.", "success")
@@ -6461,7 +6473,7 @@ small {{ color:#64748b; }}
 <div style=\"font-size:48px\">{icon}</div>
 <h1>{title}</h1>
 <div class=\"msg\">{message}</div>
-<p><small>Premier League Predictor v{APP_VERSION}</small></p>
+<p><small>Preddies v{APP_VERSION}</small></p>
 <a href=\"{button_url}\">{button_text}</a>
 </div></div>
 </body>

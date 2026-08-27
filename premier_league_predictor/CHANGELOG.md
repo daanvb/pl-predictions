@@ -1,6 +1,21 @@
 # Changelog
 
-All notable changes to Premier League Predictor are documented here.
+All notable changes to Preddies are documented here.
+
+## [1.1.3] - 2026-08-27
+
+### Added
+- Split personal performance into Your Stats and added a dedicated Overall League Stats page.
+- Added each player's best Gameweek to Your Stats.
+
+### Improved
+- Renamed the app to Preddies across the interface, Home Assistant listing and notifications.
+- Simplified headings and tightened layouts across Stats, Past Winners, Gameweek History, My Account and the season leaderboard.
+- Clarified the standard and Double Points scoring examples on the Rules page.
+
+### Fixed
+- Corrected Double Points scoring so the complete award, including an exact-score bonus, is doubled: 10 points for an exact winning score and 12 points for an exact draw.
+- Finished predictions are recalculated using the corrected scoring rules so affected earlier Gameweeks update automatically.
 
 ## [1.1.2] - 2026-08-27
 

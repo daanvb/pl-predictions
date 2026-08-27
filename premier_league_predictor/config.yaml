@@ -1,6 +1,6 @@
-name: "Premier League Predictor"
+name: "Preddies"
 description: "Private Premier League prediction game"
-version: "1.21.45"
+version: "1.21.46"
 slug: "premier_league_predictor"
 init: false
 arch:
@@ -10,10 +10,10 @@ boot: auto
 ports:
   8099/tcp: 8099
 ports_description:
-  8099/tcp: "Premier League Predictor"
+  8099/tcp: "Preddies"
 map:
   - data:rw
 options: {}
 schema: {}
 panel_icon: mdi:soccer
-panel_title: Premier League Predictor
+panel_title: Preddies

@@ -9,6 +9,7 @@
 
 <div class="nav">
 <a href="/dashboard">← Dashboard</a>
+<a href="/league-stats">🏅 League Stats</a>
 </div>
 
 <div class="card league-table-card">
@@ -156,6 +157,17 @@ Positions are ranked by total points. If points are level, the tie-break order i
   font-size: 12px;
   line-height: 1.45;
 }
+.season-chart-wrap {
+  position:relative;
+  width:100%;
+  height:340px;
+}
+.season-chart-legend {
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px 10px;
+  margin-top:8px;
+}
 @media (max-width: 700px) {
   .league-table-card {
     padding-left: 10px;
@@ -215,6 +227,9 @@ Positions are ranked by total points. If points are level, the tie-break order i
     margin: 12px 4px 0;
     font-size: 11px;
   }
+  .season-chart-wrap {
+    height:300px;
+  }
 }
 </style>
 
@@ -223,10 +238,10 @@ Positions are ranked by total points. If points are level, the tie-break order i
 <p class="muted">League position after each completed gameweek.</p>
 
 {% if position_chart.matchdays %}
-<div style="position:relative;width:100%;height:420px">
+<div class="season-chart-wrap">
 <canvas id="position-chart" aria-label="Player league positions by gameweek"></canvas>
 </div>
-<div id="position-chart-legend" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px"></div>
+<div id="position-chart-legend" class="season-chart-legend"></div>
 <script>
 (function () {
   const data = {{ position_chart|tojson }};
@@ -239,9 +254,10 @@ Positions are ranked by total points. If points are level, the tie-break order i
   function draw() {
     const box = canvas.parentElement.getBoundingClientRect();
     canvas.width = Math.max(320, box.width) * ratio;
-    canvas.height = 420 * ratio;
+    const chartHeight = Math.max(260, box.height || 340);
+    canvas.height = chartHeight * ratio;
     canvas.style.width = Math.max(320, box.width) + 'px';
-    canvas.style.height = '420px';
+    canvas.style.height = chartHeight + 'px';
     const ctx = canvas.getContext('2d');
     ctx.scale(ratio, ratio);
     const width = canvas.width / ratio;

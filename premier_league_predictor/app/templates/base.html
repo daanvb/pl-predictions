@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-<title>{% block title %}Premier League Predictor{% endblock %}</title>
+<title>{% block title %}Preddies{% endblock %}</title>
 <style>
 :root{
   --ink:#0f172a;
@@ -394,6 +394,10 @@ th,td{
   justify-content:space-between;
   gap:12px
 }
+.seasons-page .season-winner-row {
+  padding:12px 14px;
+  margin-bottom:8px
+}
 .season-winner-name {
   margin-top:3px;
   font-size:21px;
@@ -494,7 +498,11 @@ th,td{
     flex-wrap:nowrap
   }
   .season-winner-name {
-    font-size:18px
+    font-size:17px
+  }
+  .seasons-page .season-winner-row {
+    padding:9px 10px;
+    min-height:0
   }
   .seasons-page .muted,
   .history-page .small {
@@ -1256,7 +1264,7 @@ th,td{
 
 /* Dashboard fixture cards */
 .fixture.fixture-set {
-    padding: 14px 14px 10px;
+    padding: 12px 12px 7px;
     border: 1px solid #cbd5e1;
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.55);
@@ -1380,7 +1388,7 @@ th,td{
     }
 
     .fixture.fixture-set {
-        padding: 12px 12px 8px;
+        padding: 10px 10px 5px;
         border-radius: 12px;
     }
 
@@ -1471,7 +1479,7 @@ th,td{
 {% endif %}
 
 <div class="footer">
-Premier League Predictor v{{ app_version }}
+Preddies v{{ app_version }}
 </div>
 
 </div>
