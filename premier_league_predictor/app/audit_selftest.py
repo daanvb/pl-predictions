@@ -921,6 +921,10 @@ assert backup_calls == [True]
 assert predictor.get_setting("last_database_optimize")
 leaderboard_response = client.get("/leaderboard")
 assert b"Season position changes" in leaderboard_response.data
+assert b"Correct Draws" in leaderboard_response.data
+assert b"Correct Scores" in leaderboard_response.data
+assert b"Correct Winners" in leaderboard_response.data
+assert b"Positions are ranked by total points" in leaderboard_response.data
 conn = database.get_db()
 for fixture_id, matchday in ((8701, 37), (8702, 38)):
     conn.execute(

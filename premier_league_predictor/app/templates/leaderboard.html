@@ -62,7 +62,7 @@
 
 <div class="league-player" role="cell">
 <strong>{{ player.name }}</strong>
-<div class="league-mobile-details">Draws {{ player.exact_draws }} · Wins {{ player.exact_scores }} · Other {{ player.correct_results }}</div>
+<div class="league-mobile-details">Correct Draws {{ player.exact_draws }} · Correct Scores {{ player.exact_scores }} · Correct Winners {{ player.correct_results }}</div>
 </div>
 
 <div class="league-stat" role="cell" data-label="Exact draws">
@@ -87,6 +87,9 @@
 
 </div>
 </div>
+<p class="league-table-explanation muted">
+Positions are ranked by total points. If points are level, the player with more correct draws ranks higher, followed by more correct scores; if still level, names are ordered alphabetically.
+</p>
 </div>
 
 <style>
@@ -120,13 +123,19 @@
   text-align: center;
 }
 .league-position {
-  display: flex;
+  display: grid;
+  grid-template-columns: 36px 24px;
   align-items: center;
-  justify-content: space-around;
+  justify-content: center;
   gap: 6px;
 }
 .league-position .rank {
-  min-width: 36px;
+  min-width: 0;
+  text-align: center;
+}
+.league-position .position-move {
+  min-width: 0;
+  text-align: center;
 }
 .league-player {
   min-width: 0;
@@ -134,6 +143,11 @@
 }
 .league-mobile-details {
   display: none;
+}
+.league-table-explanation {
+  margin: 14px 8px 0;
+  font-size: 12px;
+  line-height: 1.45;
 }
 @media (max-width: 700px) {
   .league-table-card {
@@ -147,8 +161,8 @@
     min-width: 0;
   }
   .league-table-row {
-    grid-template-columns: 54px minmax(0, 1fr) 58px;
-    gap: 8px;
+    grid-template-columns: 50px minmax(0, 1fr) 52px;
+    gap: 6px;
     padding: 10px 4px;
   }
   .league-table-header > div:nth-child(3),
@@ -160,10 +174,12 @@
     display: none;
   }
   .league-position {
+    grid-template-columns: 26px 18px;
     justify-content: center;
+    gap: 2px;
   }
   .league-position .rank {
-    min-width: 26px;
+    min-width: 0;
   }
   .league-player {
     overflow-wrap: normal;
@@ -172,12 +188,17 @@
     display: block;
     margin-top: 3px;
     color: var(--muted);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 400;
+    line-height: 1.35;
   }
   .leader-points.league-stat {
-    text-align: right;
+    text-align: center;
     font-size: 22px;
+  }
+  .league-table-explanation {
+    margin: 12px 4px 0;
+    font-size: 11px;
   }
 }
 </style>
