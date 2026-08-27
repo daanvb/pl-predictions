@@ -778,7 +778,10 @@ try:
 finally:
     predictor.get_sportscore_match_details = original_test_match_details
 assert combined_feed_response.status_code == 200
-assert b"Sources: SportScore + Predictor stored fixture" in combined_feed_response.data
+assert b"Sources:" in combined_feed_response.data
+assert b"SportScore" in combined_feed_response.data
+assert b"Predictor stored fixture" not in combined_feed_response.data
+assert b'<div class="fixture-sources">' not in combined_feed_response.data
 assert b"LIVE 90+3" in combined_feed_response.data
 assert b"Alex Striker" in combined_feed_response.data
 
@@ -872,8 +875,10 @@ assert b"Fresh Home" in discovered_test_response.data
 assert b"Upcoming Home" in discovered_test_response.data
 assert b"Football Only Home" in discovered_test_response.data
 assert b"Domestic Home" not in discovered_test_response.data
-assert b"Sources: SportScore + football-data.org" in discovered_test_response.data
-assert b'<div class="fixture-sources">Sources: SportScore + football-data.org</div>' in discovered_test_response.data
+assert b'<p class="small fixture-list-sources">' in discovered_test_response.data
+assert b"SportScore" in discovered_test_response.data
+assert b"football-data.org" in discovered_test_response.data
+assert b'<div class="fixture-sources">' not in discovered_test_response.data
 assert b"football-data.org Champions League comparison is enabled" in discovered_test_response.data
 assert b"available SportScore and football-data.org feeds" in discovered_test_response.data
 conn = database.get_db()
@@ -903,6 +908,7 @@ assert b"API Settings" in admin_response.data
 assert b'href="/admin/settings"' in admin_response.data
 assert b'href="/admin/live-feed-test"' in admin_response.data
 assert b"Database Health" in admin_response.data
+assert b">PREDICTIONS</div>" not in admin_response.data
 health = predictor.database_health()
 assert health["database_bytes"] > 0
 assert health["page_count"] > 0
@@ -925,6 +931,8 @@ assert b"Correct Draws" in leaderboard_response.data
 assert b"Correct Scores" in leaderboard_response.data
 assert b"Correct Winners" in leaderboard_response.data
 assert b"Positions are ranked by total points" in leaderboard_response.data
+stats_response = client.get("/stats")
+assert b"PREDICTIONS SCORED" not in stats_response.data
 conn = database.get_db()
 for fixture_id, matchday in ((8701, 37), (8702, 38)):
     conn.execute(
@@ -1385,6 +1393,16 @@ conn.execute(
 predictor.refresh_points(conn)
 conn.commit()
 
+# Reopening leaderboard/stats must not rewrite every already-correct row.
+recalculation_sql = []
+conn.set_trace_callback(recalculation_sql.append)
+predictor.refresh_points(conn)
+conn.set_trace_callback(None)
+assert not any(
+    statement.lstrip().upper().startswith("UPDATE PREDICTIONS")
+    for statement in recalculation_sql
+)
+
 historical_table = predictor.overall_table_at_matchday(
     conn,
     1
@@ -1393,6 +1411,7 @@ historical_table = predictor.overall_table_at_matchday(
 # Verify helper exposes/uses leaderboard tie-break fields.
 assert "exact_draws" in historical_table[0].keys()
 assert "exact_scores" in historical_table[0].keys()
+assert "correct_results" in historical_table[0].keys()
 
 conn.close()
 

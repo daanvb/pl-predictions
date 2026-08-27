@@ -55,7 +55,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -627,6 +627,7 @@ def archive_completed_season(conn, season):
         LEFT JOIN fixtures f ON f.id = p.fixture_id
         GROUP BY pl.id
         ORDER BY points DESC, exact_draws DESC, exact_scores DESC,
+                 correct_results DESC,
                  pl.name COLLATE NOCASE
         """,
         (season, season, season, season, season),
@@ -690,7 +691,8 @@ def overall_table_at_matchday(
                 name,
                 0 AS points,
                 0 AS exact_draws,
-                0 AS exact_scores
+                0 AS exact_scores,
+                0 AS correct_results
             FROM players
             ORDER BY name COLLATE NOCASE
             """
@@ -742,7 +744,28 @@ def overall_table_at_matchday(
                     END
                 ),
                 0
-            ) AS exact_scores
+            ) AS exact_scores,
+
+            COALESCE(
+                SUM(
+                    CASE
+                    WHEN f.status = 'FINISHED'
+                     AND f.matchday <= ?
+                     AND NOT (
+                        p.home_score = f.home_score
+                        AND p.away_score = f.away_score
+                     )
+                     AND (
+                        (f.home_score = f.away_score AND p.home_score = p.away_score)
+                        OR (f.home_score > f.away_score AND p.home_score > p.away_score)
+                        OR (f.home_score < f.away_score AND p.home_score < p.away_score)
+                     )
+                    THEN 1
+                    ELSE 0
+                    END
+                ),
+                0
+            ) AS correct_results
 
         FROM players pl
 
@@ -759,9 +782,11 @@ def overall_table_at_matchday(
             points DESC,
             exact_draws DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """,
         (
+            matchday,
             matchday,
             matchday,
             matchday,
@@ -806,6 +831,7 @@ def build_live_table(fixtures, players, predictions, previous_league):
         provisional = 0
         live_exact_draws = 0
         live_exact_scores = 0
+        live_correct_results = 0
 
         for fixture in fixtures:
             prediction = prediction_map.get(
@@ -834,6 +860,12 @@ def build_live_table(fixtures, players, predictions, previous_league):
                     live_exact_draws += 1
                 else:
                     live_exact_scores += 1
+            elif (
+                (fixture["home_score"] == fixture["away_score"] and prediction["home_score"] == prediction["away_score"])
+                or (fixture["home_score"] > fixture["away_score"] and prediction["home_score"] > prediction["away_score"])
+                or (fixture["home_score"] < fixture["away_score"] and prediction["home_score"] < prediction["away_score"])
+            ):
+                live_correct_results += 1
 
         previous = previous_by_player.get(player["id"])
         live_table.append({
@@ -849,6 +881,9 @@ def build_live_table(fixtures, players, predictions, previous_league):
             "exact_scores": (
                 previous["exact_scores"] if previous else 0
             ) + live_exact_scores,
+            "correct_results": (
+                previous["correct_results"] if previous else 0
+            ) + live_correct_results,
         })
 
     live_table.sort(
@@ -856,6 +891,7 @@ def build_live_table(fixtures, players, predictions, previous_league):
             -row["season_points"],
             -row["exact_draws"],
             -row["exact_scores"],
+            -row["correct_results"],
             row["name"].lower(),
         )
     )
@@ -1353,6 +1389,7 @@ def refresh_points(conn):
         """
         SELECT
             p.id,
+            COALESCE(p.points, 0) AS stored_points,
             p.home_score AS predicted_home,
             p.away_score AS predicted_away,
             COALESCE(p.dp, 0) AS dp,
@@ -1367,6 +1404,7 @@ def refresh_points(conn):
         """
     ).fetchall()
 
+    changed_points = []
     for prediction in predictions:
         points = 0
 
@@ -1379,16 +1417,13 @@ def refresh_points(conn):
                 bool(prediction["dp"]),
             )
 
-        conn.execute(
-            """
-            UPDATE predictions
-            SET points = ?
-            WHERE id = ?
-            """,
-            (
-                points,
-                prediction["id"]
-            )
+        if points != prediction["stored_points"]:
+            changed_points.append((points, prediction["id"]))
+
+    if changed_points:
+        conn.executemany(
+            "UPDATE predictions SET points = ? WHERE id = ?",
+            changed_points,
         )
 
 
@@ -3665,7 +3700,17 @@ def signal_gw_table(conn, matchday):
                  AND p.home_score = f.home_score
                  AND p.away_score = f.away_score
                  AND f.home_score != f.away_score
-                THEN 1 ELSE 0 END), 0) AS exact_scores
+                THEN 1 ELSE 0 END), 0) AS exact_scores,
+            COALESCE(SUM(CASE
+                WHEN f.season = ? AND f.matchday = ?
+                 AND f.status = 'FINISHED'
+                 AND NOT (p.home_score = f.home_score AND p.away_score = f.away_score)
+                 AND (
+                    (f.home_score = f.away_score AND p.home_score = p.away_score)
+                    OR (f.home_score > f.away_score AND p.home_score > p.away_score)
+                    OR (f.home_score < f.away_score AND p.home_score < p.away_score)
+                 )
+                THEN 1 ELSE 0 END), 0) AS correct_results
         FROM players pl
         LEFT JOIN predictions p
           ON p.player_id = pl.id
@@ -3676,9 +3721,11 @@ def signal_gw_table(conn, matchday):
             points DESC,
             exact_draws DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """,
         (
+            SEASON, matchday,
             SEASON, matchday,
             SEASON, matchday,
             SEASON, matchday,
@@ -3706,7 +3753,16 @@ def signal_overall_table(conn):
                  AND p.home_score = f.home_score
                  AND p.away_score = f.away_score
                  AND f.home_score != f.away_score
-                THEN 1 ELSE 0 END), 0) AS exact_scores
+                THEN 1 ELSE 0 END), 0) AS exact_scores,
+            COALESCE(SUM(CASE
+                WHEN f.status = 'FINISHED'
+                 AND NOT (p.home_score = f.home_score AND p.away_score = f.away_score)
+                 AND (
+                    (f.home_score = f.away_score AND p.home_score = p.away_score)
+                    OR (f.home_score > f.away_score AND p.home_score > p.away_score)
+                    OR (f.home_score < f.away_score AND p.home_score < p.away_score)
+                 )
+                THEN 1 ELSE 0 END), 0) AS correct_results
         FROM players pl
         LEFT JOIN predictions p
           ON p.player_id = pl.id
@@ -3717,6 +3773,7 @@ def signal_overall_table(conn):
             points DESC,
             exact_draws DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()
@@ -4991,6 +5048,7 @@ def dashboard():
     current_matchday = automatic_matchday
 
     current_fixtures = []
+    dashboard_sources = []
 
     if current_matchday is not None:
         fixture_rows = conn.execute(
@@ -5020,6 +5078,19 @@ def dashboard():
                 fixture["away_team"],
             )
             current_fixtures.append(fixture)
+
+        # The stored fixture list is supplied by football-data.org when its
+        # feed is configured; SportScore enriches matching fixtures with the
+        # live clock, scorers and incidents. Keep this as one list-level
+        # attribution rather than repeating it on every card.
+        if get_setting("football_api_token"):
+            dashboard_sources.append("football-data.org")
+        if any(
+            fixture.get("live_data_source") == "SportScore"
+            or fixture.get("status") in ("LIVE", "IN_PLAY", "PAUSED")
+            for fixture in current_fixtures
+        ):
+            dashboard_sources.insert(0, "SportScore")
 
     row = conn.execute(
         """
@@ -5074,7 +5145,26 @@ def dashboard():
                     END
                 ),
                 0
-            ) AS exact_scores
+            ) AS exact_scores,
+
+            COALESCE(
+                SUM(
+                    CASE
+                    WHEN f.status = 'FINISHED'
+                     AND NOT (
+                        p.home_score = f.home_score
+                        AND p.away_score = f.away_score
+                     )
+                     AND (
+                        (f.home_score = f.away_score AND p.home_score = p.away_score)
+                        OR (f.home_score > f.away_score AND p.home_score > p.away_score)
+                        OR (f.home_score < f.away_score AND p.home_score < p.away_score)
+                     )
+                    THEN 1 ELSE 0
+                    END
+                ),
+                0
+            ) AS correct_results
 
         FROM players pl
 
@@ -5090,6 +5180,7 @@ def dashboard():
             points DESC,
             exact_draws DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()
@@ -5123,6 +5214,7 @@ def dashboard():
             fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
             for fixture in current_fixtures
         ),
+        dashboard_sources=dashboard_sources,
     )
 
 @app.route("/history")
@@ -5685,6 +5777,7 @@ def leaderboard():
             points DESC,
             exact_draws DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()
@@ -7516,6 +7609,12 @@ def admin_live_feed_test():
             item["error"] = str(exc)
         monitored.append(item)
 
+    monitored_sources = []
+    for item in monitored:
+        for source in item.get("sources") or []:
+            if source in ("SportScore", "football-data.org") and source not in monitored_sources:
+                monitored_sources.append(source)
+
     return render_template(
         "live_feed_test.html",
         monitored=monitored,
@@ -7525,6 +7624,7 @@ def admin_live_feed_test():
         automatic_discovery=not manual_requested,
         manual_match=manual_match,
         checked_at=local_datetime(now_utc().isoformat()),
+        monitored_sources=monitored_sources,
     )
 
 

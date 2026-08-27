@@ -31,7 +31,9 @@
 <div class="muted">Winner recorded · detailed statistics unavailable</div>
 {% endif %}
 </div>
+{% if season.stats_available %}
 <a href="/seasons/{{ season.season }}"><button>Open Season</button></a>
+{% endif %}
 </div>
 {% else %}
 <div class="card"><p class="muted">No historical winners recorded yet.</p></div>
