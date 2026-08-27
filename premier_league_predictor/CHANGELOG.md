@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.5] - 2026-08-27
+
+### Improved
+- Left-aligned wrapped team-name lines consistently on the mobile Predictions screen.
+- Vertically aligned club crests with their team names and score boxes.
+- Restored Save Predictions as a smaller floating disk button positioned on the right, with a compact mobile label.
+
 ## [1.1.4] - 2026-08-27
 
 ### Improved

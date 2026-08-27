@@ -1528,7 +1528,8 @@ assert '/static/predictor-icon.png' in base_template
 assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
-assert '.save-bar{\n  position:relative;' in base_template
+assert '.save-bar{\n  position:sticky;' in base_template
+assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template
 assert 'fixture.home_logo' in dashboard_template
 assert 'fixture.away_logo' in dashboard_template

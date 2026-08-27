@@ -121,7 +121,11 @@
 {% endfor %}
 
 <div class="save-bar">
-<button type="submit">💾 Save predictions</button>
+<button type="submit" aria-label="Save predictions">
+<span aria-hidden="true">💾</span>
+<span class="save-label-long">Save predictions</span>
+<span class="save-label-short">Save</span>
+</button>
 </div>
 
 </form>
