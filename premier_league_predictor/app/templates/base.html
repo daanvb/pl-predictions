@@ -236,15 +236,22 @@ input{
 }
 .prediction-team-home{
   justify-content:flex-end;
-  text-align:right
+  text-align:left
 }
 .prediction-team-away{
   justify-content:flex-start;
   text-align:left
 }
 .prediction-team-name{
+  display:block;
   min-width:0;
-  line-height:1.15
+  max-width:100%;
+  line-height:1.15;
+  text-align:left
+}
+.prediction-team .team-badge{
+  align-self:center;
+  margin:0
 }
 .score-input{
   width:60px;
@@ -269,16 +276,30 @@ input{
   font-weight:700
 }
 .save-bar{
-  position:relative;
-  padding:10px;
-  margin-top:4px;
-  background:#fff;
+  position:sticky;
+  bottom:max(10px,env(safe-area-inset-bottom));
+  z-index:20;
+  width:max-content;
+  max-width:100%;
+  padding:5px;
+  margin:4px 0 0 auto;
+  background:rgba(255,255,255,.94);
   border:1px solid var(--line);
-  border-radius:18px
+  border-radius:16px;
+  box-shadow:0 10px 26px rgba(15,23,42,.18);
+  backdrop-filter:blur(8px)
 }
 .save-bar button{
-  width:100%;
-  background:var(--accent)
+  width:auto;
+  min-width:0;
+  padding:10px 14px;
+  background:var(--accent);
+  display:inline-flex;
+  align-items:center;
+  gap:6px
+}
+.save-label-short{
+  display:none
 }
 .leader-row{
   display:grid;
@@ -501,7 +522,23 @@ th,td{
     flex-basis:17px
   }
   .prediction-team-name{
-    overflow-wrap:break-word
+    overflow-wrap:normal;
+    word-break:normal;
+    text-align:left
+  }
+  .save-bar{
+    padding:4px;
+    border-radius:14px
+  }
+  .save-bar button{
+    padding:9px 12px;
+    border-radius:10px
+  }
+  .save-label-long{
+    display:none
+  }
+  .save-label-short{
+    display:inline
   }
   .compact-page .hero {
     padding:16px 17px;
