@@ -2,6 +2,14 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.4] - 2026-08-27
+
+### Improved
+- Kept wrapped club names and crests neatly contained and aligned on the mobile Predictions screen.
+- Returned the Save Predictions action to the end of the fixture list so it no longer overlaps cards.
+- Simplified the Predictions screen by removing the redundant Double Points explanation card.
+- Clarified that live Gameweek match data is supplied by SportScore and football-data.org.
+
 ## [1.1.3] - 2026-08-27
 
 ### Added

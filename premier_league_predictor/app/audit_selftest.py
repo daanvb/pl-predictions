@@ -1461,9 +1461,15 @@ with open(
 
 assert '_match_stats.html' in predictions_template
 assert '{% if show_match_stats %}' in predictions_template
+assert 'class="scoreline prediction-scoreline"' in predictions_template
+assert 'prediction-team-home' in predictions_template
+assert 'prediction-team-away' in predictions_template
+assert '<h2>🔥 Double Points (DP)</h2>' not in predictions_template
 assert '_match_stats.html' not in dashboard_template
 assert '_match_stats.html' not in gameweek_template
 assert 'href="https://sportscore.com/" rel="dofollow"' in gameweek_template
+assert 'href="https://www.football-data.org/"' in gameweek_template
+assert "Match data from" in gameweek_template
 assert "Ordered by the current overall league position" in gameweek_template
 assert "player.season_points" in gameweek_template
 assert "Position during this gameweek" in gameweek_template
@@ -1521,6 +1527,8 @@ with open(
 assert '/static/predictor-icon.png' in base_template
 assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
+assert '.prediction-scoreline' in base_template
+assert '.save-bar{\n  position:relative;' in base_template
 assert 'class="dashboard-logo"' in dashboard_template
 assert 'fixture.home_logo' in dashboard_template
 assert 'fixture.away_logo' in dashboard_template

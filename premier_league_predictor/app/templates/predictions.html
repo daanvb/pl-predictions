@@ -13,23 +13,6 @@
 <a href="/gameweek/{{ matchday }}">📊 Live GW{{ matchday }}</a>
 </div>
 
-<div class="card">
-<h2>🔥 Double Points (DP)</h2>
-<p>
-Choose <strong>one match per Gameweek</strong> as your DP.
-Whatever that prediction scores is doubled.
-</p>
-{% if locked_dp_fixture_id %}
-<p class="muted">
-🔒 Your DP match has kicked off, so your DP choice is now locked for this Gameweek.
-</p>
-{% else %}
-<p class="muted">
-You can move your DP to another open fixture until your selected DP match kicks off.
-</p>
-{% endif %}
-</div>
-
 <form method="POST">
 
 {% for fixture in fixtures %}
@@ -52,9 +35,9 @@ You can move your DP to another open fixture until your selected DP match kicks 
 
 </div>
 
-<div class="scoreline">
+<div class="scoreline prediction-scoreline">
 
-<div class="team">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}{{ short_team_name(fixture.home_team) }}</div>
+<div class="team prediction-team prediction-team-home">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}<span class="prediction-team-name">{{ short_team_name(fixture.home_team) }}</span></div>
 
 {% if kickoff_passed(fixture.utc_date) %}
 <div class="locked-score">
@@ -88,7 +71,7 @@ You can move your DP to another open fixture until your selected DP match kicks 
 >
 {% endif %}
 
-<div class="team away fixture-team">{{ short_team_name(fixture.away_team) }}{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</div>
+<div class="team away prediction-team prediction-team-away"><span class="prediction-team-name">{{ short_team_name(fixture.away_team) }}</span>{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</div>
 
 </div>
 

@@ -228,6 +228,24 @@ input{
 .team.away{
   text-align:right
 }
+.prediction-team{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:7px
+}
+.prediction-team-home{
+  justify-content:flex-end;
+  text-align:right
+}
+.prediction-team-away{
+  justify-content:flex-start;
+  text-align:left
+}
+.prediction-team-name{
+  min-width:0;
+  line-height:1.15
+}
 .score-input{
   width:60px;
   height:54px;
@@ -251,10 +269,10 @@ input{
   font-weight:700
 }
 .save-bar{
-  position:sticky;
-  bottom:10px;
+  position:relative;
   padding:10px;
-  background:#fffffff2;
+  margin-top:4px;
+  background:#fff;
   border:1px solid var(--line);
   border-radius:18px
 }
@@ -463,6 +481,27 @@ th,td{
   }
   .team{
     font-size:14px
+  }
+  .prediction-scoreline{
+    grid-template-columns:minmax(0,1fr) 44px 14px 44px minmax(0,1fr);
+    gap:4px
+  }
+  .prediction-scoreline .score-input,
+  .prediction-scoreline .locked-score{
+    width:44px;
+    height:50px
+  }
+  .prediction-team{
+    gap:5px;
+    font-size:13px
+  }
+  .prediction-team .team-badge{
+    width:17px;
+    height:17px;
+    flex-basis:17px
+  }
+  .prediction-team-name{
+    overflow-wrap:break-word
   }
   .compact-page .hero {
     padding:16px 17px;
