@@ -29,6 +29,8 @@ All notable changes to Premier League Predictor are documented here.
 - Tightened crest and team-name alignment, added clearer kickoff/status spacing and moved diagnostic source labels below the status.
 - Simplified penalty goals to an inline `(Pen)` marker beside the scoring minute.
 - Corrected wrapped team-name alignment so each club crest remains visually attached to its name.
+- Refined two-line mobile team alignment and tightened the matchup around the central `v` or score.
+- Realigned the mobile season table, clarified its ranking tie-breaks and expanded its correct-result labels.
 
 ## [1.0.29] - 2026-08-26
 
