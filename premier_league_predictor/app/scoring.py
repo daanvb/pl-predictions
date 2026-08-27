@@ -50,7 +50,7 @@ def calculate_prediction_points(
     """
     Calculate the final points awarded for a prediction.
 
-    DP (Double Points) doubles the entire normal score:
+    DP doubles the complete points award, including any exact-score bonus:
       correct winner        3 -> 6
       correct draw          4 -> 8
       exact winning score   5 -> 10
@@ -64,8 +64,4 @@ def calculate_prediction_points(
         actual_away,
     )
 
-    return (
-        base_points * 2
-        if double_points
-        else base_points
-    )
+    return base_points * 2 if double_points else base_points

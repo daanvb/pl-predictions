@@ -5,7 +5,6 @@
 <div class="compact-page history-page">
 
 <div class="hero">
-<div style="font-size:14px;font-weight:800;color:#94a3b8">SEASON ARCHIVE</div>
 <h1>🕘 Gameweek History</h1>
 <p>Revisit predictions, results and gameweek tables.</p>
 </div>
@@ -27,9 +26,9 @@
 Gameweek {{ gw.matchday }}
 </div>
 
-<div class="small">
+{% if gw.finished_count %}<div class="small">
 {{ gw.finished_count }} of {{ gw.fixture_count }} matches finished
-</div>
+</div>{% endif %}
 </div>
 
 <div class="history-actions">
