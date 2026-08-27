@@ -2,6 +2,14 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.1.2] - 2026-08-27
+
+### Improved
+- Tightened typography, cards and spacing across Stats, Rules, Past Winners and Gameweek History.
+- Made the Live Gameweek table more compact while retaining clear positions, movement and points.
+- Reduced empty space beneath fixture status and broadcaster details.
+- Shifted and aligned the season leaderboard position column for easier scanning.
+
 ## [1.1.1] - 2026-08-27
 
 ### Improved
