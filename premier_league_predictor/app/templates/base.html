@@ -322,6 +322,122 @@ th,td{
   color:var(--danger);
   border:1px solid #fecaca
 }
+
+/* Compact supporting pages: retain the shared visual language while fitting
+   more useful information into each desktop and mobile viewport. */
+.compact-page .hero {
+  padding:20px 22px;
+  border-radius:20px;
+  margin-bottom:12px
+}
+.compact-page .hero h1 {
+  font-size:clamp(24px,4vw,34px);
+  margin:2px 0 4px
+}
+.compact-page .hero p {
+  font-size:14px
+}
+.compact-page .nav {
+  margin-bottom:10px
+}
+.compact-page .card {
+  padding:16px;
+  margin-bottom:10px;
+  border-radius:16px
+}
+.compact-page .card h2 {
+  margin-bottom:11px;
+  font-size:20px
+}
+.compact-page .card p {
+  margin:8px 0;
+  line-height:1.45
+}
+.compact-page .grid {
+  gap:8px
+}
+.compact-page .stat {
+  padding:12px;
+  border-radius:13px
+}
+.compact-page .stat-number {
+  font-size:28px;
+  line-height:1.1
+}
+.compact-page .small {
+  font-size:12px
+}
+.compact-page button {
+  min-height:36px;
+  padding:9px 13px;
+  font-size:14px
+}
+.compact-record-name {
+  margin-top:4px;
+  font-size:17px;
+  font-weight:700;
+  line-height:1.25
+}
+.past-winners-record {
+  font-size:20px;
+  font-weight:700;
+  line-height:1.3
+}
+.season-winner-row,
+.history-row,
+.history-actions {
+  display:flex;
+  align-items:center
+}
+.season-winner-row,
+.history-row {
+  justify-content:space-between;
+  gap:12px
+}
+.season-winner-name {
+  margin-top:3px;
+  font-size:21px;
+  font-weight:700
+}
+.history-page > .card .fixture {
+  padding:10px 0
+}
+.history-gameweek-title {
+  font-size:17px;
+  font-weight:700
+}
+.history-actions {
+  gap:7px
+}
+.rules-page .fixture {
+  padding:11px 12px;
+  line-height:1.55
+}
+.live-table-card {
+  padding:16px
+}
+.live-table-card h2 {
+  margin-bottom:8px;
+  font-size:20px
+}
+.live-table-card .leader-row {
+  padding:10px 0;
+  gap:8px
+}
+.live-table-card .rank {
+  font-size:20px
+}
+.live-table-card .leader-points {
+  font-size:21px;
+  line-height:1.05
+}
+.live-table-card .leader-row strong {
+  font-size:15px
+}
+.live-table-card .small {
+  font-size:11px;
+  line-height:1.25
+}
 @media(max-width:620px){
   .container{padding:10px}
   .hero{padding:21px}
@@ -343,6 +459,71 @@ th,td{
   }
   .team{
     font-size:14px
+  }
+  .compact-page .hero {
+    padding:16px 17px;
+    border-radius:17px
+  }
+  .compact-page .hero h1 {
+    font-size:25px
+  }
+  .compact-page .card {
+    padding:12px;
+    margin-bottom:8px
+  }
+  .compact-page .card h2 {
+    font-size:18px;
+    margin-bottom:9px
+  }
+  .stats-page .grid,
+  .rules-page .grid {
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  .compact-page .stat {
+    padding:10px
+  }
+  .compact-page .stat-number {
+    font-size:25px
+  }
+  .rules-page .stat p {
+    font-size:13px;
+    line-height:1.35
+  }
+  .season-winner-row,
+  .history-row {
+    flex-wrap:nowrap
+  }
+  .season-winner-name {
+    font-size:18px
+  }
+  .seasons-page .muted,
+  .history-page .small {
+    font-size:11px
+  }
+  .history-actions {
+    flex-shrink:0
+  }
+  .history-actions button {
+    padding:8px 10px;
+    font-size:12px
+  }
+  .live-table-card {
+    padding:11px
+  }
+  .live-table-card .leader-row {
+    grid-template-columns:30px 20px minmax(0,1fr) auto;
+    gap:5px;
+    padding:8px 0
+  }
+  .live-table-card .rank {
+    font-size:18px
+  }
+  .live-table-card .position-move {
+    min-width:18px;
+    font-size:10px
+  }
+  .live-table-card .leader-points {
+    font-size:19px
   }
 }
 
@@ -1075,7 +1256,7 @@ th,td{
 
 /* Dashboard fixture cards */
 .fixture.fixture-set {
-    padding: 14px;
+    padding: 14px 14px 10px;
     border: 1px solid #cbd5e1;
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.55);
@@ -1199,7 +1380,7 @@ th,td{
     }
 
     .fixture.fixture-set {
-        padding: 12px;
+        padding: 12px 12px 8px;
         border-radius: 12px;
     }
 

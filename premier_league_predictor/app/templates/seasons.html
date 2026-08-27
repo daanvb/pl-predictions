@@ -2,6 +2,8 @@
 {% block title %}Past Winners{% endblock %}
 {% block content %}
 
+<div class="compact-page seasons-page">
+
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">HALL OF FAME</div>
 <h1>👑 Past Winners</h1>
@@ -14,7 +16,7 @@
 
 <div class="card">
 <h2>🏆 Most League Wins</h2>
-<div style="font-size:24px;font-weight:900;line-height:1.4">
+<div class="past-winners-record">
 {% for player in most_titles %}
 {{ player.winner_name }}{% if not loop.last %}<br>{% endif %}
 {% else %}—{% endfor %}
@@ -23,10 +25,10 @@
 </div>
 
 {% for season in archives %}
-<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+<div class="card season-winner-row">
 <div>
 <div class="small">{{ season.label }} CHAMPION</div>
-<div style="font-size:25px;font-weight:900;margin-top:5px">👑 {{ season.winner_name }}</div>
+<div class="season-winner-name">👑 {{ season.winner_name }}</div>
 {% if not season.stats_available %}
 <div class="muted">Winner recorded · detailed statistics unavailable</div>
 {% endif %}
@@ -38,5 +40,7 @@
 {% else %}
 <div class="card"><p class="muted">No historical winners recorded yet.</p></div>
 {% endfor %}
+
+</div>
 
 {% endblock %}

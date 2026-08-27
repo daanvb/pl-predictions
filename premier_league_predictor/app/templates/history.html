@@ -2,6 +2,8 @@
 {% block title %}Gameweek History{% endblock %}
 {% block content %}
 
+<div class="compact-page history-page">
+
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">SEASON ARCHIVE</div>
 <h1>🕘 Gameweek History</h1>
@@ -18,10 +20,10 @@
 
 <div class="fixture">
 
-<div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap">
+<div class="history-row">
 
 <div>
-<div style="font-size:19px;font-weight:900">
+<div class="history-gameweek-title">
 Gameweek {{ gw.matchday }}
 </div>
 
@@ -30,7 +32,7 @@ Gameweek {{ gw.matchday }}
 </div>
 </div>
 
-<div style="display:flex;gap:8px;flex-wrap:wrap">
+<div class="history-actions">
 
 <a href="/predict/{{ gw.matchday }}?history=1">
 <button>My Picks</button>
@@ -51,6 +53,8 @@ Gameweek {{ gw.matchday }}
 <p class="muted">No gameweeks available yet.</p>
 
 {% endfor %}
+
+</div>
 
 </div>
 
