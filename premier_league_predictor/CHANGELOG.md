@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.7] - 2026-08-27
+
+### Fixed
+- Returned prediction-screen crests to the outside of their respective team names.
+- Prevented team containers from stretching, keeping every crest adjacent to its name with consistent score-box spacing and left-aligned wrapping.
+
 ## [1.1.6] - 2026-08-27
 
 ### Improved

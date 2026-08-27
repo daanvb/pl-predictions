@@ -230,22 +230,28 @@ input{
 }
 .prediction-team{
   min-width:0;
+  width:max-content;
+  max-width:100%;
   display:flex;
   align-items:center;
   gap:7px
 }
 .prediction-team-home{
+  justify-self:end;
   justify-content:flex-end;
   text-align:left
 }
 .prediction-team-away{
+  justify-self:start;
   justify-content:flex-start;
   text-align:left
 }
 .prediction-team-name{
   display:block;
+  flex:0 1 auto;
+  width:max-content;
   min-width:0;
-  max-width:100%;
+  max-width:calc(100% - 31px);
   line-height:1.15;
   text-align:left
 }
@@ -522,6 +528,7 @@ th,td{
     flex-basis:17px
   }
   .prediction-team-name{
+    max-width:calc(100% - 23px);
     overflow-wrap:normal;
     word-break:normal;
     text-align:left
