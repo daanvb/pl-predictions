@@ -1464,6 +1464,8 @@ assert '{% if show_match_stats %}' in predictions_template
 assert 'class="scoreline prediction-scoreline"' in predictions_template
 assert 'prediction-team-home' in predictions_template
 assert 'prediction-team-away' in predictions_template
+assert 'prediction-team-home"><span class="prediction-team-name"' in predictions_template
+assert 'prediction-team-away">{% if fixture.away_logo %}' in predictions_template
 assert '<h2>🔥 Double Points (DP)</h2>' not in predictions_template
 assert '_match_stats.html' not in dashboard_template
 assert '_match_stats.html' not in gameweek_template

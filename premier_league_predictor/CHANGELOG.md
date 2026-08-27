@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.6] - 2026-08-27
+
+### Improved
+- Grouped each club crest beside the score-facing edge of its team name on the mobile Predictions screen.
+- Added consistent spacing between both team clusters and their score inputs while retaining left-aligned wrapped names.
+
 ## [1.1.5] - 2026-08-27
 
 ### Improved
