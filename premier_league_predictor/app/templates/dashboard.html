@@ -13,22 +13,9 @@ PREMIER LEAGUE PREDICTOR
 </div>
 
 <div class="nav">
-<a href="https://signal.group/#CjQKICKvqNxAPVKOKRPHrZWMWVO61y8ojBfPn03L5mTSqN20EhBx7o-QFZZ-lEdOstntrezU"
-   target="_blank"
-   rel="noopener noreferrer"
-   style="display:inline-flex;align-items:center;gap:8px">
-<img
-    src="https://signal.org/brand/assets/logo_min_size.png"
-    alt="Signal"
-    width="26"
-    height="26"
-    style="width:26px;height:26px;object-fit:contain"
->
-Get Your Pre-Dicks In
-</a>
 <a href="/leaderboard">🏆 League</a>
 <a href="/stats">📊 Stats</a>
-<a href="/history">🕘 History</a>
+<a href="/history">🕘 Previous GW History</a>
 <a href="/rules">📘 Rules</a>
 <a href="/prize-structure">💷 Prize Structure</a>
 <a href="/seasons">👑 Past Winners</a>
@@ -109,15 +96,21 @@ No position yet
 </div>
 </div>
 
-{% if current_matchday is not none %}
-
-<div class="stat">
-<div class="small">CURRENT GAMEWEEK</div>
-<div class="stat-number">GW{{ current_matchday }}</div>
-<div class="muted">Premier League</div>
-</div>
-
-{% endif %}
+<a
+    class="stat dashboard-signal-stat"
+    href="https://signal.group/#CjQKICKvqNxAPVKOKRPHrZWMWVO61y8ojBfPn03L5mTSqN20EhBx7o-QFZZ-lEdOstntrezU"
+    target="_blank"
+    rel="noopener noreferrer"
+>
+<div class="small">SIGNAL GROUP</div>
+<img
+    src="https://signal.org/brand/assets/logo_min_size.png"
+    alt=""
+    width="38"
+    height="38"
+>
+<strong>Get Your Pre-Dicks In</strong>
+</a>
 
 </div>
 
@@ -127,7 +120,7 @@ No position yet
 
 <div>
 <h2 style="margin-bottom:6px">⚽ Gameweek {{ current_matchday }}</h2>
-<p class="muted" style="margin-top:0">Your current round.</p>
+<p class="muted" style="margin-top:0">Current Round</p>
 </div>
 
 <div class="dashboard-gameweek-actions">
@@ -209,7 +202,7 @@ v
 <div class="fixture-scorers" aria-label="Goalscorers">
   <div class="fixture-scorers-home">
     {% for scorer in fixture.scorers.home %}
-    <span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>
+    <span><span aria-hidden="true">⚽</span> {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>
     {% endfor %}
     {% for card in fixture.red_cards.home %}
     <span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>
@@ -217,7 +210,7 @@ v
   </div>
   <div class="fixture-scorers-away">
     {% for scorer in fixture.scorers.away %}
-    <span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>
+    <span><span aria-hidden="true">⚽</span> {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>
     {% endfor %}
     {% for card in fixture.red_cards.away %}
     <span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>
@@ -232,10 +225,14 @@ v
 
 {% endfor %}
 
-<p class="small">
-Live match data from
-<a href="https://sportscore.com/" rel="dofollow">SportScore</a>.
+{% if dashboard_sources %}
+<p class="small fixture-list-sources">
+Sources:
+{% for source in dashboard_sources %}
+{% if source == 'SportScore' %}<a href="https://sportscore.com/" rel="dofollow">SportScore</a>{% elif source == 'football-data.org' %}<a href="https://www.football-data.org/">football-data.org</a>{% else %}{{ source }}{% endif %}{% if not loop.last %} + {% endif %}
+{% endfor %}.
 </p>
+{% endif %}
 
 </div>
 
@@ -257,24 +254,5 @@ window.setTimeout(function () {
 }, 60000);
 </script>
 {% endif %}
-
-<div class="card">
-
-<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-
-<div>
-<h2 style="margin-bottom:6px">🕘 Gameweek History</h2>
-<p class="muted" style="margin:0">
-View old predictions, results and gameweek tables.
-</p>
-</div>
-
-<a href="/history">
-<button>View History</button>
-</a>
-
-</div>
-
-</div>
 
 {% endblock %}

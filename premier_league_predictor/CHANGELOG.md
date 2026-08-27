@@ -2,6 +2,21 @@
 
 All notable changes to Premier League Predictor are documented here.
 
+## [1.1.1] - 2026-08-27
+
+### Improved
+- Refined mobile fixture cards so wrapped team names, crests, kickoff details, status badges and broadcaster logos remain consistently aligned.
+- Kept the main live dashboard presentation in step with its live-data feed, including added time, scorers, penalties and red cards.
+- Added a single combined source note beneath the fixture list when SportScore and football-data.org contribute data.
+- Simplified the dashboard navigation and summary area, moved the public Signal group link beside the season summary and clarified the current-round wording.
+- Tightened the season leaderboard on mobile, centred its position column and clarified the correct-draw, correct-score and correct-winner totals.
+- Made the season position chart interactive and shortened long chart labels for easier reading.
+- Removed unavailable season links and redundant prediction counters from Stats and Admin.
+
+### Fixed
+- Standardised league ordering everywhere as points, correct draws, correct scores, correct winners, then player name.
+- Reduced unnecessary database writes when recalculating already-current prediction points.
+
 ## [1.1.0] - 2026-08-26
 
 ### What's new since Gameweek 1

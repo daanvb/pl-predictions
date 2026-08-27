@@ -88,7 +88,7 @@
 </div>
 </div>
 <p class="league-table-explanation muted">
-Positions are ranked by total points. If points are level, the player with more correct draws ranks higher, followed by more correct scores; if still level, names are ordered alphabetically.
+Positions are ranked by total points. If points are level, the tie-break order is Correct Draws, then Correct Scores, then Correct Wins; if still level, names are ordered alphabetically.
 </p>
 </div>
 
@@ -123,19 +123,22 @@ Positions are ranked by total points. If points are level, the player with more 
   text-align: center;
 }
 .league-position {
-  display: grid;
-  grid-template-columns: 36px 24px;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  position: relative;
+  display: block;
+  text-align: center;
 }
 .league-position .rank {
-  min-width: 0;
+  display: inline-block;
+  min-width: 36px;
   text-align: center;
 }
 .league-position .position-move {
-  min-width: 0;
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  min-width: 20px;
   text-align: center;
+  transform: translateY(-50%);
 }
 .league-player {
   min-width: 0;
@@ -174,12 +177,14 @@ Positions are ranked by total points. If points are level, the player with more 
     display: none;
   }
   .league-position {
-    grid-template-columns: 26px 18px;
-    justify-content: center;
-    gap: 2px;
+    text-align: center;
   }
   .league-position .rank {
-    min-width: 0;
+    min-width: 26px;
+  }
+  .league-position .position-move {
+    right: -2px;
+    min-width: 16px;
   }
   .league-player {
     overflow-wrap: normal;
@@ -188,9 +193,11 @@ Positions are ranked by total points. If points are level, the player with more 
     display: block;
     margin-top: 3px;
     color: var(--muted);
-    font-size: 10px;
+    font-size: clamp(8px, 2.25vw, 10px);
     font-weight: 400;
     line-height: 1.35;
+    letter-spacing: -.02em;
+    white-space: nowrap;
   }
   .leader-points.league-stat {
     text-align: center;

@@ -64,7 +64,7 @@
 <div class="fixture-home">
 <span class="fixture-team-cluster fixture-team-cluster-home">
 <span class="team-badge-slot">{% if item.home_logo %}<img class="team-badge" src="{{ team_badge_url(item.home_logo) }}" alt="" loading="lazy">{% endif %}</span>
-<strong>{{ item.home }}</strong>
+<strong>{{ short_team_name(item.home) }}</strong>
 </span>
 </div>
 <div class="fixture-centre">
@@ -76,7 +76,7 @@ v
 </div>
 <div class="fixture-away">
 <span class="fixture-team-cluster fixture-team-cluster-away">
-<strong>{{ item.away }}</strong>
+<strong>{{ short_team_name(item.away) }}</strong>
 <span class="team-badge-slot">{% if item.away_logo %}<img class="team-badge" src="{{ team_badge_url(item.away_logo) }}" alt="" loading="lazy">{% endif %}</span>
 </span>
 </div>
@@ -99,14 +99,10 @@ v
 {% endif %}
 </div>
 
-{% if item.sources %}
-<div class="fixture-sources">Sources: {{ item.sources|join(' + ') }}</div>
-{% endif %}
-
 {% if item.scorers.home or item.scorers.away or item.red_cards.home or item.red_cards.away %}
 <div class="fixture-scorers" aria-label="Goalscorers">
-<div class="fixture-scorers-home">{% for scorer in item.scorers.home %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in item.red_cards.home %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div>
-<div class="fixture-scorers-away">{% for scorer in item.scorers.away %}<span>{{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in item.red_cards.away %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div>
+<div class="fixture-scorers-home">{% for scorer in item.scorers.home %}<span><span aria-hidden="true">⚽</span> {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in item.red_cards.home %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div>
+<div class="fixture-scorers-away">{% for scorer in item.scorers.away %}<span><span aria-hidden="true">⚽</span> {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in item.red_cards.away %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div>
 </div>
 {% endif %}
 
@@ -115,6 +111,13 @@ v
 {% endif %}
 {% endfor %}
 
-<p class="small">Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.</p>
+{% if monitored_sources %}
+<p class="small fixture-list-sources">
+Sources:
+{% for source in monitored_sources %}
+{% if source == 'SportScore' %}<a href="https://sportscore.com/" rel="dofollow">SportScore</a>{% elif source == 'football-data.org' %}<a href="https://www.football-data.org/">football-data.org</a>{% else %}{{ source }}{% endif %}{% if not loop.last %} + {% endif %}
+{% endfor %}.
+</p>
+{% endif %}
 
 {% endblock %}
