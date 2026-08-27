@@ -55,7 +55,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.4"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
