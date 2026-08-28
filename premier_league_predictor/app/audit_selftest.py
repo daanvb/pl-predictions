@@ -4,6 +4,7 @@ import json
 import shutil
 import tempfile
 import sqlite3
+import inspect
 from datetime import datetime, timezone, timedelta
 
 # Use a disposable DB for build-time tests.
@@ -1494,6 +1495,8 @@ assert "Ordered by the current overall league position" in gameweek_template
 assert "player.season_points" in gameweek_template
 assert "Position during this gameweek" in gameweek_template
 assert "position-chart-data" in gameweek_template
+assert "Swipe to see more" in gameweek_template
+assert "mobileTimelineWidth" in gameweek_template
 assert "button.innerHTML" not in gameweek_template
 assert "display_status not in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA')" in gameweek_template
 assert 'const chartName = String(player.name || "").trim().split(/\\s+/)[0] || player.name;' in gameweek_template
@@ -1502,6 +1505,8 @@ assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
 assert "team-badge-slot" in gameweek_template
 assert "team-badge-slot" in dashboard_template
+api_import_source = inspect.getsource(predictor.import_matches_from_api)
+assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_source
 
 with open(
     os.path.join(templates_dir, "leaderboard.html"),
