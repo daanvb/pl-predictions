@@ -5669,6 +5669,13 @@ def gameweek(matchday):
         flash("That gameweek does not exist.", "error")
         return redirect("/dashboard")
 
+    # Reconcile the graph with the table on every view. This catches a final
+    # provider update even if the background worker crossed directly from a
+    # live refresh into its quiet interval before storing the last snapshot.
+    refresh_points(conn)
+    record_live_position_snapshot(conn, matchday)
+    conn.commit()
+
     players = conn.execute(
         """
         SELECT id, name

@@ -84,7 +84,7 @@
 <div class="position-chart-stage">
 <svg id="position-chart-svg" role="img" aria-label="League position changes during this gameweek"></svg>
 </div>
-<p class="position-chart-scroll-hint" id="position-chart-scroll-hint" aria-hidden="true">Swipe to see more →</p>
+<p class="position-chart-scroll-hint" id="position-chart-scroll-hint" aria-hidden="true">← Swipe for earlier updates</p>
 </section>
 <script type="application/json" id="position-chart-data">{{ position_chart|tojson }}</script>
 {% endif %}
@@ -222,6 +222,11 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
         });
         legend.appendChild(button);
     });
+    if (stage && window.innerWidth <= 640) {
+        window.requestAnimationFrame(() => {
+            stage.scrollLeft = Math.max(0, stage.scrollWidth - stage.clientWidth);
+        });
+    }
 })();
 </script>
 {% endif %}
