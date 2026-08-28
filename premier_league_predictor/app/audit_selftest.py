@@ -1468,7 +1468,7 @@ assert 'prediction-team-home' in predictions_template
 assert 'prediction-team-away' in predictions_template
 assert 'class="prediction-team-cluster prediction-team-home"' in predictions_template
 assert 'class="prediction-team-cluster prediction-team-away"' in predictions_template
-assert predictions_template.count('class="prediction-team-name"') >= 2
+assert predictions_template.count('class="prediction-team-name ') >= 4
 assert '<h2>🔥 Double Points (DP)</h2>' not in predictions_template
 assert '_match_stats.html' not in dashboard_template
 assert '_match_stats.html' not in gameweek_template
@@ -1534,8 +1534,12 @@ assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
 assert 'grid-template-columns:42px 18px 42px;' in base_template
-assert 'max-width:clamp(58px,20vw,88px);' in base_template
+assert 'max-width:clamp(54px,19vw,82px);' in base_template
 assert 'class="prediction-score-centre"' in predictions_template
+assert 'mobile_prediction_team_name(fixture.home_team)' in predictions_template
+assert 'mobile_prediction_team_name(fixture.away_team)' in predictions_template
+assert predictor.mobile_prediction_team_name("Crystal Palace FC") == "Palace"
+assert predictor.mobile_prediction_team_name("Manchester United FC") == "Man United"
 assert '.save-bar{\n  position:sticky;' in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template

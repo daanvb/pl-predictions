@@ -237,6 +237,9 @@ input{
   line-height:1.15;
   align-self:center
 }
+.prediction-team-name-mobile{
+  display:none
+}
 /* Compact team clusters keep each crest beside its name while the fixed
    middle columns keep both score boxes centred around the v. */
 .prediction-scoreline{
@@ -558,8 +561,14 @@ th,td{
   }
   .prediction-team-name{
     width:fit-content;
-    max-width:clamp(58px,20vw,88px);
+    max-width:clamp(54px,19vw,82px);
     font-size:13px
+  }
+  .prediction-team-name-full{
+    display:none
+  }
+  .prediction-team-name-mobile{
+    display:inline
   }
   .prediction-team-cluster{
     gap:5px
