@@ -230,6 +230,9 @@ input{
 }
 .prediction-team-name{
   min-width:0;
+  width:fit-content;
+  max-width:100%;
+  flex:0 1 auto;
   font-weight:600;
   line-height:1.15;
   align-self:center
@@ -540,6 +543,8 @@ th,td{
     height:48px
   }
   .prediction-team-name{
+    width:fit-content;
+    max-width:clamp(64px,22vw,92px);
     font-size:13px
   }
   .prediction-team-cluster{
@@ -555,9 +560,11 @@ th,td{
     word-break:normal
   }
   .prediction-team-home{
+    margin-right:4px;
     text-align:right
   }
   .prediction-team-away{
+    margin-left:4px;
     text-align:left
   }
   .save-bar{

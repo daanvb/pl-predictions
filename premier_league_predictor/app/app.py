@@ -626,8 +626,8 @@ def archive_completed_season(conn, season):
         LEFT JOIN predictions p ON p.player_id = pl.id
         LEFT JOIN fixtures f ON f.id = p.fixture_id
         GROUP BY pl.id
-        ORDER BY points DESC, exact_draws DESC, correct_results DESC,
-                 exact_scores DESC,
+        ORDER BY points DESC, exact_draws DESC, exact_scores DESC,
+                 correct_results DESC,
                  pl.name COLLATE NOCASE
         """,
         (season, season, season, season, season),
@@ -781,8 +781,8 @@ def overall_table_at_matchday(
         ORDER BY
             points DESC,
             exact_draws DESC,
-            correct_results DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """,
         (
@@ -890,8 +890,8 @@ def build_live_table(fixtures, players, predictions, previous_league):
         key=lambda row: (
             -row["season_points"],
             -row["exact_draws"],
-            -row["correct_results"],
             -row["exact_scores"],
+            -row["correct_results"],
             row["name"].lower(),
         )
     )
@@ -3720,8 +3720,8 @@ def signal_gw_table(conn, matchday):
         ORDER BY
             points DESC,
             exact_draws DESC,
-            correct_results DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """,
         (
@@ -3772,8 +3772,8 @@ def signal_overall_table(conn):
         ORDER BY
             points DESC,
             exact_draws DESC,
-            correct_results DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()
@@ -5191,8 +5191,8 @@ def dashboard():
         ORDER BY
             points DESC,
             exact_draws DESC,
-            correct_results DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()
@@ -5788,8 +5788,8 @@ def leaderboard():
         ORDER BY
             points DESC,
             exact_draws DESC,
-            correct_results DESC,
             exact_scores DESC,
+            correct_results DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()

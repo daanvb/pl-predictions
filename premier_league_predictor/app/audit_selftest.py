@@ -933,7 +933,7 @@ assert b"Correct Draws" in leaderboard_response.data
 assert b"Correct Scores" in leaderboard_response.data
 assert b"Correct Winners" in leaderboard_response.data
 assert b"Positions are ranked by total points" in leaderboard_response.data
-assert b"Correct Draws, then Correct Winners, then Correct Scores" in leaderboard_response.data
+assert b"Correct Draws, then Correct Scores, then Correct Winners" in leaderboard_response.data
 stats_response = client.get("/stats")
 assert b"PREDICTIONS SCORED" not in stats_response.data
 assert b"Your Stats" in stats_response.data
@@ -1533,6 +1533,9 @@ assert '/static/predictor-icon.png' in base_template
 assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
+assert 'max-width:clamp(64px,22vw,92px);' in base_template
+assert 'margin-right:4px;' in base_template
+assert 'margin-left:4px;' in base_template
 assert '.save-bar{\n  position:sticky;' in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template
