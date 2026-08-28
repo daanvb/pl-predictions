@@ -1497,6 +1497,7 @@ assert "position-chart-data" in gameweek_template
 assert "button.innerHTML" not in gameweek_template
 assert "display_status not in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA')" in gameweek_template
 assert 'const chartName = String(player.name || "").trim().split(/\\s+/)[0] || player.name;' in gameweek_template
+assert '{% if fixture.home_score is none and fixture.away_score is none %}v{% else %}–{% endif %}' in gameweek_template
 assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
 assert "team-badge-slot" in gameweek_template
