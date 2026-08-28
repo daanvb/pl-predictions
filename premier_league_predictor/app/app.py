@@ -2402,6 +2402,12 @@ def import_matches_from_api():
         )
 
     refresh_points(conn)
+    # football-data.org can be the first provider to publish the final score.
+    # Capture the resulting final table state even when the live SportScore
+    # polling loop has already stopped because every fixture is now finished.
+    snapshot_matchday = dashboard_current_gameweek(conn)
+    if snapshot_matchday is not None:
+        record_live_position_snapshot(conn, snapshot_matchday)
     archive_completed_season(conn, SEASON)
 
     conn.commit()

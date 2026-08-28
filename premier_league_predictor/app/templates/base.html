@@ -1051,7 +1051,7 @@ th,td{
     }
 
     .fixture-team-cluster-home strong {
-        text-align: left;
+        text-align: right;
     }
 
     .fixture-team-cluster-away strong {
@@ -1512,6 +1512,10 @@ th,td{
     min-height: 210px;
 }
 
+.position-chart-scroll-hint {
+    display: none;
+}
+
 .position-chart-grid {
     stroke: #e2e8f0;
     stroke-width: 1;
@@ -1573,7 +1577,15 @@ th,td{
     }
 
     .position-chart-stage svg {
-        min-width: 560px;
+        min-width: 100%;
+    }
+
+    .position-chart-scroll-hint.is-visible {
+        display: block;
+        margin: 4px 0 0;
+        text-align: right;
+        font-size: 12px;
+        color: #64748b;
     }
 }
 
