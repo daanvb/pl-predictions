@@ -20,9 +20,9 @@
 <div class="league-table-row league-table-header" role="row">
 <div role="columnheader">Pos</div>
 <div role="columnheader">Player</div>
-<div role="columnheader" title="Exact score in a drawn match">Exact draws</div>
-<div role="columnheader" title="Exact score in a match with a winner">Exact wins</div>
-<div role="columnheader">Other correct</div>
+<div role="columnheader" title="Exact score in a drawn match">Correct Draws</div>
+<div role="columnheader" title="Exact score in a match with a winner">Correct Scores</div>
+<div role="columnheader">Correct Winners</div>
 <div role="columnheader">Points</div>
 </div>
 
@@ -66,15 +66,15 @@
 <div class="league-mobile-details">Correct Draws {{ player.exact_draws }} · Correct Scores {{ player.exact_scores }} · Correct Winners {{ player.correct_results }}</div>
 </div>
 
-<div class="league-stat" role="cell" data-label="Exact draws">
+<div class="league-stat" role="cell" data-label="Correct Draws">
 {{ player.exact_draws }}
 </div>
 
-<div class="league-stat" role="cell" data-label="Exact wins">
+<div class="league-stat" role="cell" data-label="Correct Scores">
 {{ player.exact_scores }}
 </div>
 
-<div class="league-stat" role="cell" data-label="Other correct">
+<div class="league-stat" role="cell" data-label="Correct Winners">
 {{ player.correct_results }}
 </div>
 
@@ -89,7 +89,7 @@
 </div>
 </div>
 <p class="league-table-explanation muted">
-Positions are ranked by total points. If points are level, the tie-break order is Correct Draws, then Correct Scores, then Correct Wins; if still level, names are ordered alphabetically.
+Positions are ranked by total points. If points are level, the tie-break order is Correct Draws, then Correct Winners, then Correct Scores; if still level, names are ordered alphabetically.
 </p>
 </div>
 

@@ -37,7 +37,10 @@
 
 <div class="scoreline prediction-scoreline">
 
-<div class="team prediction-team prediction-team-home">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}<span class="prediction-team-name">{{ short_team_name(fixture.home_team) }}</span></div>
+<div class="prediction-team-cluster prediction-team-home">
+{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}
+<span class="prediction-team-name">{{ short_team_name(fixture.home_team) }}</span>
+</div>
 
 {% if kickoff_passed(fixture.utc_date) %}
 <div class="locked-score">
@@ -71,7 +74,10 @@
 >
 {% endif %}
 
-<div class="team away prediction-team prediction-team-away"><span class="prediction-team-name">{{ short_team_name(fixture.away_team) }}</span>{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</div>
+<div class="prediction-team-cluster prediction-team-away">
+<span class="prediction-team-name">{{ short_team_name(fixture.away_team) }}</span>
+{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}
+</div>
 
 </div>
 

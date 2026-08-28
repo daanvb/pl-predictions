@@ -55,7 +55,7 @@ from sportscore import (
 )
 from scoring import calculate_points, calculate_prediction_points
 
-APP_VERSION = "1.1.7"
+APP_VERSION = "1.1.8"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -626,8 +626,8 @@ def archive_completed_season(conn, season):
         LEFT JOIN predictions p ON p.player_id = pl.id
         LEFT JOIN fixtures f ON f.id = p.fixture_id
         GROUP BY pl.id
-        ORDER BY points DESC, exact_draws DESC, exact_scores DESC,
-                 correct_results DESC,
+        ORDER BY points DESC, exact_draws DESC, correct_results DESC,
+                 exact_scores DESC,
                  pl.name COLLATE NOCASE
         """,
         (season, season, season, season, season),
@@ -781,8 +781,8 @@ def overall_table_at_matchday(
         ORDER BY
             points DESC,
             exact_draws DESC,
-            exact_scores DESC,
             correct_results DESC,
+            exact_scores DESC,
             pl.name COLLATE NOCASE
         """,
         (
@@ -890,8 +890,8 @@ def build_live_table(fixtures, players, predictions, previous_league):
         key=lambda row: (
             -row["season_points"],
             -row["exact_draws"],
-            -row["exact_scores"],
             -row["correct_results"],
+            -row["exact_scores"],
             row["name"].lower(),
         )
     )
@@ -3720,8 +3720,8 @@ def signal_gw_table(conn, matchday):
         ORDER BY
             points DESC,
             exact_draws DESC,
-            exact_scores DESC,
             correct_results DESC,
+            exact_scores DESC,
             pl.name COLLATE NOCASE
         """,
         (
@@ -3772,8 +3772,8 @@ def signal_overall_table(conn):
         ORDER BY
             points DESC,
             exact_draws DESC,
-            exact_scores DESC,
             correct_results DESC,
+            exact_scores DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()
@@ -5191,8 +5191,8 @@ def dashboard():
         ORDER BY
             points DESC,
             exact_draws DESC,
-            exact_scores DESC,
             correct_results DESC,
+            exact_scores DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()
@@ -5788,8 +5788,8 @@ def leaderboard():
         ORDER BY
             points DESC,
             exact_draws DESC,
-            exact_scores DESC,
             correct_results DESC,
+            exact_scores DESC,
             pl.name COLLATE NOCASE
         """
     ).fetchall()
@@ -7601,8 +7601,13 @@ def admin_live_feed_test():
                 "home_score": home_score,
                 "away_score": away_score,
                 "status": raw_status,
+                "display_status": normalized_status,
                 "status_label": status_text,
                 "submeta": kickoff_text if raw_status == "upcoming" else None,
+                "broadcaster": (
+                    stored_fixture.get("broadcaster")
+                    if stored_fixture else None
+                ),
                 "raw_minute": details.get("live_minute"),
                 "competition": competition,
                 "sources": sources,
