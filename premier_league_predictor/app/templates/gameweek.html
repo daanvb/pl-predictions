@@ -192,7 +192,8 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
         const swatch = document.createElement("span");
         swatch.style.background = colour;
         button.appendChild(swatch);
-        button.appendChild(document.createTextNode(player.name));
+        const chartName = String(player.name || "").trim().split(/\s+/)[0] || player.name;
+        button.appendChild(document.createTextNode(chartName));
         button.addEventListener("click", () => {
             const selected = button.getAttribute("aria-pressed") !== "true";
             legend.querySelectorAll("button").forEach(item => item.setAttribute("aria-pressed", "false"));
