@@ -1070,8 +1070,8 @@ th,td{
     }
 
     .fixture-match {
-        grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
-        gap: 1px;
+        grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr);
+        gap: 6px;
         width: 100%;
     }
 
@@ -1085,9 +1085,25 @@ th,td{
         font-size: 13px;
     }
 
-    .fixture-scoreline {
-        gap: 3px;
-        min-width: 28px;
+    .fixture-scoreline,
+    .live-score-grid {
+        display: grid;
+        grid-template-columns: 18px 14px 18px;
+        column-gap: 4px;
+        align-items: center;
+        justify-content: center;
+        width: 58px;
+        min-width: 58px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .fixture-scoreline > span,
+    .live-score-grid > span {
+        display: block;
+        width: 100%;
+        text-align: center;
+        line-height: 1;
     }
 
     .fixture-submeta {
