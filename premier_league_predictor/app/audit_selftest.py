@@ -1542,6 +1542,7 @@ assert 'mobile_prediction_team_name(fixture.home_team)' in predictions_template
 assert 'mobile_prediction_team_name(fixture.away_team)' in predictions_template
 assert predictor.mobile_prediction_team_name("Crystal Palace FC") == "Palace"
 assert predictor.mobile_prediction_team_name("Manchester United FC") == "Man United"
+assert predictor.mobile_prediction_team_name("AFC Bournemouth") == "B'mouth"
 assert '.save-bar{\n  position:sticky;' in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template
