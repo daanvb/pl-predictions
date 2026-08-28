@@ -229,7 +229,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
 
 <div class="fixture-centre live-score live-score-grid">
 <span class="live-score-home">{{ fixture.home_score if fixture.home_score is not none else "–" }}</span>
-<span class="live-score-dash">–</span>
+<span class="live-score-dash">{% if fixture.home_score is none and fixture.away_score is none %}v{% else %}–{% endif %}</span>
 <span class="live-score-away">{{ fixture.away_score if fixture.away_score is not none else "–" }}</span>
 </div>
 
