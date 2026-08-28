@@ -1584,6 +1584,36 @@ def short_team_name(name):
     return value
 
 
+def mobile_prediction_team_name(name):
+    """Fixed compact labels for the current season's mobile prediction grid."""
+    key = canonical_team_name(name)
+    names = {
+        "arsenal": "Arsenal",
+        "aston villa": "Aston Villa",
+        "bournemouth": "Bournemouth",
+        "brentford": "Brentford",
+        "brighton": "Brighton",
+        "burnley": "Burnley",
+        "chelsea": "Chelsea",
+        "crystal palace": "Palace",
+        "everton": "Everton",
+        "fulham": "Fulham",
+        "leeds": "Leeds",
+        "liverpool": "Liverpool",
+        "manchester city": "Man City",
+        "manchester united": "Man United",
+        "newcastle": "Newcastle",
+        "nottingham forest": "Forest",
+        "sunderland": "Sunderland",
+        "tottenham": "Spurs",
+        "west ham": "West Ham",
+        "wolves": "Wolves",
+        "ipswich": "Ipswich",
+        "coventry city": "Coventry",
+    }
+    return names.get(key, short_team_name(name))
+
+
 
 def football_data_co_uk_season_code(season):
     return (
@@ -4056,7 +4086,8 @@ def team_badge():
 @app.context_processor
 def inject_short_team_name():
     return {
-        "short_team_name": short_team_name
+        "short_team_name": short_team_name,
+        "mobile_prediction_team_name": mobile_prediction_team_name,
     }
 
 

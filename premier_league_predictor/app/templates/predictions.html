@@ -39,7 +39,8 @@
 
 <div class="prediction-team-cluster prediction-team-home">
 {% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}
-<span class="prediction-team-name">{{ short_team_name(fixture.home_team) }}</span>
+<span class="prediction-team-name prediction-team-name-full">{{ short_team_name(fixture.home_team) }}</span>
+<span class="prediction-team-name prediction-team-name-mobile">{{ mobile_prediction_team_name(fixture.home_team) }}</span>
 </div>
 
 <div class="prediction-score-centre">
@@ -77,7 +78,8 @@
 </div>
 
 <div class="prediction-team-cluster prediction-team-away">
-<span class="prediction-team-name">{{ short_team_name(fixture.away_team) }}</span>
+<span class="prediction-team-name prediction-team-name-full">{{ short_team_name(fixture.away_team) }}</span>
+<span class="prediction-team-name prediction-team-name-mobile">{{ mobile_prediction_team_name(fixture.away_team) }}</span>
 {% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}
 </div>
 
