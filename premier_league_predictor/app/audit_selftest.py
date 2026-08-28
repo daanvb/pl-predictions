@@ -1536,6 +1536,8 @@ assert '.prediction-scoreline' in base_template
 assert 'width:118px;' in base_template
 assert 'grid-template-columns:42px 20px 42px;' in base_template
 assert 'column-gap:12px' in base_template
+assert 'transform:translateX(6px);' in base_template
+assert 'transform:translateX(3px)' in base_template
 assert 'max-width:clamp(54px,19vw,82px);' in base_template
 assert 'class="prediction-score-centre"' in predictions_template
 assert 'mobile_prediction_team_name(fixture.home_team)' in predictions_template
