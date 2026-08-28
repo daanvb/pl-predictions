@@ -251,7 +251,8 @@ input{
   grid-template-columns:60px 22px 60px;
   column-gap:8px;
   align-items:center;
-  justify-content:center
+  justify-content:center;
+  justify-self:center
 }
 .prediction-team-cluster{
   min-width:0;
@@ -305,7 +306,10 @@ input{
   font-weight:700
 }
 .dash{
-  text-align:center;
+  display:grid;
+  place-items:center;
+  width:100%;
+  line-height:1;
   color:#94a3b8
 }
 .locked-score{
@@ -548,11 +552,12 @@ th,td{
   }
   .prediction-scoreline{
     grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
-    column-gap:7px
+    column-gap:12px
   }
   .prediction-score-centre{
-    grid-template-columns:42px 18px 42px;
-    column-gap:5px
+    width:118px;
+    grid-template-columns:42px 20px 42px;
+    column-gap:7px
   }
   .prediction-scoreline .score-input,
   .prediction-scoreline .locked-score{

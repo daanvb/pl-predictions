@@ -1590,7 +1590,7 @@ def mobile_prediction_team_name(name):
     names = {
         "arsenal": "Arsenal",
         "aston villa": "Aston Villa",
-        "bournemouth": "Bournemouth",
+        "bournemouth": "B'mouth",
         "brentford": "Brentford",
         "brighton": "Brighton",
         "burnley": "Burnley",
