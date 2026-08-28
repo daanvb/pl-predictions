@@ -579,6 +579,21 @@ scorers = predictor.fixture_scorers(
 )
 assert scorers["home"][0]["name"] == "Alex Striker"
 assert scorers["home"][0]["goals"] == ["12'", "45+2' (Pen)"]
+# Provider suffix differences must not hide otherwise valid live scorers.
+provider_scorers = predictor.fixture_scorers(
+    json.dumps([{
+        "minute": 17,
+        "type": "REGULAR",
+        "team": {"name": "Manchester City"},
+        "scorer": {"name": "Erling Haaland"},
+    }]),
+    "Crystal Palace FC",
+    "Manchester City FC",
+)
+assert provider_scorers["away"] == [{
+    "name": "Erling Haaland",
+    "goals": ["17'"],
+}]
 card_events = [{
     "time": "67+1",
     "type": "Red card",

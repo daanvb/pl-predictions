@@ -460,15 +460,19 @@ def fixture_scorers(goals_json, home_team, away_team):
     grouped = {"home": [], "away": []}
     scorer_index = {"home": {}, "away": {}}
 
+    home_key = normalized_team_name(home_team)
+    away_key = normalized_team_name(away_team)
+
     for goal in goals:
         scorer = (goal.get("scorer") or {}).get("name")
         team = (goal.get("team") or {}).get("name")
         if not scorer or not team:
             continue
 
-        if team.casefold() == home_team.casefold():
+        team_key = normalized_team_name(team)
+        if team_key == home_key:
             side = "home"
-        elif team.casefold() == away_team.casefold():
+        elif team_key == away_key:
             side = "away"
         else:
             continue
@@ -502,6 +506,8 @@ def fixture_red_cards(incidents_value, home_team, away_team):
         incidents = incidents_value or []
 
     grouped = {"home": [], "away": []}
+    home_key = normalized_team_name(home_team)
+    away_key = normalized_team_name(away_team)
     for incident in incidents:
         incident_type = (incident.get("type") or "").casefold()
         if "red" not in incident_type and incident.get("type_id") not in (4, 5):
@@ -509,9 +515,10 @@ def fixture_red_cards(incidents_value, home_team, away_team):
         side = incident.get("side")
         if side not in grouped:
             team = (incident.get("team") or {}).get("name")
-            if team and team.casefold() == home_team.casefold():
+            team_key = normalized_team_name(team) if team else ""
+            if team_key and team_key == home_key:
                 side = "home"
-            elif team and team.casefold() == away_team.casefold():
+            elif team_key and team_key == away_key:
                 side = "away"
             else:
                 continue
