@@ -42,6 +42,7 @@
 <span class="prediction-team-name">{{ short_team_name(fixture.home_team) }}</span>
 </div>
 
+<div class="prediction-score-centre">
 {% if kickoff_passed(fixture.utc_date) %}
 <div class="locked-score">
 {{ fixture.predicted_home if fixture.predicted_home is not none else "—" }}
@@ -73,6 +74,7 @@
     value="{{ fixture.predicted_away if fixture.predicted_away is not none else '' }}"
 >
 {% endif %}
+</div>
 
 <div class="prediction-team-cluster prediction-team-away">
 <span class="prediction-team-name">{{ short_team_name(fixture.away_team) }}</span>

@@ -240,10 +240,20 @@ input{
 /* Compact team clusters keep each crest beside its name while the fixed
    middle columns keep both score boxes centred around the v. */
 .prediction-scoreline{
-  grid-template-columns:minmax(0,1fr) 60px 22px 60px minmax(0,1fr)
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  column-gap:12px
+}
+.prediction-score-centre{
+  display:grid;
+  grid-template-columns:60px 22px 60px;
+  column-gap:8px;
+  align-items:center;
+  justify-content:center
 }
 .prediction-team-cluster{
   min-width:0;
+  width:max-content;
+  max-width:100%;
   display:flex;
   align-items:center;
   gap:7px
@@ -534,8 +544,12 @@ th,td{
     font-size:14px
   }
   .prediction-scoreline{
-    grid-template-columns:minmax(0,1fr) 42px 14px 42px minmax(0,1fr);
-    gap:5px
+    grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+    column-gap:7px
+  }
+  .prediction-score-centre{
+    grid-template-columns:42px 18px 42px;
+    column-gap:5px
   }
   .prediction-scoreline .score-input,
   .prediction-scoreline .locked-score{
@@ -544,7 +558,7 @@ th,td{
   }
   .prediction-team-name{
     width:fit-content;
-    max-width:clamp(64px,22vw,92px);
+    max-width:clamp(58px,20vw,88px);
     font-size:13px
   }
   .prediction-team-cluster{
@@ -560,11 +574,9 @@ th,td{
     word-break:normal
   }
   .prediction-team-home{
-    margin-right:4px;
     text-align:right
   }
   .prediction-team-away{
-    margin-left:4px;
     text-align:left
   }
   .save-bar{
