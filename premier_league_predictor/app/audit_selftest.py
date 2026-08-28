@@ -1480,6 +1480,7 @@ assert "player.season_points" in gameweek_template
 assert "Position during this gameweek" in gameweek_template
 assert "position-chart-data" in gameweek_template
 assert "button.innerHTML" not in gameweek_template
+assert "display_status not in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA')" in gameweek_template
 assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
 assert "team-badge-slot" in gameweek_template
@@ -1536,6 +1537,8 @@ assert '.prediction-scoreline' in base_template
 assert 'width:118px;' in base_template
 assert 'grid-template-columns:42px 20px 42px;' in base_template
 assert 'column-gap:12px' in base_template
+assert 'grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr);' in base_template
+assert 'grid-template-columns: 18px 14px 18px;' in base_template
 assert 'transform:translateX(6px);' in base_template
 assert 'transform:translateX(3px)' in base_template
 assert 'max-width:clamp(54px,19vw,82px);' in base_template
