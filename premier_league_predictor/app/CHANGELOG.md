@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.8] - 2026-08-28
+
+### Improved
+- Refined the mobile Predictions layout with centred score inputs, consistent spacing and club crests kept directly beside their team names.
+- Standardised season league-table headings as Correct Draws, Correct Scores and Correct Winners, with a clearer tie-break explanation.
+
 ## [1.1.7] - 2026-08-27
 
 ### Fixed

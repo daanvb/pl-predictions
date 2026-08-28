@@ -57,19 +57,19 @@
 <p class="small">Slug: <code>{{ item.slug }}</code></p>
 </div>
 {% else %}
-<div class="fixture fixture-set{% if item.status == 'live' %} fixture-live{% endif %}">
+<div class="card fixture-set{% if item.display_status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
 <div class="fixture-row-grid">
 
-<div class="fixture-match">
+<div class="fixture-match live-fixture-match">
 <div class="fixture-home">
 <span class="fixture-team-cluster fixture-team-cluster-home">
 <span class="team-badge-slot">{% if item.home_logo %}<img class="team-badge" src="{{ team_badge_url(item.home_logo) }}" alt="" loading="lazy">{% endif %}</span>
 <strong>{{ short_team_name(item.home) }}</strong>
 </span>
 </div>
-<div class="fixture-centre">
-{% if item.status in ('live', 'finished') and item.home_score is not none and item.away_score is not none %}
-<span class="fixture-scoreline"><span>{{ item.home_score }}</span><span class="fixture-score-dash">–</span><span>{{ item.away_score }}</span></span>
+<div class="fixture-centre live-score live-score-grid">
+{% if item.display_status in ('LIVE', 'IN_PLAY', 'PAUSED', 'FINISHED') and item.home_score is not none and item.away_score is not none %}
+<span class="live-score-home">{{ item.home_score }}</span><span class="live-score-dash">–</span><span class="live-score-away">{{ item.away_score }}</span>
 {% else %}
 v
 {% endif %}
@@ -87,13 +87,21 @@ v
 <span>{{ item.submeta }}</span>
 </div>
 {% endif %}
-<div class="fixture-broadcaster"></div>
+<div class="fixture-broadcaster">
+{% if item.broadcaster %}
+<span title="{{ item.broadcaster }}">
+<img class="tv-logo" src="{{ broadcaster_logo_url(item.broadcaster) }}" alt="{{ item.broadcaster }}">
+</span>
+{% endif %}
+</div>
 
 <div class="fixture-status">
-{% if item.status == 'live' %}
+{% if item.display_status in ('LIVE', 'IN_PLAY', 'PAUSED', 'AWAITING_LIVE_DATA') %}
 <span class="badge live">{{ item.status_label }}</span>
-{% elif item.status == 'finished' %}
+{% elif item.display_status == 'FINISHED' %}
 <span class="badge">FT</span>
+{% elif item.display_status == 'AWAITING_RESULT' %}
+<span class="badge">{{ item.status_label }}</span>
 {% else %}
 <span class="badge open">● Upcoming</span>
 {% endif %}

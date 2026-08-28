@@ -734,7 +734,8 @@ assert "(Pen)".encode() in live_test_response.data
 assert b"Test Defender" in live_test_response.data
 assert b"never affect Predictor fixtures" in live_test_response.data
 assert b'class="fixture-scorers"' in live_test_response.data
-assert b'class="fixture fixture-set fixture-live"' in live_test_response.data
+assert b'class="card fixture-set fixture-live"' in live_test_response.data
+assert b'class="fixture-centre live-score live-score-grid"' in live_test_response.data
 
 predictor.get_sportscore_match_details = lambda match: {
     "home": "Europa Home",
@@ -932,6 +933,7 @@ assert b"Correct Draws" in leaderboard_response.data
 assert b"Correct Scores" in leaderboard_response.data
 assert b"Correct Winners" in leaderboard_response.data
 assert b"Positions are ranked by total points" in leaderboard_response.data
+assert b"Correct Draws, then Correct Winners, then Correct Scores" in leaderboard_response.data
 stats_response = client.get("/stats")
 assert b"PREDICTIONS SCORED" not in stats_response.data
 assert b"Your Stats" in stats_response.data
@@ -1464,8 +1466,9 @@ assert '{% if show_match_stats %}' in predictions_template
 assert 'class="scoreline prediction-scoreline"' in predictions_template
 assert 'prediction-team-home' in predictions_template
 assert 'prediction-team-away' in predictions_template
-assert 'prediction-team-home">{% if fixture.home_logo %}' in predictions_template
-assert 'prediction-team-away"><span class="prediction-team-name"' in predictions_template
+assert 'class="prediction-team-cluster prediction-team-home"' in predictions_template
+assert 'class="prediction-team-cluster prediction-team-away"' in predictions_template
+assert predictions_template.count('class="prediction-team-name"') >= 2
 assert '<h2>🔥 Double Points (DP)</h2>' not in predictions_template
 assert '_match_stats.html' not in dashboard_template
 assert '_match_stats.html' not in gameweek_template
@@ -1490,9 +1493,9 @@ with open(
     leaderboard_template = handle.read()
 
 assert 'role="table" aria-label="Season league table"' in leaderboard_template
-assert 'data-label="Exact draws"' in leaderboard_template
-assert 'data-label="Exact wins"' in leaderboard_template
-assert 'data-label="Other correct"' in leaderboard_template
+assert 'data-label="Correct Draws"' in leaderboard_template
+assert 'data-label="Correct Scores"' in leaderboard_template
+assert 'data-label="Correct Winners"' in leaderboard_template
 assert "position-chart-player" in leaderboard_template
 assert "selectedPlayerId" in leaderboard_template
 assert "item.innerHTML" not in leaderboard_template
