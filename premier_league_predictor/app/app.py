@@ -1094,6 +1094,27 @@ def live_position_chart(conn, matchday):
             "id": row["player_id"],
             "name": row["player_name"],
         }
+
+    if snapshots:
+        snapshots[0]["milestone"] = "KO"
+        finished_updates = [
+            parse_utc(row["last_updated"])
+            for row in conn.execute(
+                """SELECT last_updated FROM fixtures
+                   WHERE season = ? AND matchday = ?
+                     AND status = 'FINISHED'
+                     AND last_updated IS NOT NULL""",
+                (SEASON, matchday),
+            ).fetchall()
+        ]
+        finished_updates = [value for value in finished_updates if value]
+        for snapshot in snapshots[1:]:
+            captured = parse_utc(snapshot["captured_at"])
+            if captured and any(
+                abs((captured - finished_at).total_seconds()) <= 180
+                for finished_at in finished_updates
+            ):
+                snapshot["milestone"] = "FT"
     return {
         "players": list(players.values()),
         "snapshots": snapshots,
