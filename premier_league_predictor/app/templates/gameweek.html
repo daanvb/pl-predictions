@@ -156,16 +156,15 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
         svg.appendChild(label);
     }
 
-    const labelIndexes = new Set([0, snapshots.length - 1]);
-    if (snapshots.length > 3) labelIndexes.add(Math.floor((snapshots.length - 1) / 2));
     snapshots.forEach((snapshot, index) => {
-        if (!labelIndexes.has(index)) return;
         const label = make("text", {
             x: x(index), y: height - 13,
             "text-anchor": index === 0 ? "start" : (index === snapshots.length - 1 ? "end" : "middle"),
             class: "position-chart-axis-label"
         });
-        label.textContent = index === 0 ? "Kick-off" : snapshot.label;
+        label.textContent = snapshot.milestone
+            ? `${snapshot.milestone} ${snapshot.label}`
+            : snapshot.label;
         svg.appendChild(label);
     });
 

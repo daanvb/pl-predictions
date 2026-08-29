@@ -155,6 +155,14 @@ returned_chart = predictor.live_position_chart(conn, 99)
 assert len(returned_chart["snapshots"]) == 4
 assert returned_chart["snapshots"][-1]["rows"][0]["gameweek_points"] == 5
 assert not predictor.record_live_position_snapshot(conn, 99)
+finished_at = datetime.now(timezone.utc).isoformat()
+conn.execute(
+    "UPDATE fixtures SET status = 'FINISHED', last_updated = ? WHERE id = 99001",
+    (finished_at,),
+)
+milestone_chart = predictor.live_position_chart(conn, 99)
+assert milestone_chart["snapshots"][0]["milestone"] == "KO"
+assert milestone_chart["snapshots"][-1]["milestone"] == "FT"
 snapshot_ids = [
     row["id"] for row in conn.execute(
         "SELECT id FROM live_position_snapshots WHERE matchday = 99"
@@ -1506,6 +1514,8 @@ assert "position-chart-data" in gameweek_template
 assert "Swipe for earlier updates" in gameweek_template
 assert "mobileTimelineWidth" in gameweek_template
 assert "stage.scrollLeft = Math.max(0, stage.scrollWidth - stage.clientWidth)" in gameweek_template
+assert "`${snapshot.milestone} ${snapshot.label}`" in gameweek_template
+assert "labelIndexes" not in gameweek_template
 assert "button.innerHTML" not in gameweek_template
 assert "display_status not in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA')" in gameweek_template
 assert 'const chartName = String(player.name || "").trim().split(/\\s+/)[0] || player.name;' in gameweek_template
