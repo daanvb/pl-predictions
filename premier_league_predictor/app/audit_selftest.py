@@ -147,6 +147,14 @@ conn.execute(
 )
 assert predictor.record_live_position_snapshot(conn, 99)
 assert len(predictor.live_position_chart(conn, 99)["snapshots"]) == 3
+conn.execute(
+    "UPDATE fixtures SET away_score = 0 WHERE id = 99001"
+)
+assert predictor.record_live_position_snapshot(conn, 99)
+returned_chart = predictor.live_position_chart(conn, 99)
+assert len(returned_chart["snapshots"]) == 4
+assert returned_chart["snapshots"][-1]["rows"][0]["gameweek_points"] == 5
+assert not predictor.record_live_position_snapshot(conn, 99)
 snapshot_ids = [
     row["id"] for row in conn.execute(
         "SELECT id FROM live_position_snapshots WHERE matchday = 99"

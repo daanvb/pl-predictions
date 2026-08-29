@@ -1007,11 +1007,50 @@ def record_live_position_snapshot(conn, matchday):
         ],
         separators=(",", ":"),
     )
+
+    # Only suppress an unchanged *consecutive* state. A league table can
+    # legitimately return to an earlier ordering later in the match; the
+    # database's historical UNIQUE signature must not hide that movement.
+    latest = conn.execute(
+        """SELECT state_signature FROM live_position_snapshots
+           WHERE season = ? AND matchday = ?
+           ORDER BY captured_at DESC, id DESC LIMIT 1""",
+        (SEASON, matchday),
+    ).fetchone()
+    latest_state = (
+        latest["state_signature"].split("\noccurrence:", 1)[0]
+        if latest else None
+    )
+    if latest_state == signature:
+        return False
+
+    stored_signature = signature
+    if conn.execute(
+        """SELECT 1 FROM live_position_snapshots
+           WHERE season = ? AND matchday = ? AND state_signature = ?""",
+        (SEASON, matchday, signature),
+    ).fetchone():
+        stored_signature = f"{signature}\noccurrence:{now_utc().isoformat()}"
+
+    captured_at = now_utc()
+    if not any(
+        fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
+        for fixture in fixtures
+    ):
+        finished_updates = [
+            parse_utc(fixture["last_updated"])
+            for fixture in fixtures
+            if fixture["status"] == "FINISHED" and fixture["last_updated"]
+        ]
+        finished_updates = [value for value in finished_updates if value]
+        if finished_updates:
+            captured_at = max(finished_updates)
+
     return _insert_position_snapshot(
         conn,
         matchday,
-        now_utc().isoformat(),
-        signature,
+        captured_at.isoformat(),
+        stored_signature,
         live_table,
     )
 
