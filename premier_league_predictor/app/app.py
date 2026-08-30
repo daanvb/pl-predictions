@@ -2170,9 +2170,10 @@ def match_stats_for_fixture(
         kickoff
     )
 
-    # Pre-match cards deliberately use only earlier fixtures. Once this
-    # fixture is final, include its own result so the venue records and recent
-    # form update immediately instead of remaining frozen at kickoff.
+    # Venue records remain the pre-match numbers for the whole gameweek. The
+    # current result may update recent form, but it must not enter home/away
+    # aggregates until a later fixture is opened.
+    form_rows = list(all_prior)
     current_result = conn.execute(
         """SELECT id, season, matchday, utc_date, home_team, away_team,
                   home_score, away_score
@@ -2182,9 +2183,9 @@ def match_stats_for_fixture(
         (fixture["id"], now_utc().isoformat()),
     ).fetchone()
     if current_result and not any(
-        row["id"] == current_result["id"] for row in all_prior
+        row["id"] == current_result["id"] for row in form_rows
     ):
-        all_prior = [current_result] + all_prior
+        form_rows = [current_result] + form_rows
 
     home_key = canonical_team_name(
         home_team
@@ -2199,7 +2200,7 @@ def match_stats_for_fixture(
     home_record_rows = [
         row
         for row in all_prior
-        if (row["season"] == SEASON or row["id"] == fixture["id"])
+        if row["season"] == SEASON
         and canonical_team_name(
             row["home_team"]
         ) == home_key
@@ -2208,7 +2209,7 @@ def match_stats_for_fixture(
     away_record_rows = [
         row
         for row in all_prior
-        if (row["season"] == SEASON or row["id"] == fixture["id"])
+        if row["season"] == SEASON
         and canonical_team_name(
             row["away_team"]
         ) == away_key
@@ -2216,7 +2217,7 @@ def match_stats_for_fixture(
 
     home_form_rows = [
         row
-        for row in all_prior
+        for row in form_rows
         if row["season"] == SEASON
         and (
             canonical_team_name(
@@ -2230,7 +2231,7 @@ def match_stats_for_fixture(
 
     away_form_rows = [
         row
-        for row in all_prior
+        for row in form_rows
         if row["season"] == SEASON
         and (
             canonical_team_name(

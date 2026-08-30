@@ -1283,14 +1283,14 @@ canonical_stats = predictor.match_stats_for_fixture(
 assert canonical_stats["home_record"]["played"] >= 1
 assert canonical_stats["home_form"][0] == "W"
 
-# A fixture's own result joins the venue/form totals as soon as scores arrive,
-# even if a provider is late changing its status to FINISHED.
+# A fixture's own result updates form immediately, but its venue totals remain
+# the pre-match values until the next gameweek is viewed.
 finished_stats_kickoff = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
 conn.execute(
     """INSERT INTO fixtures(
            id, season, matchday, utc_date, status,
            home_team, away_team, home_score, away_score
-       ) VALUES (77772, ?, 3, ?, 'TIMED',
+       ) VALUES (77772, ?, 3, ?, 'FINISHED',
                  'Crystal Palace', 'Manchester City', 1, 3)""",
     (season, finished_stats_kickoff),
 )
@@ -1304,10 +1304,21 @@ finished_stats = predictor.match_stats_for_fixture(
         "away_team": "Manchester City",
     },
 )
-assert finished_stats["home_record"]["losses"] == 1
-assert finished_stats["away_record"]["wins"] == 1
+assert finished_stats["home_record"]["played"] == 0
+assert finished_stats["away_record"]["played"] == 0
 assert finished_stats["home_form"][0] == "L"
 assert finished_stats["away_form"][0] == "W"
+next_gameweek_stats = predictor.match_stats_for_fixture(
+    conn,
+    {
+        "id": 77773,
+        "utc_date": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+        "home_team": "Crystal Palace",
+        "away_team": "Manchester City",
+    },
+)
+assert next_gameweek_stats["home_record"]["losses"] == 1
+assert next_gameweek_stats["away_record"]["wins"] == 1
 conn.execute("DELETE FROM fixtures WHERE id = 77772")
 conn.commit()
 conn.close()
