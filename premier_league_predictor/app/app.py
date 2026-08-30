@@ -2580,6 +2580,71 @@ def import_matches_from_api():
     return imported
 
 
+def repair_missing_completed_results():
+    """Recover blank completed scores from the retained goal-event archive."""
+    conn = get_db()
+    repaired = 0
+    repaired_matchdays = set()
+    try:
+        played_before = (now_utc() - timedelta(hours=3)).isoformat()
+        fixtures = conn.execute(
+            """SELECT id, matchday, home_team, away_team, goals_json
+               FROM fixtures
+               WHERE season = ?
+                 AND status NOT IN ('LIVE', 'IN_PLAY', 'PAUSED', 'CANCELLED')
+                 AND utc_date <= ?
+                 AND (home_score IS NULL OR away_score IS NULL)
+                 AND goals_json IS NOT NULL""",
+            (SEASON, played_before),
+        ).fetchall()
+
+        for fixture in fixtures:
+            try:
+                goals = json.loads(fixture["goals_json"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(goals, list):
+                continue
+
+            home_key = normalized_team_name(fixture["home_team"])
+            away_key = normalized_team_name(fixture["away_team"])
+            home_score = away_score = 0
+            complete = True
+            for goal in goals:
+                team = (goal.get("team") or {}).get("name")
+                team_key = normalized_team_name(team)
+                if team_key == home_key:
+                    home_score += 1
+                elif team_key == away_key:
+                    away_score += 1
+                else:
+                    complete = False
+                    break
+            if not complete:
+                continue
+
+            conn.execute(
+                """UPDATE fixtures
+                   SET status = 'FINISHED', home_score = ?, away_score = ?,
+                       minute = NULL, injury_time = NULL, last_updated = ?
+                   WHERE id = ?""",
+                (home_score, away_score, now_utc().isoformat(), fixture["id"]),
+            )
+            repaired += 1
+            if fixture["matchday"] is not None:
+                repaired_matchdays.add(fixture["matchday"])
+
+        if repaired:
+            refresh_points(conn)
+            for matchday in sorted(repaired_matchdays):
+                record_live_position_snapshot(conn, matchday)
+            archive_completed_season(conn, SEASON)
+        conn.commit()
+        return repaired
+    finally:
+        conn.close()
+
+
 def normalized_team_name(name):
     value = re.sub(r"[^a-z0-9]+", " ", (name or "").casefold()).strip()
     words = [word for word in value.split() if word not in ("fc", "afc")]
@@ -3058,6 +3123,16 @@ def api_refresh_worker():
                 f"[auto-refresh] {e}",
                 flush=True
             )
+
+        try:
+            repaired = repair_missing_completed_results()
+            if repaired:
+                print(
+                    f"[result-repair] Restored {repaired} fixture result(s)",
+                    flush=True,
+                )
+        except Exception as exc:
+            print(f"[result-repair] {exc}", flush=True)
 
         delay = next_api_refresh_delay()
 
