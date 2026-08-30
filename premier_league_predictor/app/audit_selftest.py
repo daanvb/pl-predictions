@@ -137,59 +137,24 @@ conn.execute(
        VALUES (?, 99001, 1, 0, 0)""",
     (snapshot_player,),
 )
-assert predictor.record_live_position_snapshot(conn, 99)
+# With one player, scoring changes cannot alter a league position. The KO
+# baseline is retained but redundant live points are deliberately suppressed.
 assert not predictor.record_live_position_snapshot(conn, 99)
 chart = predictor.live_position_chart(conn, 99)
-assert len(chart["snapshots"]) == 2
-assert chart["snapshots"][-1]["rows"][0]["gameweek_points"] == 5
+assert len(chart["snapshots"]) == 1
 conn.execute(
     "UPDATE fixtures SET away_score = 1 WHERE id = 99001"
 )
-assert predictor.record_live_position_snapshot(conn, 99)
+assert not predictor.record_live_position_snapshot(conn, 99)
 assert conn.execute(
     "SELECT COUNT(*) FROM live_position_snapshots WHERE matchday = 99"
-).fetchone()[0] == 3
-conn.execute(
-    "UPDATE fixtures SET away_score = 0 WHERE id = 99001"
+).fetchone()[0] == 1
+cause_fixture_id, cause_label = predictor._position_snapshot_cause(
+    conn.execute("SELECT * FROM fixtures WHERE id = 99001").fetchall()
 )
-assert predictor.record_live_position_snapshot(conn, 99)
-returned_chart = predictor.live_position_chart(conn, 99)
-# Rapid corrections in one displayed minute settle into one graph point.
-assert len(returned_chart["snapshots"]) == 2
-assert returned_chart["snapshots"][-1]["rows"][0]["gameweek_points"] == 5
-nonbaseline_ids = [
-    row["id"] for row in conn.execute(
-        """SELECT id FROM live_position_snapshots
-           WHERE matchday = 99 AND state_signature != 'baseline'
-           ORDER BY id"""
-    ).fetchall()
-]
-snapshot_anchor = datetime.now(timezone.utc) - timedelta(minutes=6)
-for offset, snapshot_id in enumerate(nonbaseline_ids):
-    conn.execute(
-        "UPDATE live_position_snapshots SET captured_at = ? WHERE id = ?",
-        ((snapshot_anchor + timedelta(minutes=offset * 2)).isoformat(), snapshot_id),
-    )
-smoothed_chart = predictor.live_position_chart(conn, 99)
-assert all(
-    snapshot["rows"][0]["gameweek_points"] == 5
-    for snapshot in smoothed_chart["snapshots"][1:]
-)
-assert not predictor.record_live_position_snapshot(conn, 99)
-# Rendering reconciles a stale stored final point with the table's current
-# state even when no background snapshot was written for the latest change.
-conn.execute("UPDATE fixtures SET away_score = 1 WHERE id = 99001")
-reconciled_chart = predictor.live_position_chart(conn, 99)
-assert reconciled_chart["snapshots"][-1]["rows"][0]["gameweek_points"] == 0
-conn.execute("UPDATE fixtures SET away_score = 0 WHERE id = 99001")
-finished_at = datetime.now(timezone.utc).isoformat()
-conn.execute(
-    "UPDATE fixtures SET status = 'FINISHED', last_updated = ? WHERE id = 99001",
-    (finished_at,),
-)
-milestone_chart = predictor.live_position_chart(conn, 99)
-assert milestone_chart["snapshots"][0]["milestone"] == "KO"
-assert milestone_chart["snapshots"][-1]["milestone"] == "FT"
+assert cause_fixture_id == 99001
+assert cause_label == "Snapshot Home v Snapshot Away"
+assert chart["snapshots"][0]["milestone"] == "KO"
 snapshot_ids = [
     row["id"] for row in conn.execute(
         "SELECT id FROM live_position_snapshots WHERE matchday = 99"
@@ -1318,13 +1283,14 @@ canonical_stats = predictor.match_stats_for_fixture(
 assert canonical_stats["home_record"]["played"] >= 1
 assert canonical_stats["home_form"][0] == "W"
 
-# A fixture's own result joins the venue/form totals as soon as it is final.
-finished_stats_kickoff = datetime.now(timezone.utc).isoformat()
+# A fixture's own result joins the venue/form totals as soon as scores arrive,
+# even if a provider is late changing its status to FINISHED.
+finished_stats_kickoff = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
 conn.execute(
     """INSERT INTO fixtures(
            id, season, matchday, utc_date, status,
            home_team, away_team, home_score, away_score
-       ) VALUES (77772, ?, 3, ?, 'FINISHED',
+       ) VALUES (77772, ?, 3, ?, 'TIMED',
                  'Crystal Palace', 'Manchester City', 1, 3)""",
     (season, finished_stats_kickoff),
 )
