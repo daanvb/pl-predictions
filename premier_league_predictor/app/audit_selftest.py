@@ -146,13 +146,16 @@ conn.execute(
     "UPDATE fixtures SET away_score = 1 WHERE id = 99001"
 )
 assert predictor.record_live_position_snapshot(conn, 99)
-assert len(predictor.live_position_chart(conn, 99)["snapshots"]) == 3
+assert conn.execute(
+    "SELECT COUNT(*) FROM live_position_snapshots WHERE matchday = 99"
+).fetchone()[0] == 3
 conn.execute(
     "UPDATE fixtures SET away_score = 0 WHERE id = 99001"
 )
 assert predictor.record_live_position_snapshot(conn, 99)
 returned_chart = predictor.live_position_chart(conn, 99)
-assert len(returned_chart["snapshots"]) == 4
+# Rapid corrections in one displayed minute settle into one graph point.
+assert len(returned_chart["snapshots"]) == 2
 assert returned_chart["snapshots"][-1]["rows"][0]["gameweek_points"] == 5
 assert not predictor.record_live_position_snapshot(conn, 99)
 finished_at = datetime.now(timezone.utc).isoformat()
@@ -1290,6 +1293,33 @@ canonical_stats = predictor.match_stats_for_fixture(
 
 assert canonical_stats["home_record"]["played"] >= 1
 assert canonical_stats["home_form"][0] == "W"
+
+# A fixture's own result joins the venue/form totals as soon as it is final.
+finished_stats_kickoff = datetime.now(timezone.utc).isoformat()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status,
+           home_team, away_team, home_score, away_score
+       ) VALUES (77772, ?, 3, ?, 'FINISHED',
+                 'Crystal Palace', 'Manchester City', 1, 3)""",
+    (season, finished_stats_kickoff),
+)
+conn.commit()
+finished_stats = predictor.match_stats_for_fixture(
+    conn,
+    {
+        "id": 77772,
+        "utc_date": finished_stats_kickoff,
+        "home_team": "Crystal Palace",
+        "away_team": "Manchester City",
+    },
+)
+assert finished_stats["home_record"]["losses"] == 1
+assert finished_stats["away_record"]["wins"] == 1
+assert finished_stats["home_form"][0] == "L"
+assert finished_stats["away_form"][0] == "W"
+conn.execute("DELETE FROM fixtures WHERE id = 77772")
+conn.commit()
 conn.close()
 
 
@@ -1678,6 +1708,74 @@ delay = predictor.next_api_refresh_delay()
 assert delay < predictor.QUIET_REFRESH_SECONDS
 assert delay <= (2 * 60 * 60)
 
+# A general fixture refresh must not erase a completed result or overwrite
+# SportScore's authoritative in-play state with a competing provider update.
+conn = database.get_db()
+conn.executemany(
+    """INSERT OR REPLACE INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           home_score, away_score, goals_json, live_data_source
+       ) VALUES (?, ?, 38, ?, ?, ?, ?, ?, ?, ?, 'SportScore')""",
+    [
+        (
+            99003, season, datetime.now(timezone.utc).isoformat(),
+            "FINISHED", "Protected Final Home", "Protected Final Away",
+            2, 1, '[{"scorer":"Final Scorer"}]',
+        ),
+        (
+            99004, season, datetime.now(timezone.utc).isoformat(),
+            "IN_PLAY", "Protected Live Home", "Protected Live Away",
+            1, 0, '[{"scorer":"Live Scorer"}]',
+        ),
+    ],
+)
+conn.commit()
+conn.close()
+original_get_matches = predictor.get_matches
+original_refresh_tv = predictor.refresh_tv_broadcasters
+predictor.get_matches = lambda token, season: [
+    {
+        "id": 99003,
+        "matchday": 38,
+        "utcDate": datetime.now(timezone.utc).isoformat(),
+        "status": "TIMED",
+        "homeTeam": {"name": "Protected Final Home"},
+        "awayTeam": {"name": "Protected Final Away"},
+        "score": {"fullTime": {"home": None, "away": None}},
+    },
+    {
+        "id": 99004,
+        "matchday": 38,
+        "utcDate": datetime.now(timezone.utc).isoformat(),
+        "status": "IN_PLAY",
+        "homeTeam": {"name": "Protected Live Home"},
+        "awayTeam": {"name": "Protected Live Away"},
+        "score": {"fullTime": {"home": 0, "away": 0}},
+        "goals": [],
+    },
+]
+predictor.refresh_tv_broadcasters = lambda conn: 0
+predictor.set_setting("football_api_token", "test-token")
+try:
+    assert predictor.import_matches_from_api() == 2
+finally:
+    predictor.get_matches = original_get_matches
+    predictor.refresh_tv_broadcasters = original_refresh_tv
+    predictor.set_setting("football_api_token", "")
+conn = database.get_db()
+protected_final = conn.execute(
+    "SELECT status, home_score, away_score FROM fixtures WHERE id = 99003"
+).fetchone()
+protected_live = conn.execute(
+    """SELECT status, home_score, away_score, live_data_source
+       FROM fixtures WHERE id = 99004"""
+).fetchone()
+assert tuple(protected_final) == ("FINISHED", 2, 1)
+assert tuple(protected_live) == ("IN_PLAY", 1, 0, "SportScore")
+conn.execute("DELETE FROM fixtures WHERE id IN (99003, 99004)")
+conn.commit()
+conn.close()
+
 # Live refresh must look up the current fixture directly. The global latest-50
 # feed can omit Premier League matches when many games are played worldwide.
 conn = database.get_db()
@@ -1691,6 +1789,7 @@ conn.execute(
 conn.commit()
 conn.close()
 direct_calls = []
+direct_state = {"corrected": False}
 original_match_details = predictor.get_sportscore_match_details
 def fake_direct_match_details(match):
     direct_calls.append(match["url"])
@@ -1700,12 +1799,12 @@ def fake_direct_match_details(match):
         "home": "Fulham",
         "away": "Chelsea",
         "home_score": "2",
-        "away_score": "3",
+        "away_score": "2" if direct_state["corrected"] else "3",
         "status": "live",
         "live_minute": "64",
         "home_logo": "https://sportscore.com/media/fulham.png",
         "away_logo": "https://sportscore.com/media/chelsea.png",
-        "incidents": [{
+        "incidents": [] if direct_state["corrected"] else [{
             "time": 54,
             "type": "Goal",
             "side": "home",
@@ -1717,9 +1816,13 @@ def fake_direct_match_details(match):
 predictor.get_sportscore_match_details = fake_direct_match_details
 try:
     assert predictor.import_live_matches_from_sportscore() == 1
+    direct_state["corrected"] = True
+    assert predictor.import_live_matches_from_sportscore() == 1
 finally:
     predictor.get_sportscore_match_details = original_match_details
 assert direct_calls == [
+    "/football/match/fulham-vs-chelsea/",
+    "/football/match/chelsea-vs-fulham/",
     "/football/match/fulham-vs-chelsea/",
     "/football/match/chelsea-vs-fulham/",
 ]
@@ -1729,9 +1832,9 @@ direct_fixture = conn.execute(
               home_logo, away_logo
        FROM fixtures WHERE id = 99002"""
 ).fetchone()
-assert (direct_fixture["home_score"], direct_fixture["away_score"]) == (2, 3)
+assert (direct_fixture["home_score"], direct_fixture["away_score"]) == (2, 2)
 assert direct_fixture["minute"] == 64
-assert "Direct Scorer" in direct_fixture["goals_json"]
+assert direct_fixture["goals_json"] == "[]"
 assert direct_fixture["home_logo"].endswith("fulham.png")
 assert direct_fixture["away_logo"].endswith("chelsea.png")
 conn.execute("DELETE FROM fixtures WHERE id = 99002")
