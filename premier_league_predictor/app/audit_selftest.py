@@ -157,6 +157,24 @@ returned_chart = predictor.live_position_chart(conn, 99)
 # Rapid corrections in one displayed minute settle into one graph point.
 assert len(returned_chart["snapshots"]) == 2
 assert returned_chart["snapshots"][-1]["rows"][0]["gameweek_points"] == 5
+nonbaseline_ids = [
+    row["id"] for row in conn.execute(
+        """SELECT id FROM live_position_snapshots
+           WHERE matchday = 99 AND state_signature != 'baseline'
+           ORDER BY id"""
+    ).fetchall()
+]
+snapshot_anchor = datetime.now(timezone.utc) - timedelta(minutes=6)
+for offset, snapshot_id in enumerate(nonbaseline_ids):
+    conn.execute(
+        "UPDATE live_position_snapshots SET captured_at = ? WHERE id = ?",
+        ((snapshot_anchor + timedelta(minutes=offset * 2)).isoformat(), snapshot_id),
+    )
+smoothed_chart = predictor.live_position_chart(conn, 99)
+assert all(
+    snapshot["rows"][0]["gameweek_points"] == 5
+    for snapshot in smoothed_chart["snapshots"][1:]
+)
 assert not predictor.record_live_position_snapshot(conn, 99)
 # Rendering reconciles a stale stored final point with the table's current
 # state even when no background snapshot was written for the latest change.

@@ -1055,6 +1055,46 @@ def record_live_position_snapshot(conn, matchday):
     )
 
 
+def _position_snapshot_state(snapshot):
+    return tuple(sorted(
+        (
+            row["player_id"], row["position"],
+            row["season_points"], row["gameweek_points"],
+        )
+        for row in snapshot["rows"]
+    ))
+
+
+def _smooth_transient_position_snapshots(snapshots, max_seconds=600):
+    """Remove a short-lived state when the complete prior state returns."""
+    smoothed = list(snapshots)
+    changed = True
+    while changed and len(smoothed) >= 3:
+        changed = False
+        for index in range(1, len(smoothed) - 1):
+            previous = smoothed[index - 1]
+            transient = smoothed[index]
+            following = smoothed[index + 1]
+            if (
+                _position_snapshot_state(previous)
+                != _position_snapshot_state(following)
+                or _position_snapshot_state(transient)
+                == _position_snapshot_state(previous)
+            ):
+                continue
+            previous_at = parse_utc(previous["captured_at"])
+            following_at = parse_utc(following["captured_at"])
+            if (
+                previous_at
+                and following_at
+                and 0 <= (following_at - previous_at).total_seconds() <= max_seconds
+            ):
+                del smoothed[index]
+                changed = True
+                break
+    return smoothed
+
+
 def live_position_chart(conn, matchday):
     rows = conn.execute(
         """SELECT s.id AS snapshot_id, s.captured_at, s.state_signature,
@@ -1191,6 +1231,7 @@ def live_position_chart(conn, matchday):
                 snapshots.append(reconciled)
         for row in current_table:
             players[row["id"]] = {"id": row["id"], "name": row["name"]}
+    snapshots = _smooth_transient_position_snapshots(snapshots)
     return {
         "players": list(players.values()),
         "snapshots": snapshots,
