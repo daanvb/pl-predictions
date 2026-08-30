@@ -1057,7 +1057,7 @@ def record_live_position_snapshot(conn, matchday):
 
 def live_position_chart(conn, matchday):
     rows = conn.execute(
-        """SELECT s.id AS snapshot_id, s.captured_at,
+        """SELECT s.id AS snapshot_id, s.captured_at, s.state_signature,
                   r.player_id, r.player_name, r.position,
                   r.season_points, r.gameweek_points
            FROM live_position_snapshots s
@@ -1075,6 +1075,7 @@ def live_position_chart(conn, matchday):
             captured = parse_utc(row["captured_at"])
             snapshot = {
                 "captured_at": row["captured_at"],
+                "state_signature": row["state_signature"],
                 "label": (
                     captured.astimezone(UK).strftime("%H:%M")
                     if captured else ""
@@ -1094,6 +1095,24 @@ def live_position_chart(conn, matchday):
             "id": row["player_id"],
             "name": row["player_name"],
         }
+
+    # A pair of providers can publish competing states only seconds apart.
+    # Keep the final settled state for each displayed minute so a transient
+    # correction does not create duplicate timestamps or a false zig-zag.
+    coalesced = []
+    for snapshot in snapshots:
+        minute_key = snapshot["label"]
+        is_baseline = snapshot["state_signature"] == "baseline"
+        if (
+            coalesced
+            and not is_baseline
+            and coalesced[-1]["state_signature"] != "baseline"
+            and coalesced[-1]["label"] == minute_key
+        ):
+            coalesced[-1] = snapshot
+        else:
+            coalesced.append(snapshot)
+    snapshots = coalesced
 
     if snapshots:
         snapshots[0]["milestone"] = "KO"
@@ -2009,6 +2028,22 @@ def match_stats_for_fixture(
         kickoff
     )
 
+    # Pre-match cards deliberately use only earlier fixtures. Once this
+    # fixture is final, include its own result so the venue records and recent
+    # form update immediately instead of remaining frozen at kickoff.
+    current_result = conn.execute(
+        """SELECT id, season, matchday, utc_date, home_team, away_team,
+                  home_score, away_score
+           FROM fixtures
+           WHERE id = ? AND status = 'FINISHED'
+             AND home_score IS NOT NULL AND away_score IS NOT NULL""",
+        (fixture["id"],),
+    ).fetchone()
+    if current_result and not any(
+        row["id"] == current_result["id"] for row in all_prior
+    ):
+        all_prior = [current_result] + all_prior
+
     home_key = canonical_team_name(
         home_team
     )
@@ -2413,21 +2448,85 @@ def import_matches_from_api():
             DO UPDATE SET
                 matchday = excluded.matchday,
                 utc_date = excluded.utc_date,
-                status = excluded.status,
+                status = CASE
+                    WHEN fixtures.status = 'FINISHED'
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.status
+                    WHEN fixtures.live_data_source = 'SportScore'
+                      AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.status
+                    ELSE excluded.status
+                END,
                 home_team = excluded.home_team,
                 away_team = excluded.away_team,
-                home_score = excluded.home_score,
-                away_score = excluded.away_score,
-                last_updated = excluded.last_updated,
-                minute = excluded.minute,
-                injury_time = excluded.injury_time,
+                home_score = CASE
+                    WHEN fixtures.status = 'FINISHED'
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.home_score
+                    WHEN fixtures.live_data_source = 'SportScore'
+                      AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.home_score
+                    ELSE COALESCE(excluded.home_score, fixtures.home_score)
+                END,
+                away_score = CASE
+                    WHEN fixtures.status = 'FINISHED'
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.away_score
+                    WHEN fixtures.live_data_source = 'SportScore'
+                      AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.away_score
+                    ELSE COALESCE(excluded.away_score, fixtures.away_score)
+                END,
+                last_updated = CASE
+                    WHEN fixtures.status = 'FINISHED'
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.last_updated
+                    WHEN fixtures.live_data_source = 'SportScore'
+                      AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.last_updated
+                    ELSE COALESCE(excluded.last_updated, fixtures.last_updated)
+                END,
+                minute = CASE
+                    WHEN fixtures.live_data_source = 'SportScore'
+                      AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.minute
+                    ELSE COALESCE(excluded.minute, fixtures.minute)
+                END,
+                injury_time = CASE
+                    WHEN fixtures.live_data_source = 'SportScore'
+                      AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.injury_time
+                    ELSE COALESCE(excluded.injury_time, fixtures.injury_time)
+                END,
                 goals_json = CASE
+                    WHEN fixtures.status = 'FINISHED'
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.goals_json
+                    WHEN fixtures.live_data_source = 'SportScore'
+                      AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.goals_json
                     WHEN excluded.goals_json IS NULL
                       OR excluded.goals_json = '[]'
                     THEN fixtures.goals_json
                     ELSE excluded.goals_json
                 END,
-                live_data_source = excluded.live_data_source
+                live_data_source = CASE
+                    WHEN fixtures.status = 'FINISHED'
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.live_data_source
+                    WHEN fixtures.live_data_source = 'SportScore'
+                      AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
+                      AND excluded.status != 'FINISHED'
+                    THEN fixtures.live_data_source
+                    ELSE excluded.live_data_source
+                END
             """,
             (
                 match["id"],
@@ -2663,7 +2762,19 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                 not stored["goals_json"]
                 and ((stored["home_score"] or 0) > 0 or (stored["away_score"] or 0) > 0)
             )
-            if not (in_live_window or already_live or (force_current_gameweek and needs_scorers)):
+            needs_result_repair = bool(
+                kickoff
+                and current_time - timedelta(hours=48) <= kickoff <= current_time
+                and (stored["home_score"] is None or stored["away_score"] is None)
+            )
+            if not (
+                in_live_window
+                or already_live
+                or (
+                    force_current_gameweek
+                    and (needs_scorers or needs_result_repair)
+                )
+            ):
                 continue
 
             home_slug = sportscore_team_slug(stored["home_team"])
@@ -2698,10 +2809,22 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
             if details is None:
                 continue
 
+            raw_incidents = details.get("incidents")
+            incidents = raw_incidents if isinstance(raw_incidents, list) else []
             goals = sportscore_goal_events(details)
-            goals_json = json.dumps(goals) if goals else None
-            incidents = details.get("incidents") or []
-            incidents_json = json.dumps(incidents) if incidents else None
+            # An explicit empty incident list is authoritative. Persisting []
+            # clears a goal that the provider has withdrawn after VAR rather
+            # than retaining the earlier scorer and score indefinitely.
+            goals_json = (
+                json.dumps(goals)
+                if isinstance(raw_incidents, list)
+                else None
+            )
+            incidents_json = (
+                json.dumps(incidents)
+                if isinstance(raw_incidents, list)
+                else None
+            )
             minute_value, injury_time_value = sportscore_live_clock(details)
 
             conn.execute(
@@ -2843,6 +2966,28 @@ def next_api_refresh_delay():
     )
 
 
+def current_gameweek_needs_result_repair():
+    """Return true when a recently played fixture has lost either score."""
+    conn = get_db()
+    try:
+        matchday = dashboard_current_gameweek(conn)
+        if matchday is None:
+            return False
+        cutoff = (now_utc() - timedelta(hours=48)).isoformat()
+        current = now_utc().isoformat()
+        return bool(conn.execute(
+            """SELECT 1 FROM fixtures
+               WHERE season = ? AND matchday = ?
+                 AND status != 'CANCELLED'
+                 AND utc_date BETWEEN ? AND ?
+                 AND (home_score IS NULL OR away_score IS NULL)
+               LIMIT 1""",
+            (SEASON, matchday, cutoff, current),
+        ).fetchone())
+    finally:
+        conn.close()
+
+
 def live_window_active():
     """
     Backwards-compatible helper used by tests/diagnostics.
@@ -2916,9 +3061,13 @@ def api_refresh_worker():
 
         delay = next_api_refresh_delay()
 
-        if delay == LIVE_REFRESH_SECONDS:
+        repair_results = current_gameweek_needs_result_repair()
+
+        if delay == LIVE_REFRESH_SECONDS or repair_results:
             try:
-                live_updates = import_live_matches_from_sportscore()
+                live_updates = import_live_matches_from_sportscore(
+                    force_current_gameweek=repair_results,
+                )
                 set_setting("last_sportscore_error", "")
                 print(
                     f"[SportScore] Updated {live_updates} live fixture(s)",
