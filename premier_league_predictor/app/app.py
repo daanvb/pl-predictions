@@ -1134,6 +1134,63 @@ def live_position_chart(conn, matchday):
                 for finished_at in finished_updates
             ):
                 snapshot["milestone"] = "FT"
+
+    # The table above the chart is calculated from the current fixture state.
+    # Reconcile the rendered final point with that same state, even if an old
+    # or conflicting database snapshot survived an earlier provider wobble.
+    current_fixtures, current_table, _ = _snapshot_rows(conn, matchday)
+    if current_table:
+        current_rows = [
+            {
+                "player_id": row["id"],
+                "position": row["position"],
+                "season_points": row["season_points"],
+                "gameweek_points": row["points"],
+            }
+            for row in current_table
+        ]
+        current_state = [
+            (
+                row["player_id"], row["position"],
+                row["season_points"], row["gameweek_points"],
+            )
+            for row in current_rows
+        ]
+        last_state = [
+            (
+                row["player_id"], row["position"],
+                row["season_points"], row["gameweek_points"],
+            )
+            for row in (snapshots[-1]["rows"] if snapshots else [])
+        ]
+        if current_state != last_state:
+            update_times = [
+                parse_utc(fixture["last_updated"])
+                for fixture in current_fixtures
+                if fixture["last_updated"]
+            ]
+            update_times = [value for value in update_times if value]
+            captured = max(update_times) if update_times else now_utc()
+            reconciled = {
+                "captured_at": captured.isoformat(),
+                "state_signature": "current-reconciled",
+                "label": captured.astimezone(UK).strftime("%H:%M"),
+                "rows": current_rows,
+            }
+            if (
+                not any(
+                    fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
+                    for fixture in current_fixtures
+                )
+                and any(fixture["status"] == "FINISHED" for fixture in current_fixtures)
+            ):
+                reconciled["milestone"] = "FT"
+            if snapshots and snapshots[-1]["label"] == reconciled["label"]:
+                snapshots[-1] = reconciled
+            else:
+                snapshots.append(reconciled)
+        for row in current_table:
+            players[row["id"]] = {"id": row["id"], "name": row["name"]}
     return {
         "players": list(players.values()),
         "snapshots": snapshots,
