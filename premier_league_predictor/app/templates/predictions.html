@@ -16,6 +16,12 @@
 <form method="POST">
 
 {% for fixture in fixtures %}
+{% set exact_score = fixture.predicted_home is not none
+    and fixture.predicted_away is not none
+    and fixture.home_score is not none
+    and fixture.away_score is not none
+    and fixture.predicted_home == fixture.home_score
+    and fixture.predicted_away == fixture.away_score %}
 
 <div class="card fixture-set">
 
@@ -45,7 +51,7 @@
 
 <div class="prediction-score-centre">
 {% if kickoff_passed(fixture.utc_date) %}
-<div class="locked-score">
+<div class="locked-score{% if exact_score %} exact-score{% endif %}">
 {{ fixture.predicted_home if fixture.predicted_home is not none else "—" }}
 </div>
 {% else %}
@@ -62,7 +68,7 @@
 <div class="dash">v</div>
 
 {% if kickoff_passed(fixture.utc_date) %}
-<div class="locked-score">
+<div class="locked-score{% if exact_score %} exact-score{% endif %}">
 {{ fixture.predicted_away if fixture.predicted_away is not none else "—" }}
 </div>
 {% else %}

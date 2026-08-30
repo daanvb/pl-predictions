@@ -937,12 +937,19 @@ def _snapshot_rows(conn, matchday):
     )
 
 
-def _insert_position_snapshot(conn, matchday, captured_at, signature, rows):
+def _insert_position_snapshot(
+    conn, matchday, captured_at, signature, rows,
+    cause_fixture_id=None, cause_label=None,
+):
     cursor = conn.execute(
         """INSERT OR IGNORE INTO live_position_snapshots
-           (season, matchday, captured_at, state_signature)
-           VALUES (?, ?, ?, ?)""",
-        (SEASON, matchday, captured_at, signature),
+           (season, matchday, captured_at, state_signature,
+            cause_fixture_id, cause_label)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            SEASON, matchday, captured_at, signature,
+            cause_fixture_id, cause_label,
+        ),
     )
     if cursor.rowcount != 1:
         return False
@@ -964,6 +971,31 @@ def _insert_position_snapshot(conn, matchday, captured_at, signature, rows):
         ],
     )
     return True
+
+
+def _position_snapshot_cause(fixtures):
+    candidates = []
+    for fixture in fixtures:
+        updated = parse_utc(fixture["last_updated"])
+        if updated:
+            candidates.append((updated, fixture))
+    if candidates:
+        fixture = max(candidates, key=lambda item: item[0])[1]
+    else:
+        fixture = next(
+            (
+                item for item in fixtures
+                if item["status"] in ("LIVE", "IN_PLAY", "PAUSED", "FINISHED")
+            ),
+            None,
+        )
+    if not fixture:
+        return None, "Live update"
+    return (
+        fixture["id"],
+        f"{short_team_name(fixture['home_team'])} v "
+        f"{short_team_name(fixture['away_team'])}",
+    )
 
 
 def record_live_position_snapshot(conn, matchday):
@@ -995,34 +1027,41 @@ def record_live_position_snapshot(conn, matchday):
             fixtures[0]["utc_date"],
             "baseline",
             baseline,
+            cause_label="Kick-off",
         )
 
     signature = json.dumps(
         [
-            [
-                row["id"], row["position"],
-                row["season_points"], row["points"],
-            ]
+            [row["id"], row["position"]]
             for row in live_table
         ],
         separators=(",", ":"),
     )
 
-    # Only suppress an unchanged *consecutive* state. A league table can
-    # legitimately return to an earlier ordering later in the match; the
-    # database's historical UNIQUE signature must not hide that movement.
+    # This is a position chart, so points changes that leave everybody in the
+    # same place must not create another dot. Compare against the actual rows
+    # (including the KO baseline), rather than the stored signature format.
     latest = conn.execute(
-        """SELECT state_signature FROM live_position_snapshots
+        """SELECT id, state_signature FROM live_position_snapshots
            WHERE season = ? AND matchday = ?
            ORDER BY captured_at DESC, id DESC LIMIT 1""",
         (SEASON, matchday),
     ).fetchone()
-    latest_state = (
-        latest["state_signature"].split("\noccurrence:", 1)[0]
-        if latest else None
-    )
-    if latest_state == signature:
-        return False
+    if latest:
+        latest_positions = [
+            [row["player_id"], row["position"]]
+            for row in conn.execute(
+                """SELECT player_id, position
+                   FROM live_position_snapshot_rows
+                   WHERE snapshot_id = ? ORDER BY player_id""",
+                (latest["id"],),
+            ).fetchall()
+        ]
+        current_positions = sorted(
+            [[row["id"], row["position"]] for row in live_table]
+        )
+        if latest_positions == current_positions:
+            return False
 
     stored_signature = signature
     if conn.execute(
@@ -1046,12 +1085,15 @@ def record_live_position_snapshot(conn, matchday):
         if finished_updates:
             captured_at = max(finished_updates)
 
+    cause_fixture_id, cause_label = _position_snapshot_cause(fixtures)
     return _insert_position_snapshot(
         conn,
         matchday,
         captured_at.isoformat(),
         stored_signature,
         live_table,
+        cause_fixture_id=cause_fixture_id,
+        cause_label=cause_label,
     )
 
 
@@ -1098,6 +1140,7 @@ def _smooth_transient_position_snapshots(snapshots, max_seconds=600):
 def live_position_chart(conn, matchday):
     rows = conn.execute(
         """SELECT s.id AS snapshot_id, s.captured_at, s.state_signature,
+                  s.cause_fixture_id, s.cause_label,
                   r.player_id, r.player_name, r.position,
                   r.season_points, r.gameweek_points
            FROM live_position_snapshots s
@@ -1116,6 +1159,8 @@ def live_position_chart(conn, matchday):
             snapshot = {
                 "captured_at": row["captured_at"],
                 "state_signature": row["state_signature"],
+                "cause_fixture_id": row["cause_fixture_id"],
+                "cause_label": row["cause_label"] or "Live update",
                 "label": (
                     captured.astimezone(UK).strftime("%H:%M")
                     if captured else ""
@@ -1189,20 +1234,14 @@ def live_position_chart(conn, matchday):
             }
             for row in current_table
         ]
-        current_state = [
-            (
-                row["player_id"], row["position"],
-                row["season_points"], row["gameweek_points"],
-            )
+        current_state = sorted(
+            (row["player_id"], row["position"])
             for row in current_rows
-        ]
-        last_state = [
-            (
-                row["player_id"], row["position"],
-                row["season_points"], row["gameweek_points"],
-            )
+        )
+        last_state = sorted(
+            (row["player_id"], row["position"])
             for row in (snapshots[-1]["rows"] if snapshots else [])
-        ]
+        )
         if current_state != last_state:
             update_times = [
                 parse_utc(fixture["last_updated"])
@@ -1217,6 +1256,11 @@ def live_position_chart(conn, matchday):
                 "label": captured.astimezone(UK).strftime("%H:%M"),
                 "rows": current_rows,
             }
+            cause_fixture_id, cause_label = _position_snapshot_cause(
+                current_fixtures
+            )
+            reconciled["cause_fixture_id"] = cause_fixture_id
+            reconciled["cause_label"] = cause_label
             if (
                 not any(
                     fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
@@ -2133,9 +2177,9 @@ def match_stats_for_fixture(
         """SELECT id, season, matchday, utc_date, home_team, away_team,
                   home_score, away_score
            FROM fixtures
-           WHERE id = ? AND status = 'FINISHED'
+           WHERE id = ? AND utc_date <= ?
              AND home_score IS NOT NULL AND away_score IS NOT NULL""",
-        (fixture["id"],),
+        (fixture["id"], now_utc().isoformat()),
     ).fetchone()
     if current_result and not any(
         row["id"] == current_result["id"] for row in all_prior
@@ -2155,7 +2199,7 @@ def match_stats_for_fixture(
     home_record_rows = [
         row
         for row in all_prior
-        if row["season"] == SEASON
+        if (row["season"] == SEASON or row["id"] == fixture["id"])
         and canonical_team_name(
             row["home_team"]
         ) == home_key
@@ -2164,7 +2208,7 @@ def match_stats_for_fixture(
     away_record_rows = [
         row
         for row in all_prior
-        if row["season"] == SEASON
+        if (row["season"] == SEASON or row["id"] == fixture["id"])
         and canonical_team_name(
             row["away_team"]
         ) == away_key

@@ -186,6 +186,8 @@ def init_db(seed_default_player=True):
             UNIQUE(season, matchday, state_signature)
         )
     """)
+    _add_column_if_missing(conn, "live_position_snapshots", "cause_fixture_id", "INTEGER")
+    _add_column_if_missing(conn, "live_position_snapshots", "cause_label", "TEXT")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS live_position_snapshot_rows (
             snapshot_id INTEGER NOT NULL,
