@@ -1776,6 +1776,47 @@ conn.execute("DELETE FROM fixtures WHERE id IN (99003, 99004)")
 conn.commit()
 conn.close()
 
+# Previously retained scorer events can repair rows already damaged by a
+# blank provider refresh, including genuine goalless draws.
+conn = database.get_db()
+repair_kickoff = (
+    datetime.now(timezone.utc) - timedelta(hours=5)
+).isoformat()
+conn.executemany(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           home_score, away_score, goals_json
+       ) VALUES (?, ?, 39, ?, 'SCHEDULED', ?, ?, NULL, NULL, ?)""",
+    [
+        (
+            99005, season, repair_kickoff, "Repair Home", "Repair Away",
+            json.dumps([
+                {"team": {"name": "Repair Home"}, "scorer": {"name": "A"}},
+                {"team": {"name": "Repair Home"}, "scorer": {"name": "B"}},
+                {"team": {"name": "Repair Away"}, "scorer": {"name": "C"}},
+            ]),
+        ),
+        (99006, season, repair_kickoff, "Nil Home", "Nil Away", "[]"),
+    ],
+)
+conn.commit()
+conn.close()
+assert predictor.repair_missing_completed_results() == 2
+conn = database.get_db()
+repaired_scores = {
+    row["id"]: (row["status"], row["home_score"], row["away_score"])
+    for row in conn.execute(
+        "SELECT id, status, home_score, away_score FROM fixtures WHERE id IN (99005, 99006)"
+    ).fetchall()
+}
+assert repaired_scores == {
+    99005: ("FINISHED", 2, 1),
+    99006: ("FINISHED", 0, 0),
+}
+conn.execute("DELETE FROM fixtures WHERE id IN (99005, 99006)")
+conn.commit()
+conn.close()
+
 # Live refresh must look up the current fixture directly. The global latest-50
 # feed can omit Premier League matches when many games are played worldwide.
 conn = database.get_db()
