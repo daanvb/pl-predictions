@@ -2,6 +2,22 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.9] - 2026-08-31
+
+### Added
+- Added a read-only Big Balls Sports Data Premier League shadow feed with secure API-key storage, minute-by-minute live-window checks and change-only observations.
+- Added scorer/event checks when the shadow score changes, without allowing shadow data to alter Predictor fixtures, predictions, points or history.
+
+### Improved
+- Exact-score predictions now highlight the complete player result row.
+- Live position points now identify the fixture and score that caused the table movement.
+- The position graph hides legacy points where nobody changed position and uses wider transient filtering to reduce provider-related bouncing.
+- Home/away venue records now include scored matches from earlier gameweeks even when a provider left their status stale.
+- Home/away records now receive a separate league-only football-data.org refresh when a new gameweek opens.
+
+### Changed
+- Replaced the Champions League live diagnostic with a Premier League shadow comparison for the new provider.
+
 ## [1.1.8] - 2026-08-28
 
 ### Improved

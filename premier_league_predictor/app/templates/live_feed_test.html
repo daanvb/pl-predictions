@@ -1,131 +1,56 @@
 {% extends "base.html" %}
-{% block title %}Live Feed Test{% endblock %}
+{% block title %}Premier League Shadow Feed{% endblock %}
 {% block content %}
 
 <meta http-equiv="refresh" content="60">
 
 <div class="hero">
-<div style="font-size:14px;font-weight:800;color:#94a3b8">ADMIN · DIAGNOSTICS</div>
-<h1>🧪 Champions League Live Test</h1>
-<p>Read-only UEFA Champions League monitoring. These matches never affect Predictor fixtures, points or history.</p>
+<div style="font-size:14px;font-weight:800;color:#94a3b8">ADMIN · READ-ONLY TEST</div>
+<h1>🧪 Premier League shadow feed</h1>
+<p>Big Balls Sports Data is compared with the current Predictor fixtures once per minute during live match windows. Shadow results never alter fixtures, predictions, points or history.</p>
 </div>
 
-<div class="nav">
-<a href="/admin">← Admin</a>
-</div>
+<div class="nav"><a href="/admin">← Admin</a><a href="/admin/settings">⚙️ Settings</a></div>
 
 <div class="card">
-<h2>Manual match lookup</h2>
-<p class="muted">Paste any SportScore football match URL or match slug to inspect its live details. Manual matches remain read-only and are never saved.</p>
-<form method="GET">
-<label for="manual-match"><strong>SportScore match URL or slug</strong></label>
-<input id="manual-match" name="match" value="{{ manual_match }}" placeholder="https://sportscore.com/football/match/team-a-vs-team-b/" style="width:100%;margin:7px 0 13px">
-<button class="primary" type="submit">Load match</button>
-</form>
-</div>
-
-<div class="card">
-<h2>{% if automatic_discovery %}Champions League matches{% else %}Match being monitored{% endif %}</h2>
-{% if automatic_discovery %}
-<p class="muted">Automatically showing UEFA Champions League matches from the available SportScore and football-data.org feeds: live first, then upcoming, then recently completed.</p>
-{% endif %}
-{% if discovery_error %}
-<p style="color:#b91c1c">⚠️ Live match discovery failed: {{ discovery_error }}</p>
-{% endif %}
-{% if football_data_error %}
-<p style="color:#b45309">⚠️ football-data.org Champions League feed unavailable: {{ football_data_error }}</p>
-{% elif football_data_enabled %}
-<p class="small">football-data.org Champions League comparison is enabled.</p>
+<h2>Shadow status</h2>
+{% if configured %}
+<p>✅ API key configured. Gameweek {{ matchday }} is being compared.</p>
+<form method="POST" action="/admin/live-feed-test/refresh"><button class="primary">Check now</button></form>
 {% else %}
-<p class="small">Add a football-data.org token in Settings to enable Champions League source comparison.</p>
+<p>⚠️ Add the Big Balls Sports Data key in Settings to begin the shadow run.</p>
 {% endif %}
-{% if not monitored %}
-{% if automatic_discovery %}
-<p>No UEFA Champions League matches are currently available in SportScore's feed.</p>
-{% else %}
-<p>No manual match is currently loaded.</p>
-{% endif %}
-{% endif %}
-<p class="small">This page checks again every 60 seconds. Last page check: {{ checked_at }}</p>
+{% if last_refresh %}<p class="small">Last check: {{ last_refresh }}{% if source %} · Source: {{ source }}{% endif %}</p>{% endif %}
+{% if last_error %}<p style="color:#b91c1c">⚠️ {{ last_error }}</p>{% endif %}
 </div>
 
 {% for item in monitored %}
-{% if item.error %}
-<div class="card">
-<h2>{{ item.label }}</h2>
-<p style="color:#b91c1c">⚠️ {{ item.error }}</p>
-<p class="small">Slug: <code>{{ item.slug }}</code></p>
-</div>
-{% else %}
-<div class="card fixture-set{% if item.display_status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
-<div class="fixture-row-grid">
-
+{% set fixture = item.fixture %}
+{% set sample = item.sample %}
+<div class="card fixture-set">
 <div class="fixture-match live-fixture-match">
-<div class="fixture-home">
-<span class="fixture-team-cluster fixture-team-cluster-home">
-<span class="team-badge-slot">{% if item.home_logo %}<img class="team-badge" src="{{ team_badge_url(item.home_logo) }}" alt="" loading="lazy">{% endif %}</span>
-<strong>{{ short_team_name(item.home) }}</strong>
-</span>
-</div>
+<div class="fixture-home"><span class="fixture-team-cluster fixture-team-cluster-home"><strong>{{ short_team_name(fixture.home_team) }}</strong></span></div>
 <div class="fixture-centre live-score live-score-grid">
-{% if item.display_status in ('LIVE', 'IN_PLAY', 'PAUSED', 'FINISHED') and item.home_score is not none and item.away_score is not none %}
-<span class="live-score-home">{{ item.home_score }}</span><span class="live-score-dash">–</span><span class="live-score-away">{{ item.away_score }}</span>
+{% if fixture.home_score is not none and fixture.away_score is not none %}<span>{{ fixture.home_score }}</span><span>–</span><span>{{ fixture.away_score }}</span>{% else %}v{% endif %}
+</div>
+<div class="fixture-away"><span class="fixture-team-cluster fixture-team-cluster-away"><strong>{{ short_team_name(fixture.away_team) }}</strong></span></div>
+</div>
+<div class="fixture-submeta">Predictor · {{ fixture.status }}</div>
+
+{% if sample %}
+<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0">
+<strong>Big Balls:</strong>
+{% if sample.home_score is not none and sample.away_score is not none %}{{ sample.home_score }}–{{ sample.away_score }}{% else %}No score{% endif %}
+· {{ sample.status }}
+<span class="badge {% if item.score_matches %}open{% else %}live{% endif %}" style="margin-left:8px">{% if item.score_matches %}✓ Score agrees{% else %}Review{% endif %}</span>
+<div class="small">Observed {{ local_timestamp(sample.captured_at) }} · {{ item.events|length }} event(s) retained</div>
+</div>
 {% else %}
-v
+<p class="small" style="margin-top:12px">Awaiting the first matching shadow observation.</p>
 {% endif %}
 </div>
-<div class="fixture-away">
-<span class="fixture-team-cluster fixture-team-cluster-away">
-<strong>{{ short_team_name(item.away) }}</strong>
-<span class="team-badge-slot">{% if item.away_logo %}<img class="team-badge" src="{{ team_badge_url(item.away_logo) }}" alt="" loading="lazy">{% endif %}</span>
-</span>
-</div>
-</div>
-
-{% if item.submeta %}
-<div class="fixture-submeta">
-<span>{{ item.submeta }}</span>
-</div>
-{% endif %}
-<div class="fixture-broadcaster">
-{% if item.broadcaster %}
-<span title="{{ item.broadcaster }}">
-<img class="tv-logo" src="{{ broadcaster_logo_url(item.broadcaster) }}" alt="{{ item.broadcaster }}">
-</span>
-{% endif %}
-</div>
-
-<div class="fixture-status">
-{% if item.display_status in ('LIVE', 'IN_PLAY', 'PAUSED', 'AWAITING_LIVE_DATA') %}
-<span class="badge live">{{ item.status_label }}</span>
-{% elif item.display_status == 'FINISHED' %}
-<span class="badge">FT</span>
-{% elif item.display_status == 'AWAITING_RESULT' %}
-<span class="badge">{{ item.status_label }}</span>
-{% else %}
-<span class="badge open">● Upcoming</span>
-{% endif %}
-</div>
-
-{% if item.scorers.home or item.scorers.away or item.red_cards.home or item.red_cards.away %}
-<div class="fixture-scorers" aria-label="Goalscorers">
-<div class="fixture-scorers-home">{% for scorer in item.scorers.home %}<span><span aria-hidden="true">⚽</span> {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in item.red_cards.home %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div>
-<div class="fixture-scorers-away">{% for scorer in item.scorers.away %}<span><span aria-hidden="true">⚽</span> {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in item.red_cards.away %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div>
-</div>
-{% endif %}
-
-</div>
-</div>
-{% endif %}
 {% endfor %}
 
-{% if monitored_sources %}
-<p class="small fixture-list-sources">
-Sources:
-{% for source in monitored_sources %}
-{% if source == 'SportScore' %}<a href="https://sportscore.com/" rel="dofollow">SportScore</a>{% elif source == 'football-data.org' %}<a href="https://www.football-data.org/">football-data.org</a>{% else %}{{ source }}{% endif %}{% if not loop.last %} + {% endif %}
-{% endfor %}.
-</p>
-{% endif %}
+<p class="small">Source: <a href="https://bigballsdata.com/">Big Balls Sports Data</a>. This diagnostic page refreshes every 60 seconds.</p>
 
 {% endblock %}
