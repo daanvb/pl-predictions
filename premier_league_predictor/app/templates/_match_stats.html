@@ -11,7 +11,7 @@
 <div class="match-stats-grid">
 
 <div class="match-stat-panel">
-<div class="small">{{ short_team_name(fixture.home_team)|upper }} · HOME</div>
+<div class="small">{{ short_team_name(fixture.home_team)|upper }} · LEAGUE</div>
 <div class="match-record">
 <strong>
 {{ stats.home_record.wins }}W
@@ -27,7 +27,7 @@
 </div>
 
 <div class="match-stat-panel">
-<div class="small">{{ short_team_name(fixture.away_team)|upper }} · AWAY</div>
+<div class="small">{{ short_team_name(fixture.away_team)|upper }} · LEAGUE</div>
 <div class="match-record">
 <strong>
 {{ stats.away_record.wins }}W
@@ -43,6 +43,8 @@
 </div>
 
 </div>
+
+<p class="small match-stats-note">Current-season Premier League record for each team, across all home and away matches.</p>
 
 <div class="match-stats-section">
 <div class="small">RECENT FORM · LAST 5</div>

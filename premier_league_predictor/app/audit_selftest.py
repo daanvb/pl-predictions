@@ -156,6 +156,10 @@ assert cause_fixture_id == 99001
 assert cause_label == "SNA 1–1 SNA"
 assert predictor.chart_team_code("Manchester City FC") == "MCI"
 assert predictor.chart_team_code("Manchester United FC") == "MUN"
+assert predictor._is_current_season_result({
+    "season": predictor.SEASON - 1,
+    "utc_date": datetime(predictor.SEASON, 8, 15, tzinfo=timezone.utc).isoformat(),
+})
 assert chart["snapshots"][0]["milestone"] == "KO"
 compact_rows = [{"player_id": 1, "position": 1}]
 compacted = predictor._compact_position_snapshots([
@@ -761,9 +765,14 @@ predictor.get_bigballs_premier_league_matches = lambda key: ([{
     "kickoff_utc": live_kickoff,
 }], {"source": "audit"})
 predictor.get_bigballs_match_events = lambda key, match_id: ([{
-    "type": "goal", "player": {"name": "Shadow Scorer"}
+    "type": "goal", "description": "Goal — Shadow Scorer"
 }], {"source": "audit"})
 try:
+    assert predictor.refresh_bigballs_shadow() == 1
+    predictor.get_bigballs_match_events = lambda key, match_id: ([
+        {"type": "goal", "description": "Goal — Shadow Scorer"},
+        {"type": "red_card", "description": "Red card — Shadow Defender"},
+    ], {"source": "audit"})
     assert predictor.refresh_bigballs_shadow() == 1
 finally:
     predictor.get_bigballs_premier_league_matches = original_bigballs_matches
@@ -775,12 +784,17 @@ unchanged_live_fixture = conn.execute(
 ).fetchone()
 assert tuple(unchanged_live_fixture) == (2, 0)
 shadow_sample = conn.execute(
-    "SELECT * FROM bigballs_shadow_samples WHERE provider_match_id = ?",
+    """SELECT * FROM bigballs_shadow_samples WHERE provider_match_id = ?
+       ORDER BY id DESC LIMIT 1""",
     ("shadow-home-away",),
 ).fetchone()
 assert shadow_sample["home_score"] == 2
 assert shadow_sample["away_score"] == 1
 assert "Shadow Scorer" in shadow_sample["events_json"]
+assert "Shadow Defender" in shadow_sample["events_json"]
+shadow_with_events = client.get("/admin/live-feed-test")
+assert b"Shadow Defender" in shadow_with_events.data
+assert b'class="badge live"' in shadow_with_events.data
 conn.execute("DELETE FROM bigballs_shadow_samples")
 conn.commit()
 conn.close()
@@ -1023,6 +1037,32 @@ conn.execute(
 )
 
 conn.execute(
+    """INSERT INTO fixtures(
+        id, season, matchday, utc_date, status,
+        home_team, away_team, home_score, away_score
+    )
+    VALUES (?, ?, 2, ?, 'FINISHED', 'Gamma', 'Alpha', 0, 1)""",
+    (
+        9203,
+        season,
+        (datetime.now(timezone.utc) - timedelta(days=5)).isoformat(),
+    )
+)
+
+conn.execute(
+    """INSERT INTO fixtures(
+        id, season, matchday, utc_date, status,
+        home_team, away_team, home_score, away_score
+    )
+    VALUES (?, ?, 2, ?, 'FINISHED', 'Beta', 'Delta', 3, 0)""",
+    (
+        9204,
+        season,
+        (datetime.now(timezone.utc) - timedelta(days=4)).isoformat(),
+    )
+)
+
+conn.execute(
     """INSERT INTO historical_fixtures(
         id, season, matchday, utc_date,
         home_team, away_team, home_score, away_score, status
@@ -1052,9 +1092,11 @@ stats = predictor.match_stats_for_fixture(
     fixture
 )
 
-assert stats["home_record"]["wins"] == 1
-assert stats["home_record"]["gf"] == 2
+assert stats["home_record"]["wins"] == 2
+assert stats["home_record"]["gf"] == 3
 assert stats["away_record"]["draws"] == 1
+assert stats["away_record"]["wins"] == 1
+assert stats["away_record"]["played"] == 2
 assert stats["home_form"][0] == "W"
 assert len(stats["head_to_head"]) == 1
 assert stats["h2h_home_wins"] == 1
@@ -1161,7 +1203,7 @@ canonical_stats = predictor.match_stats_for_fixture(
 assert canonical_stats["home_record"]["played"] >= 1
 assert canonical_stats["home_form"][0] == "W"
 
-# A fixture's own result updates form immediately, but its venue totals remain
+# A fixture's own result updates form immediately, but its season totals remain
 # the pre-match values until the next gameweek is viewed.
 finished_stats_kickoff = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
 conn.execute(
@@ -1403,6 +1445,13 @@ with open(
     gameweek_template = handle.read()
 
 assert '_match_stats.html' in predictions_template
+with open(
+    os.path.join(templates_dir, "_match_stats.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    match_stats_template = handle.read()
+assert "Current-season Premier League record" in match_stats_template
 assert '{% if show_match_stats %}' in predictions_template
 assert 'class="scoreline prediction-scoreline"' in predictions_template
 assert 'prediction-team-home' in predictions_template
@@ -1432,12 +1481,17 @@ assert 'const chartName = String(player.name || "").trim().split(/\\s+/)[0] || p
 assert '{% if fixture.home_score is none and fixture.away_score is none %}v{% else %}–{% endif %}' in gameweek_template
 assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
+assert '_dashboard_live_summary.html' in dashboard_template
+assert 'href="#live-gameweek"' in dashboard_template
+assert "position_chart=dashboard_position_chart" in inspect.getsource(predictor.dashboard)
+assert "{% if position_chart.snapshots|length > 0 %}" in gameweek_template
 assert "team-badge-slot" in gameweek_template
 assert "team-badge-slot" in dashboard_template
 api_import_source = inspect.getsource(predictor.import_matches_from_api)
 assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_source
 gameweek_source = inspect.getsource(predictor.gameweek)
 assert "record_live_position_snapshot(conn, matchday)" in gameweek_source
+assert 'params={"sport": "football"}' in inspect.getsource(bigballs_api.get_match_events)
 
 with open(
     os.path.join(templates_dir, "leaderboard.html"),

@@ -72,7 +72,7 @@
 
 {% endfor %}
 
-{% if position_chart.snapshots|length > 1 %}
+{% if position_chart.snapshots|length > 0 %}
 <section class="position-chart" aria-labelledby="position-chart-title">
 <div class="position-chart-heading">
 <div>
@@ -98,7 +98,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
 
 </div>
 
-{% if position_chart.snapshots|length > 1 %}
+{% if position_chart.snapshots|length > 0 %}
 <script>
 (() => {
     const dataNode = document.getElementById("position-chart-data");
@@ -111,7 +111,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
     const data = JSON.parse(dataNode.textContent);
     const snapshots = data.snapshots || [];
     const players = data.players || [];
-    if (snapshots.length < 2 || !players.length) return;
+    if (!snapshots.length || !players.length) return;
 
     const colours = ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2"];
     const ns = "http://www.w3.org/2000/svg";
@@ -124,7 +124,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
     const margin = {top: 22, right: 26, bottom: 58, left: 48};
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
-    const x = index => margin.left + (snapshots.length === 1 ? 0 : index * innerWidth / (snapshots.length - 1));
+    const x = index => margin.left + (snapshots.length === 1 ? innerWidth / 2 : index * innerWidth / (snapshots.length - 1));
     const y = position => margin.top + (players.length === 1 ? innerHeight / 2 : (position - 1) * innerHeight / (players.length - 1));
     const make = (name, attrs = {}) => {
         const node = document.createElementNS(ns, name);

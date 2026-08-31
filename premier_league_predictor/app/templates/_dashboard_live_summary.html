@@ -1,0 +1,63 @@
+{% if live_table %}
+<div class="card live-table-card" id="live-gameweek">
+<h2>🏆 Live gameweek table</h2>
+{% for player in live_table %}
+<div class="leader-row">
+<div class="rank">{% if player.position == 1 %}🥇{% elif player.position == 2 %}🥈{% elif player.position == 3 %}🥉{% elif player.position == 4 %}💩{% else %}{{ player.position }}{% endif %}</div>
+<div>{% if player.position_change > 0 %}<span class="position-move position-up">▲{% if player.position_change > 1 %}{{ player.position_change }}{% endif %}</span>{% elif player.position_change < 0 %}<span class="position-move position-down">▼{% if player.position_change < -1 %}{{ -player.position_change }}{% endif %}</span>{% else %}<span class="position-move position-flat">–</span>{% endif %}</div>
+<div><strong>{{ player.name }}</strong>{% if gameweek_progress %}<div class="small">{{ gameweek_progress }}</div>{% endif %}</div>
+<div class="leader-points">{{ player.season_points }}<div class="small" style="text-align:right">{{ player.points }} GW pts</div></div>
+</div>
+{% endfor %}
+
+{% if position_chart.snapshots|length > 0 %}
+<section class="position-chart" aria-labelledby="dashboard-position-chart-title">
+<div class="position-chart-heading"><div><h3 id="dashboard-position-chart-title">Position during this gameweek</h3><p class="small">Only settled positional changes are shown.</p></div><div class="position-chart-legend" id="dashboard-position-chart-legend"></div></div>
+<div class="position-chart-stage"><svg id="dashboard-position-chart-svg" role="img" aria-label="League position changes during this gameweek"></svg></div>
+{% if position_chart.snapshots|length > 1 %}<p class="position-chart-scroll-hint is-visible">← Swipe for earlier updates</p>{% endif %}
+</section>
+<script type="application/json" id="dashboard-position-chart-data">{{ position_chart|tojson }}</script>
+<script>
+(() => {
+  const dataNode = document.getElementById("dashboard-position-chart-data");
+  const svg = document.getElementById("dashboard-position-chart-svg");
+  const legend = document.getElementById("dashboard-position-chart-legend");
+  if (!dataNode || !svg || !legend) return;
+  const data = JSON.parse(dataNode.textContent);
+  const snapshots = data.snapshots || [];
+  const players = data.players || [];
+  if (!snapshots.length || !players.length) return;
+  const colours = ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2"];
+  const ns = "http://www.w3.org/2000/svg";
+  const stage = svg.parentElement;
+  const width = window.innerWidth <= 640 ? Math.max(stage.clientWidth, 150 + Math.max(0, snapshots.length - 1) * 72) : 760;
+  const height = Math.max(245, 165 + players.length * 18);
+  const margin = {top: 22, right: 26, bottom: 58, left: 48};
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  const x = index => margin.left + (snapshots.length === 1 ? innerWidth / 2 : index * innerWidth / (snapshots.length - 1));
+  const y = position => margin.top + (players.length === 1 ? innerHeight / 2 : (position - 1) * innerHeight / (players.length - 1));
+  const make = (name, attrs = {}) => { const node = document.createElementNS(ns, name); Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value)); return node; };
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  if (window.innerWidth <= 640) { svg.style.width = `${width}px`; svg.style.maxWidth = "none"; }
+  for (let position = 1; position <= players.length; position += 1) {
+    svg.appendChild(make("line", {x1: margin.left, x2: width - margin.right, y1: y(position), y2: y(position), class: "position-chart-grid"}));
+  }
+  snapshots.forEach((snapshot, index) => {
+    const label = make("text", {x: x(index), y: height - 13, "text-anchor": index === 0 ? "start" : (index === snapshots.length - 1 ? "end" : "middle"), class: "position-chart-axis-label"});
+    label.textContent = snapshot.milestone === "KO" ? "KO" : (snapshot.cause_label || snapshot.milestone || "Position change");
+    svg.appendChild(label);
+  });
+  players.forEach((player, playerIndex) => {
+    const colour = colours[playerIndex % colours.length];
+    const points = snapshots.map((snapshot, index) => { const row = snapshot.rows.find(item => item.player_id === player.id); return row ? {x: x(index), y: y(row.position), row, snapshot} : null; }).filter(Boolean);
+    if (!points.length) return;
+    svg.appendChild(make("polyline", {points: points.map(point => `${point.x},${point.y}`).join(" "), fill: "none", stroke: colour, "stroke-width": 3, "stroke-linejoin": "round", "stroke-linecap": "round", "vector-effect": "non-scaling-stroke"}));
+    points.forEach(point => svg.appendChild(make("circle", {cx: point.x, cy: point.y, r: 5, fill: colour, stroke: "white", "stroke-width": 2, "vector-effect": "non-scaling-stroke"})));
+    const item = document.createElement("span"); item.className = "position-chart-player"; const swatch = document.createElement("span"); swatch.style.background = colour; item.appendChild(swatch); item.appendChild(document.createTextNode(String(player.name || "").trim().split(/\s+/)[0])); legend.appendChild(item);
+  });
+})();
+</script>
+{% endif %}
+</div>
+{% endif %}

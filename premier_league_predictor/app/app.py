@@ -62,7 +62,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.10"
+APP_VERSION = "1.1.11"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -2234,6 +2234,18 @@ def _historical_source_rows(
     )
 
 
+def _is_current_season_result(row):
+    """Accept correctly tagged rows and date-valid current-season fallbacks."""
+    if row["season"] == SEASON:
+        return True
+    played_at = parse_utc(row["utc_date"])
+    if not played_at:
+        return False
+    season_start = datetime(SEASON, 7, 1, tzinfo=timezone.utc)
+    season_end = datetime(SEASON + 1, 7, 1, tzinfo=timezone.utc)
+    return season_start <= played_at < season_end
+
+
 def match_stats_for_fixture(
     conn,
     fixture
@@ -2271,31 +2283,35 @@ def match_stats_for_fixture(
         away_team
     )
 
-    # Current-season home and away records only.
+    # Current-season Premier League records for both teams, regardless of
+    # whether their previous matches were played home or away. "Home" and
+    # "away" here identify the teams in this fixture, not venue-specific form.
     # Use canonical names because different deterministic data sources
     # use variants such as "Arsenal" and "Arsenal FC".
     home_record_rows = [
         row
         for row in all_prior
-        if row["season"] == SEASON
-        and canonical_team_name(
-            row["home_team"]
-        ) == home_key
+        if _is_current_season_result(row)
+        and (
+            canonical_team_name(row["home_team"]) == home_key
+            or canonical_team_name(row["away_team"]) == home_key
+        )
     ]
 
     away_record_rows = [
         row
         for row in all_prior
-        if row["season"] == SEASON
-        and canonical_team_name(
-            row["away_team"]
-        ) == away_key
+        if _is_current_season_result(row)
+        and (
+            canonical_team_name(row["home_team"]) == away_key
+            or canonical_team_name(row["away_team"]) == away_key
+        )
     ]
 
     home_form_rows = [
         row
         for row in form_rows
-        if row["season"] == SEASON
+        if _is_current_season_result(row)
         and (
             canonical_team_name(
                 row["home_team"]
@@ -2309,7 +2325,7 @@ def match_stats_for_fixture(
     away_form_rows = [
         row
         for row in form_rows
-        if row["season"] == SEASON
+        if _is_current_season_result(row)
         and (
             canonical_team_name(
                 row["home_team"]
@@ -3328,16 +3344,23 @@ def refresh_bigballs_shadow():
             previous_state = (
                 previous["status"], previous["home_score"], previous["away_score"]
             ) if previous else None
-            if current_state == previous_state:
-                continue
             events_json = previous["events_json"] if previous else None
             score_changed = previous is None or current_state[1:] != previous_state[1:]
-            if score_changed and any(value is not None for value in current_state[1:]):
+            is_live = match["status"] in (
+                "live", "in_progress", "in_play", "paused"
+            )
+            if is_live or (
+                score_changed
+                and any(value is not None for value in current_state[1:])
+            ):
                 try:
                     events, _ = get_bigballs_match_events(api_key, match["id"])
                     events_json = json.dumps(events, separators=(",", ":"))
                 except BigBallsAPIError as exc:
                     events_json = json.dumps({"error": str(exc)})
+            previous_events = previous["events_json"] if previous else None
+            if current_state == previous_state and events_json == previous_events:
+                continue
             conn.execute(
                 """INSERT INTO bigballs_shadow_samples(
                        provider_match_id, captured_at, home_team, away_team,
@@ -5722,6 +5745,9 @@ def dashboard():
 
     current_fixtures = []
     dashboard_sources = []
+    dashboard_live_table = []
+    dashboard_position_chart = {"players": [], "snapshots": []}
+    dashboard_gameweek_progress = ""
 
     if current_matchday is not None:
         fixture_rows = conn.execute(
@@ -5764,6 +5790,31 @@ def dashboard():
             for fixture in current_fixtures
         ):
             dashboard_sources.insert(0, "SportScore")
+
+        refresh_points(conn)
+        record_live_position_snapshot(conn, current_matchday)
+        conn.commit()
+        players = conn.execute(
+            "SELECT id, name FROM players ORDER BY name COLLATE NOCASE"
+        ).fetchall()
+        predictions = conn.execute(
+            """SELECT p.player_id, p.fixture_id, p.home_score, p.away_score,
+                      COALESCE(p.dp, 0) AS dp
+               FROM predictions p
+               JOIN fixtures f ON f.id = p.fixture_id
+               WHERE f.season = ? AND f.matchday = ?""",
+            (SEASON, current_matchday),
+        ).fetchall()
+        previous_league = overall_table_at_matchday(
+            conn, current_matchday - 1
+        )
+        dashboard_live_table = build_live_table(
+            fixture_rows, players, predictions, previous_league
+        )
+        dashboard_position_chart = live_position_chart(
+            conn, current_matchday
+        )
+        dashboard_gameweek_progress = gameweek_progress_label(fixture_rows)
 
     row = conn.execute(
         """
@@ -5888,6 +5939,9 @@ def dashboard():
             for fixture in current_fixtures
         ),
         dashboard_sources=dashboard_sources,
+        live_table=dashboard_live_table,
+        position_chart=dashboard_position_chart,
+        gameweek_progress=dashboard_gameweek_progress,
     )
 
 @app.route("/history")
@@ -8119,6 +8173,28 @@ def admin_bigballs_shadow_test():
                 events = parsed if isinstance(parsed, list) else []
             except (TypeError, ValueError):
                 events = []
+        display_events = []
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            event_type = str(event.get("type") or "").casefold()
+            description = str(event.get("description") or "").strip()
+            if not description:
+                description = event_type.replace("_", " ").title() or "Match event"
+            clock = event.get("clock")
+            if isinstance(clock, dict):
+                clock = (
+                    clock.get("display") or clock.get("label")
+                    or clock.get("minute") or clock.get("value")
+                )
+            icon = "🟥" if "red" in event_type or (
+                "card" in event_type and "red" in description.casefold()
+            ) else "⚽" if "goal" in event_type else "•"
+            display_events.append({
+                "icon": icon,
+                "description": description,
+                "clock": clock,
+            })
         score_matches = bool(
             sample
             and sample["home_score"] == fixture["home_score"]
@@ -8128,7 +8204,7 @@ def admin_bigballs_shadow_test():
             "fixture": dict(fixture),
             "sample": dict(sample) if sample else None,
             "score_matches": score_matches,
-            "events": events,
+            "events": display_events,
         })
     return render_template(
         "live_feed_test.html",
@@ -8141,6 +8217,7 @@ def admin_bigballs_shadow_test():
         ),
         last_error=get_setting("last_bigballs_shadow_error"),
         source=get_setting("last_bigballs_shadow_source"),
+        local_timestamp=local_timestamp,
     )
 
 

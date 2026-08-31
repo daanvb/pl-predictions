@@ -2,6 +2,19 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.11] - 2026-08-31
+
+### Added
+- Added the live gameweek table and position chart directly to the main dashboard, while retaining the existing Live GW URL for compatibility.
+- Added Big Balls scorer, red-card and other match-event observations to the read-only admin comparison.
+
+### Fixed
+- The position chart now remains visible when filtering leaves one settled state.
+- The Big Balls events request now supplies the required football parameter and watches event changes even when the score is unchanged.
+- Admin comparison cards now show FT, live and upcoming states instead of a Predictor badge.
+- Current-season match stats now recognise date-valid results even if an imported row carried an incorrect season tag.
+- Corrected match stats to show each team's current-season Premier League record across all league matches; home and away now identify the fixture sides rather than filtering the record by venue.
+
 ## [1.1.10] - 2026-08-31
 
 ### Fixed
