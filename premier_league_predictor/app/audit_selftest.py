@@ -100,6 +100,18 @@ assert predictor.gameweek_progress_label([
 assert predictor.gameweek_progress_label([
     {"status": "IN_PLAY"},
 ]) == "1 game in progress"
+original_now_utc = predictor.now_utc
+try:
+    predictor.now_utc = lambda: datetime(2026, 8, 29, 11, 29, tzinfo=timezone.utc)
+    assert not predictor.live_gameweek_visible([{
+        "utc_date": "2026-08-29T11:30:00+00:00", "status": "SCHEDULED",
+    }])
+    predictor.now_utc = lambda: datetime(2026, 8, 29, 11, 30, tzinfo=timezone.utc)
+    assert predictor.live_gameweek_visible([{
+        "utc_date": "2026-08-29T11:30:00+00:00", "status": "IN_PLAY",
+    }])
+finally:
+    predictor.now_utc = original_now_utc
 assert predictor.compact_record_name("Two Part Name") == "Two"
 assert predictor.compact_record_name("") == "—"
 assert predictor.sportscore_team_slug("Brighton & Hove Albion") == "brighton-hove-albion"
@@ -146,6 +158,7 @@ conn.execute(
     "UPDATE fixtures SET away_score = 1 WHERE id = 99001"
 )
 assert not predictor.record_live_position_snapshot(conn, 99)
+assert hasattr(predictor, "_reconstruct_finished_position_snapshots")
 assert conn.execute(
     "SELECT COUNT(*) FROM live_position_snapshots WHERE matchday = 99"
 ).fetchone()[0] == 1
@@ -764,6 +777,20 @@ normalized_shadow = bigballs_api.normalize_match({
 assert normalized_shadow["home_score"] == 2
 assert normalized_shadow["away_score"] == 1
 assert normalized_shadow["status"] == "live"
+original_bigballs_request = bigballs_api._request
+try:
+    def stored_event_request(key, path, params=None, timeout=20):
+        if path.endswith("/events"):
+            raise bigballs_api.BigBallsAPIError("live adapter unavailable")
+        return {"data": {"events": [{
+            "type": "goal", "player": {"name": "Stored Scorer"},
+        }]}, "meta": {"source": "stored"}}
+    bigballs_api._request = stored_event_request
+    stored_events, stored_meta = bigballs_api.get_match_events("key", "match-id")
+    assert stored_events[0]["player"]["name"] == "Stored Scorer"
+    assert stored_meta["source"] == "stored"
+finally:
+    bigballs_api._request = original_bigballs_request
 
 # Shadow observations retain provider scores/events but never mutate the
 # matching Predictor fixture.
@@ -1459,6 +1486,13 @@ with open(
     gameweek_template = handle.read()
 
 with open(
+    os.path.join(templates_dir, "_dashboard_live_summary.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    dashboard_live_summary_template = handle.read()
+
+with open(
     os.path.join(templates_dir, "_fixture_prediction_rows.html"),
     "r",
     encoding="utf-8",
@@ -1508,9 +1542,11 @@ assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
 assert '_dashboard_live_summary.html' in dashboard_template
 assert dashboard_template.index('_dashboard_live_summary.html') < dashboard_template.index('{% for fixture in current_fixtures %}')
-assert 'href="#live-gameweek"' in dashboard_template
+assert 'href="#live-gameweek"' not in dashboard_template
+assert '_fixture_card_meta.html' in dashboard_template
+assert '_fixture_card_meta.html' in gameweek_template
 assert "position_chart=dashboard_position_chart" in inspect.getsource(predictor.dashboard)
-assert "{% if position_chart.snapshots|length > 0 %}" in gameweek_template
+assert "{% if live_gameweek_visible and position_chart.snapshots|length > 0 %}" in gameweek_template
 assert "team-badge-slot" in gameweek_template
 assert "team-badge-slot" in dashboard_template
 api_import_source = inspect.getsource(predictor.import_matches_from_api)
@@ -1532,6 +1568,8 @@ assert 'data-label="Correct Draws"' in leaderboard_template
 assert 'data-label="Correct Scores"' in leaderboard_template
 assert 'data-label="Correct Winners"' in leaderboard_template
 assert "position-chart-player" in leaderboard_template
+assert 'button.setAttribute("aria-label", `Highlight ${player.name}`)' in dashboard_live_summary_template
+assert "No settled position changes yet." in dashboard_live_summary_template
 assert "selectedPlayerId" in leaderboard_template
 assert "item.innerHTML" not in leaderboard_template
 assert "league-mobile-details" in leaderboard_template

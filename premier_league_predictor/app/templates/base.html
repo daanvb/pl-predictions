@@ -966,9 +966,16 @@ th,td{
 }
 
 .fixture-status {
-    grid-area: status;
-    justify-self: stretch;
     text-align: center;
+}
+
+.fixture-card-meta {
+    grid-area: status;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 28px;
 }
 
 .fixture-submeta {
@@ -1024,10 +1031,7 @@ th,td{
 }
 
 .fixture-broadcaster {
-    grid-area: status;
-    justify-self: end;
-    align-self: center;
-    min-width: 82px;
+    min-width: 0;
     min-height: 22px;
     display: flex;
     align-items: center;
@@ -1197,9 +1201,6 @@ th,td{
     }
 
     .fixture-status {
-        justify-self: stretch;
-        align-self: center;
-        margin-top: 8px;
         text-align: center;
     }
 
@@ -1210,10 +1211,6 @@ th,td{
     }
 
     .fixture-broadcaster {
-        grid-area: status;
-        justify-self: end;
-        align-self: center;
-        margin-top: 8px;
         min-width: 0;
         min-height: 18px;
         z-index: 1;
@@ -1584,6 +1581,11 @@ th,td{
 
 .position-chart-scroll-hint {
     display: none;
+}
+
+.position-chart-no-changes {
+    margin: -6px 0 0;
+    text-align: center;
 }
 
 .position-chart-grid {
