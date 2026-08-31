@@ -55,7 +55,11 @@ def get_premier_league_matches(api_key, limit=200):
 
 
 def get_match_events(api_key, match_id):
-    payload = _request(api_key, f"/matches/{match_id}/events")
+    payload = _request(
+        api_key,
+        f"/matches/{match_id}/events",
+        params={"sport": "football"},
+    )
     return payload.get("data") or [], payload.get("meta") or {}
 
 

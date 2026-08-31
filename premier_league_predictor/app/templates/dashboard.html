@@ -128,9 +128,7 @@ No position yet
 <button class="primary">✍️ Make Predictions</button>
 </a>
 
-<a href="/gameweek/{{ current_matchday }}">
-<button>📊 Live GW</button>
-</a>
+<a href="#live-gameweek"><button>📊 Live table</button></a>
 
 </div>
 
@@ -236,6 +234,8 @@ Sources:
 </div>
 
 </div>
+
+{% include "_dashboard_live_summary.html" %}
 
 {% else %}
 
