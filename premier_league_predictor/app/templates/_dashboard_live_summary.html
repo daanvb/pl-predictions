@@ -1,4 +1,4 @@
-{% if live_table %}
+{% if live_gameweek_visible and live_table %}
 <div class="card live-table-card" id="live-gameweek">
 <h2>🏆 Live gameweek table</h2>
 {% for player in live_table %}
@@ -14,6 +14,7 @@
 <section class="position-chart" aria-labelledby="dashboard-position-chart-title">
 <div class="position-chart-heading"><div><h3 id="dashboard-position-chart-title">Position during this gameweek</h3><p class="small">Only settled positional changes are shown.</p></div><div class="position-chart-legend" id="dashboard-position-chart-legend"></div></div>
 <div class="position-chart-stage"><svg id="dashboard-position-chart-svg" role="img" aria-label="League position changes during this gameweek"></svg></div>
+{% if position_chart.snapshots|length == 1 %}<p class="small position-chart-no-changes">No settled position changes yet.</p>{% endif %}
 {% if position_chart.snapshots|length > 1 %}<p class="position-chart-scroll-hint is-visible">← Swipe for earlier updates</p>{% endif %}
 </section>
 <script type="application/json" id="dashboard-position-chart-data">{{ position_chart|tojson }}</script>
@@ -52,9 +53,34 @@
     const colour = colours[playerIndex % colours.length];
     const points = snapshots.map((snapshot, index) => { const row = snapshot.rows.find(item => item.player_id === player.id); return row ? {x: x(index), y: y(row.position), row, snapshot} : null; }).filter(Boolean);
     if (!points.length) return;
-    svg.appendChild(make("polyline", {points: points.map(point => `${point.x},${point.y}`).join(" "), fill: "none", stroke: colour, "stroke-width": 3, "stroke-linejoin": "round", "stroke-linecap": "round", "vector-effect": "non-scaling-stroke"}));
-    points.forEach(point => svg.appendChild(make("circle", {cx: point.x, cy: point.y, r: 5, fill: colour, stroke: "white", "stroke-width": 2, "vector-effect": "non-scaling-stroke"})));
-    const item = document.createElement("span"); item.className = "position-chart-player"; const swatch = document.createElement("span"); swatch.style.background = colour; item.appendChild(swatch); item.appendChild(document.createTextNode(String(player.name || "").trim().split(/\s+/)[0])); legend.appendChild(item);
+    const group = make("g", {"data-chart-player": player.id});
+    group.appendChild(make("polyline", {points: points.map(point => `${point.x},${point.y}`).join(" "), fill: "none", stroke: colour, "stroke-width": 3, "stroke-linejoin": "round", "stroke-linecap": "round", "vector-effect": "non-scaling-stroke"}));
+    points.forEach(point => group.appendChild(make("circle", {cx: point.x, cy: point.y, r: 5, fill: colour, stroke: "white", "stroke-width": 2, "vector-effect": "non-scaling-stroke"})));
+    svg.appendChild(group);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "position-chart-player";
+    button.dataset.player = player.id;
+    button.setAttribute("aria-pressed", "false");
+    button.setAttribute("aria-label", `Highlight ${player.name}`);
+    const swatch = document.createElement("span");
+    swatch.style.background = colour;
+    button.appendChild(swatch);
+    button.appendChild(document.createTextNode(String(player.name || "").trim().split(/\s+/)[0]));
+    button.addEventListener("click", () => {
+      const selected = button.getAttribute("aria-pressed") !== "true";
+      legend.querySelectorAll("button").forEach(item => item.setAttribute("aria-pressed", "false"));
+      svg.querySelectorAll("[data-chart-player]").forEach(item => item.classList.remove("is-muted", "is-selected"));
+      if (selected) {
+        button.setAttribute("aria-pressed", "true");
+        svg.querySelectorAll("[data-chart-player]").forEach(item => {
+          item.classList.toggle("is-selected", item.dataset.chartPlayer === String(player.id));
+          item.classList.toggle("is-muted", item.dataset.chartPlayer !== String(player.id));
+        });
+      }
+    });
+    legend.appendChild(button);
   });
 })();
 </script>

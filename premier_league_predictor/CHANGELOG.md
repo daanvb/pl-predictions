@@ -2,6 +2,17 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.13] - 2026-08-31
+
+### Changed
+- Moved broadcaster and match status information into a clear row immediately above each card's predictions and points.
+- The live table and position graph now appear only after the gameweek's first fixture kicks off, and the redundant Live Table button has been removed.
+- Player names above the live graph can now be tapped to highlight an individual line.
+
+### Fixed
+- Ensured the live graph continues to render this gameweek's saved position data while preserving valid longer-lived changes.
+- When live snapshots are missing, the graph now reconstructs settled position changes by replaying the gameweek's completed results in order.
+
 ## [1.1.12] - 2026-08-31
 
 ### Added

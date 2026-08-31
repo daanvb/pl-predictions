@@ -15,6 +15,7 @@
 <a href="/predict/{{ matchday }}">✍️ My Predictions</a>
 </div>
 
+{% if live_gameweek_visible %}
 <div class="card live-table-card">
 
 <h2>🏆 Live gameweek table</h2>
@@ -72,7 +73,7 @@
 
 {% endfor %}
 
-{% if position_chart.snapshots|length > 0 %}
+{% if live_gameweek_visible and position_chart.snapshots|length > 0 %}
 <section class="position-chart" aria-labelledby="position-chart-title">
 <div class="position-chart-heading">
 <div>
@@ -97,8 +98,9 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
 </p>
 
 </div>
+{% endif %}
 
-{% if position_chart.snapshots|length > 0 %}
+{% if live_gameweek_visible and position_chart.snapshots|length > 0 %}
 <script>
 (() => {
     const dataNode = document.getElementById("position-chart-data");
@@ -267,29 +269,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
 </div>
 {% endif %}
 
-<div class="fixture-broadcaster">
-{% if fixture.broadcaster %}
-<span title="{{ fixture.broadcaster }}">
-<img
-    class="tv-logo"
-    src="{{ broadcaster_logo_url(fixture.broadcaster) }}"
-    alt="{{ fixture.broadcaster }}"
->
-</span>
-{% endif %}
-</div>
-
-<div class="fixture-status">
-{% if display_status in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA') %}
-<span class="badge live">{{ status_label(fixture) }}</span>
-{% elif display_status == 'FINISHED' %}
-<span class="badge">FT</span>
-{% elif display_status == 'AWAITING_RESULT' %}
-<span class="badge">{{ status_label(fixture) }}</span>
-{% else %}
-<span class="badge open">● Upcoming</span>
-{% endif %}
-</div>
+{% include "_fixture_card_meta.html" %}
 
 </div>
 

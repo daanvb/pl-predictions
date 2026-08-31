@@ -55,15 +55,39 @@ def get_premier_league_matches(api_key, limit=200):
 
 
 def get_match_events(api_key, match_id):
-    payload = _request(
-        api_key,
-        f"/matches/{match_id}/events",
-        params={"sport": "football"},
-    )
+    event_error = None
+    try:
+        payload = _request(
+            api_key,
+            f"/matches/{match_id}/events",
+            params={"sport": "football"},
+        )
+    except BigBallsAPIError as exc:
+        event_error = exc
+        payload = {}
     data = payload.get("data") or []
     if isinstance(data, dict):
         data = data.get("events") or data.get("items") or []
-    return data if isinstance(data, list) else [], payload.get("meta") or {}
+    if isinstance(data, list) and data:
+        return data, payload.get("meta") or {}
+
+    # Finished matches can leave the live adapter, while their stored match
+    # detail remains available. The bare detail route intentionally avoids the
+    # sport parameter so the gateway can fall back to that stored record.
+    try:
+        stored_payload = _request(api_key, f"/matches/{match_id}")
+        stored = stored_payload.get("data") or {}
+        if isinstance(stored, dict) and isinstance(stored.get("match"), dict):
+            stored = stored["match"]
+        stored_events = (stored.get("events") or []) if isinstance(stored, dict) else []
+        if isinstance(stored_events, dict):
+            stored_events = stored_events.get("items") or []
+        if isinstance(stored_events, list):
+            return stored_events, stored_payload.get("meta") or {}
+    except BigBallsAPIError:
+        if event_error:
+            raise event_error
+    return [], payload.get("meta") or {}
 
 
 def _score_value(score, side):

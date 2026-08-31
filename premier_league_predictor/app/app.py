@@ -62,7 +62,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.12"
+APP_VERSION = "1.1.13"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -571,6 +571,17 @@ def gameweek_progress_label(fixtures):
         )
     game_word = "game" if completed == 1 else "games"
     return f"After {completed} {game_word}"
+
+
+def live_gameweek_visible(fixtures):
+    """Show live standings only after this gameweek's first kick-off."""
+    kickoffs = [
+        parse_utc(fixture["utc_date"])
+        for fixture in fixtures
+        if fixture["status"] != "CANCELLED" and fixture["utc_date"]
+    ]
+    kickoffs = [kickoff for kickoff in kickoffs if kickoff]
+    return bool(kickoffs and now_utc() >= min(kickoffs))
 
 
 def season_label(season):
@@ -1197,6 +1208,92 @@ def _compact_position_snapshots(snapshots):
     return deduplicated
 
 
+def _reconstruct_finished_position_snapshots(conn, matchday):
+    """Replay completed fixtures when the live snapshot history is absent.
+
+    This deliberately reconstructs only settled, result-based position
+    changes. It cannot recreate unsaved goal-by-goal provider observations.
+    """
+    fixtures = conn.execute(
+        """SELECT * FROM fixtures
+           WHERE season = ? AND matchday = ? AND status = 'FINISHED'
+             AND home_score IS NOT NULL AND away_score IS NOT NULL
+           ORDER BY COALESCE(last_updated, utc_date), utc_date, id""",
+        (SEASON, matchday),
+    ).fetchall()
+    if not fixtures:
+        return []
+
+    players = conn.execute(
+        "SELECT id, name FROM players ORDER BY name COLLATE NOCASE"
+    ).fetchall()
+    predictions = conn.execute(
+        """SELECT p.player_id, p.fixture_id, p.home_score, p.away_score,
+                  COALESCE(p.dp, 0) AS dp
+           FROM predictions p
+           JOIN fixtures f ON f.id = p.fixture_id
+           WHERE f.season = ? AND f.matchday = ?""",
+        (SEASON, matchday),
+    ).fetchall()
+    previous_league = overall_table_at_matchday(conn, matchday - 1)
+    baseline = [
+        {
+            "player_id": row["id"],
+            "position": position,
+            "season_points": row["points"],
+            "gameweek_points": 0,
+        }
+        for position, row in enumerate(previous_league, start=1)
+    ]
+    snapshots = [{
+        "captured_at": fixtures[0]["utc_date"],
+        "state_signature": "reconstructed-baseline",
+        "cause_fixture_id": None,
+        "cause_label": "Kick-off",
+        "label": "",
+        "milestone": "KO",
+        "rows": baseline,
+    }]
+    previous_positions = tuple(sorted(
+        (row["player_id"], row["position"]) for row in baseline
+    ))
+    completed = []
+    for fixture in fixtures:
+        completed.append(fixture)
+        table = build_live_table(
+            completed, players, predictions, previous_league
+        )
+        rows = [
+            {
+                "player_id": row["id"],
+                "position": row["position"],
+                "season_points": row["season_points"],
+                "gameweek_points": row["points"],
+            }
+            for row in table
+        ]
+        positions = tuple(sorted(
+            (row["player_id"], row["position"]) for row in rows
+        ))
+        if positions == previous_positions:
+            continue
+        captured = parse_utc(fixture["last_updated"] or fixture["utc_date"])
+        score = f"{fixture['home_score']}–{fixture['away_score']}"
+        snapshots.append({
+            "captured_at": captured.isoformat() if captured else fixture["utc_date"],
+            "state_signature": f"reconstructed:{fixture['id']}",
+            "cause_fixture_id": fixture["id"],
+            "cause_label": (
+                f"{chart_team_code(fixture['home_team'])} {score} "
+                f"{chart_team_code(fixture['away_team'])}"
+            ),
+            "label": captured.astimezone(UK).strftime("%H:%M") if captured else "",
+            "rows": rows,
+        })
+        previous_positions = positions
+    return snapshots
+
+
 def live_position_chart(conn, matchday):
     rows = conn.execute(
         """SELECT s.id AS snapshot_id, s.captured_at, s.state_signature,
@@ -1354,6 +1451,12 @@ def live_position_chart(conn, matchday):
             players[row["id"]] = {"id": row["id"], "name": row["name"]}
     snapshots = _smooth_transient_position_snapshots(snapshots)
     snapshots = _compact_position_snapshots(snapshots)
+    if len(snapshots) <= 1:
+        reconstructed = _reconstruct_finished_position_snapshots(
+            conn, matchday
+        )
+        if len(reconstructed) > len(snapshots):
+            snapshots = reconstructed
     return {
         "players": list(players.values()),
         "snapshots": snapshots,
@@ -5964,6 +6067,7 @@ def dashboard():
         live_table=dashboard_live_table,
         position_chart=dashboard_position_chart,
         gameweek_progress=dashboard_gameweek_progress,
+        live_gameweek_visible=live_gameweek_visible(current_fixtures),
         players=dashboard_players,
         fixture_players=dashboard_fixture_players,
         prediction_map=dashboard_prediction_map,
@@ -6442,6 +6546,7 @@ def gameweek(matchday):
         reveal_map=reveal_map,
         live_table=live_table,
         gameweek_progress=gameweek_progress_label(fixtures),
+        live_gameweek_visible=live_gameweek_visible(fixtures),
         position_chart=position_chart,
     )
 
@@ -8205,14 +8310,22 @@ def admin_bigballs_shadow_test():
                 continue
             event_type = str(event.get("type") or "").casefold()
             description = str(event.get("description") or "").strip()
+            player = event.get("player") or event.get("scorer") or {}
+            if isinstance(player, dict):
+                player = player.get("name") or player.get("display_name")
+            if not player:
+                player = event.get("player_name") or event.get("scorer_name")
             if not description:
-                description = event_type.replace("_", " ").title() or "Match event"
+                event_name = event_type.replace("_", " ").title() or "Match event"
+                description = f"{event_name} — {player}" if player else event_name
             clock = event.get("clock")
             if isinstance(clock, dict):
                 clock = (
                     clock.get("display") or clock.get("label")
                     or clock.get("minute") or clock.get("value")
                 )
+            if clock is None:
+                clock = event.get("minute") or event.get("time")
             icon = "🟥" if "red" in event_type or (
                 "card" in event_type and "red" in description.casefold()
             ) else "⚽" if "goal" in event_type else "•"
