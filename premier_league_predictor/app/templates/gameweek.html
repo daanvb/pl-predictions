@@ -293,63 +293,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
 
 </div>
 
-{% if reveal_map.get(fixture.id) %}
-
-<div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:10px">
-
-{% for player in fixture_players.get(fixture.id, players) %}
-
-{% set pred = prediction_map.get((player.id, fixture.id)) %}
-{% set exact_score = pred
-    and fixture.home_score is not none
-    and fixture.away_score is not none
-    and pred.home_score == fixture.home_score
-    and pred.away_score == fixture.away_score %}
-
-<div class="pick-grid{% if exact_score %} exact-score-row{% endif %}">
-
-<strong>{{ player.name }}</strong>
-
-<div>
-{% if pred %}
-<span class="prediction-result">{{ pred.home_score }}–{{ pred.away_score }}</span>
-{% if pred.dp %}
-<span class="badge live" style="margin-left:6px">🔥 DP</span>
-{% endif %}
-{% else %}
-—
-{% endif %}
-</div>
-
-<div>
-
-{% if pred and fixture.home_score is not none and fixture.away_score is not none %}
-<span class="points-pill">
-{{ calculate_prediction_points(
-    pred.home_score,
-    pred.away_score,
-    fixture.home_score,
-    fixture.away_score,
-    pred.dp
-) }} pts
-</span>
-{% endif %}
-
-</div>
-
-</div>
-
-{% endfor %}
-
-</div>
-
-{% else %}
-
-<p class="muted" style="margin-top:14px">
-🔒 Everyone else's predictions stay hidden until this fixture kicks off.
-</p>
-
-{% endif %}
+{% include "_fixture_prediction_rows.html" %}
 
 </div>
 
