@@ -44,7 +44,8 @@
 <div class="shadow-score">{% if sample.home_score is not none and sample.away_score is not none %}{{ sample.home_score }}–{{ sample.away_score }}{% else %}– v –{% endif %}</div>
 <div><span class="badge {% if item.score_matches %}open{% else %}live{% endif %}">{% if item.score_matches %}✓ Agrees{% else %}Review{% endif %}</span></div>
 <div class="small shadow-observed">{{ sample.status }} · {{ local_timestamp(sample.captured_at) }}</div>
-{% if item.events %}<div class="shadow-events">{% for event in item.events %}<span>{{ event.icon }} {{ event.description }}{% if event.clock %} {{ event.clock }}{% endif %}</span>{% endfor %}</div>{% endif %}
+{% if item.events %}<div class="shadow-events">{% for event in item.events %}<span>{{ event.icon }} {{ event.description }}{% if event.clock %} {{ event.clock }}{% endif %}</span>{% endfor %}</div>
+{% elif sample.home_score is not none or sample.away_score is not none %}<div class="small shadow-events-unavailable">No event or scorer data was returned by Big Balls for this observation.</div>{% endif %}
 {% else %}
 <div class="small shadow-awaiting">Awaiting the first matching shadow observation.</div>
 {% endif %}

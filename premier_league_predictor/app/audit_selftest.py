@@ -475,6 +475,18 @@ assert [player["name"] for player in ordered_hidden] == [
     "Ben",
     "Zoe",
 ]
+ordered_by_league_position = predictor.order_players_for_fixture(
+    players,
+    fixture,
+    prediction_map,
+    False,
+    {1: 1, 2: 3, 3: 2},
+)
+assert [player["name"] for player in ordered_by_league_position] == [
+    "Zoe",
+    "Ben",
+    "Amy",
+]
 
 # Route/template smoke tests using the actual Flask/Jinja environment.
 client = predictor.app.test_client()
@@ -1057,6 +1069,9 @@ results_message = predictor.signal_results_message(
 )
 assert "💩 Player 4" in results_message
 assert "4. Player 4" not in results_message
+assert results_message.count("🥇 Player 1") == 2
+assert results_message.count("🥈 Player 2") == 2
+assert results_message.count("🥉 Player 3") == 2
 
 # Completed gameweeks opened from History no longer show Match Stats.
 past_predictions_response = client.get("/predict/1?history=1")
@@ -1619,7 +1634,7 @@ with open(
     league_stats_template = handle.read()
 
 assert "MOST CORRECT WINNERS" in league_stats_template
-assert "MOST EXACT SCORES WITH DP" in league_stats_template
+assert "MOST CORRECT SCORES WITH DP" in league_stats_template
 
 with open(
     os.path.join(templates_dir, "base.html"),

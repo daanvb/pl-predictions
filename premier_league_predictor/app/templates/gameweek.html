@@ -117,7 +117,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
 
     const colours = ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2"];
     const ns = "http://www.w3.org/2000/svg";
-    const pointSpacing = 55;
+    const pointSpacing = 80;
     const plotWidth = Math.max(0, snapshots.length - 1) * pointSpacing;
     const mobileTimelineWidth = Math.max(
         stage ? stage.clientWidth : 0,
@@ -171,9 +171,18 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
             "text-anchor": index === 0 ? "start" : (index === snapshots.length - 1 ? "end" : "middle"),
             class: "position-chart-axis-label"
         });
-        label.textContent = snapshot.milestone === "KO"
-            ? "KO"
-            : (snapshot.cause_label || snapshot.milestone || "Position change");
+        const cause = snapshot.cause_label || snapshot.milestone || "Position change";
+        const parts = cause.match(/^(\S+)\s+(\d+[–-]\d+)\s+(\S+)$/);
+        if (snapshot.milestone === "KO" || !parts) {
+            label.textContent = snapshot.milestone === "KO" ? "KO" : cause;
+        } else {
+            label.setAttribute("y", String(height - 27));
+            const scoreLine = make("tspan", {x: x(index), dy: 0});
+            scoreLine.textContent = parts[2];
+            const teamsLine = make("tspan", {x: x(index), dy: 14});
+            teamsLine.textContent = `${parts[1]}–${parts[3]}`;
+            label.append(scoreLine, teamsLine);
+        }
         svg.appendChild(label);
     });
 
