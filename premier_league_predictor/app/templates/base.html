@@ -1029,6 +1029,42 @@ th,td{
     margin: 0;
 }
 
+.shadow-fixture-card .fixture-row-grid {
+    margin-bottom: 14px;
+}
+
+.shadow-comparison {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px 12px;
+    padding-top: 14px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.shadow-provider-label,
+.shadow-score {
+    font-weight: 800;
+}
+
+.shadow-score {
+    font-variant-numeric: tabular-nums;
+}
+
+.shadow-observed,
+.shadow-awaiting,
+.shadow-events {
+    grid-column: 1 / -1;
+}
+
+.shadow-events {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 14px;
+    color: #64748b;
+    font-size: 12px;
+}
+
 .dashboard-gameweek-actions {
     display: flex;
     align-items: center;

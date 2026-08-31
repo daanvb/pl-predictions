@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.10] - 2026-08-31
+
+### Fixed
+- Replaced unhelpful live-chart labels with football-event labels for new data and a clear position-change label for legacy records.
+- Collapsed repeated recalculations for the same score event so provider noise does not create long flat or bouncing graph runs.
+- Rebuilt the admin shadow-feed fixture cards to match the Live GW team, crest and score layout on mobile.
+
 ## [1.1.9] - 2026-08-31
 
 ### Added
