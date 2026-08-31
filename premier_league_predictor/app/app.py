@@ -63,7 +63,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.15"
+APP_VERSION = "1.1.16"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -4641,7 +4641,13 @@ def signal_results_message(matchday, gw_table, overall_table):
     ]
 
     for index, row in enumerate(overall_table, start=1):
-        prefix = "💩" if index == 4 else f"{index}."
+        prefix = (
+            "🥇" if index == 1
+            else "🥈" if index == 2
+            else "🥉" if index == 3
+            else "💩" if index == 4
+            else f"{index}."
+        )
         lines.append(
             f"{prefix} {row['name']} — {row['points']} pts"
         )
@@ -5010,6 +5016,7 @@ def order_players_for_fixture(
     fixture,
     prediction_map,
     revealed,
+    league_positions=None,
 ):
     """Order a fixture's player rows by current match points."""
 
@@ -5033,7 +5040,8 @@ def order_players_for_fixture(
                 bool(pred["dp"]),
             )
 
-        return (-points, player["name"].casefold())
+        league_position = (league_positions or {}).get(player["id"], 10**6)
+        return (-points, league_position, player["name"].casefold())
 
     return sorted(players, key=sort_key)
 
@@ -5800,12 +5808,17 @@ def stats():
         if row["points"] == best_gameweek_value
     ]
 
-    completed_matches = conn.execute(
+    completed_gameweeks = conn.execute(
         """
         SELECT COUNT(*) AS total
-        FROM fixtures
-        WHERE season = ?
-          AND status = 'FINISHED'
+        FROM (
+            SELECT matchday
+            FROM fixtures
+            WHERE season = ? AND status != 'CANCELLED'
+            GROUP BY matchday
+            HAVING SUM(CASE WHEN status = 'FINISHED' THEN 0 ELSE 1 END) = 0
+               AND SUM(CASE WHEN status = 'FINISHED' THEN 1 ELSE 0 END) > 0
+        ) completed_rounds
         """,
         (SEASON,),
     ).fetchone()
@@ -5835,7 +5848,7 @@ def stats():
         dp_exact_score_value=dp_exact_score_value,
         best_gameweeks_overall=best_gameweeks_overall,
         best_gameweek_value=best_gameweek_value,
-        completed_matches=completed_matches["total"],
+        completed_gameweeks=completed_gameweeks["total"],
     )
 
 
@@ -5954,6 +5967,10 @@ def dashboard():
                 fixture,
                 dashboard_prediction_map,
                 dashboard_reveal_map[fixture["id"]],
+                {
+                    row["id"]: row["position"]
+                    for row in dashboard_live_table
+                },
             )
             for fixture in current_fixtures
         }
@@ -6534,22 +6551,26 @@ def gameweek(matchday):
     }
 
 
-    fixture_players = {
-        fixture["id"]: order_players_for_fixture(
-            players,
-            fixture,
-            prediction_map,
-            reveal_map[fixture["id"]],
-        )
-        for fixture in fixtures
-    }
-
     live_table = build_live_table(
         fixtures,
         players,
         predictions,
         previous_league,
     )
+    league_positions = {
+        row["id"]: row["position"]
+        for row in live_table
+    }
+    fixture_players = {
+        fixture["id"]: order_players_for_fixture(
+            players,
+            fixture,
+            prediction_map,
+            reveal_map[fixture["id"]],
+            league_positions,
+        )
+        for fixture in fixtures
+    }
     position_chart = live_position_chart(conn, matchday)
     conn.close()
 
@@ -8325,13 +8346,25 @@ def admin_bigballs_shadow_test():
         for event in events:
             if not isinstance(event, dict):
                 continue
-            event_type = str(event.get("type") or "").casefold()
-            description = str(event.get("description") or "").strip()
-            player = event.get("player") or event.get("scorer") or {}
+            event_type = str(
+                event.get("type") or event.get("event_type")
+                or event.get("category") or event.get("kind") or ""
+            ).casefold()
+            description = str(
+                event.get("description") or event.get("detail")
+                or event.get("text") or ""
+            ).strip()
+            player = (
+                event.get("player") or event.get("scorer")
+                or event.get("participant") or event.get("athlete") or {}
+            )
             if isinstance(player, dict):
                 player = player.get("name") or player.get("display_name")
             if not player:
-                player = event.get("player_name") or event.get("scorer_name")
+                player = (
+                    event.get("player_name") or event.get("playerName")
+                    or event.get("scorer_name") or event.get("name")
+                )
             if not description:
                 event_name = event_type.replace("_", " ").title() or "Match event"
                 description = f"{event_name} — {player}" if player else event_name

@@ -98,6 +98,20 @@ def get_match_events(api_key, match_id):
     if isinstance(data, list) and data:
         return data, payload.get("meta") or {}
 
+    # During a live match the multi-field detail envelope can contain events
+    # even when the dedicated event collection has not been populated yet.
+    try:
+        live_payload = _request(
+            api_key,
+            f"/matches/{match_id}",
+            params={"sport": "football", "fields": "scores,events"},
+        )
+        live_events = _event_list(live_payload.get("data"))
+        if live_events:
+            return live_events, live_payload.get("meta") or {}
+    except BigBallsAPIError:
+        pass
+
     # Finished matches can leave the live adapter, while their stored match
     # detail remains available. The bare detail route intentionally avoids the
     # sport parameter so the gateway can fall back to that stored record.

@@ -2,6 +2,16 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.16] - 2026-08-31
+
+### Fixed
+- Split compact live-graph markers into separate score and team-code lines, with balanced spacing so fixture labels and position lines remain readable.
+
+### Changed
+- League Stats now labels double-point exact predictions as correct scores and reports completed gameweeks instead of completed fixtures.
+- Signal gameweek results now show medals for the top three overall league positions.
+- Tied points within live scorecards are now ordered by current overall league position.
+
 ## [1.1.15] - 2026-08-31
 
 ### Changed
