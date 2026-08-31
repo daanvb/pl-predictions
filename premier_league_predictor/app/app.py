@@ -62,7 +62,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.9"
+APP_VERSION = "1.1.10"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -1013,7 +1013,7 @@ def _position_snapshot_cause(fixtures):
             None,
         )
     if not fixture:
-        return None, "Live update"
+        return None, "Position change"
     score = ""
     if fixture["home_score"] is not None and fixture["away_score"] is not None:
         score = f" {fixture['home_score']}–{fixture['away_score']}"
@@ -1163,6 +1163,40 @@ def _smooth_transient_position_snapshots(snapshots, max_seconds=1800):
     return smoothed
 
 
+def _compact_position_snapshots(snapshots):
+    """Keep one settled position state for each football event/cause."""
+    compacted = []
+    for snapshot in snapshots:
+        is_baseline = snapshot.get("state_signature") == "baseline"
+        cause = (snapshot.get("cause_label") or "").strip()
+        if (
+            compacted
+            and not is_baseline
+            and compacted[-1].get("state_signature") != "baseline"
+            and cause == (compacted[-1].get("cause_label") or "").strip()
+        ):
+            # Multiple providers can recalculate the table repeatedly for the
+            # same score. Only the final settled ordering is useful.
+            compacted[-1] = snapshot
+        else:
+            compacted.append(snapshot)
+
+    deduplicated = []
+    for snapshot in compacted:
+        positions = tuple(sorted(
+            (row["player_id"], row["position"])
+            for row in snapshot["rows"]
+        ))
+        previous = tuple(sorted(
+            (row["player_id"], row["position"])
+            for row in deduplicated[-1]["rows"]
+        )) if deduplicated else None
+        if positions == previous:
+            continue
+        deduplicated.append(snapshot)
+    return deduplicated
+
+
 def live_position_chart(conn, matchday):
     rows = conn.execute(
         """SELECT s.id AS snapshot_id, s.captured_at, s.state_signature,
@@ -1186,7 +1220,7 @@ def live_position_chart(conn, matchday):
                 "captured_at": row["captured_at"],
                 "state_signature": row["state_signature"],
                 "cause_fixture_id": row["cause_fixture_id"],
-                "cause_label": row["cause_label"] or "Live update",
+                "cause_label": row["cause_label"] or "",
                 "label": (
                     captured.astimezone(UK).strftime("%H:%M")
                     if captured else ""
@@ -1319,6 +1353,7 @@ def live_position_chart(conn, matchday):
         for row in current_table:
             players[row["id"]] = {"id": row["id"], "name": row["name"]}
     snapshots = _smooth_transient_position_snapshots(snapshots)
+    snapshots = _compact_position_snapshots(snapshots)
     return {
         "players": list(players.values()),
         "snapshots": snapshots,

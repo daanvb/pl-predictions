@@ -157,6 +157,13 @@ assert cause_label == "SNA 1–1 SNA"
 assert predictor.chart_team_code("Manchester City FC") == "MCI"
 assert predictor.chart_team_code("Manchester United FC") == "MUN"
 assert chart["snapshots"][0]["milestone"] == "KO"
+compact_rows = [{"player_id": 1, "position": 1}]
+compacted = predictor._compact_position_snapshots([
+    {"state_signature": "baseline", "cause_label": "", "rows": compact_rows},
+    {"state_signature": "one", "cause_label": "", "rows": [{"player_id": 1, "position": 2}]},
+    {"state_signature": "two", "cause_label": "", "rows": compact_rows},
+])
+assert [row["state_signature"] for row in compacted] == ["baseline"]
 snapshot_ids = [
     row["id"] for row in conn.execute(
         "SELECT id FROM live_position_snapshots WHERE matchday = 99"
@@ -724,7 +731,8 @@ assert predictor.status_label({
 shadow_response = client.get("/admin/live-feed-test")
 assert shadow_response.status_code == 200
 assert b"Premier League shadow feed" in shadow_response.data
-assert b"never alter fixtures, predictions, points or history" in shadow_response.data
+assert b"cannot alter scores, predictions, points or history" in shadow_response.data
+assert b"shadow-fixture-card" in shadow_response.data
 assert b"Champions League" not in shadow_response.data
 
 import bigballs_api

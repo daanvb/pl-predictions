@@ -1,17 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Premier League Shadow Feed{% endblock %}
 {% block content %}
-
 <meta http-equiv="refresh" content="60">
-
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">ADMIN · READ-ONLY TEST</div>
 <h1>🧪 Premier League shadow feed</h1>
-<p>Big Balls Sports Data is compared with the current Predictor fixtures once per minute during live match windows. Shadow results never alter fixtures, predictions, points or history.</p>
+<p>Big Balls Sports Data is compared with Predictor once per minute during live matches. It cannot alter scores, predictions, points or history.</p>
 </div>
-
 <div class="nav"><a href="/admin">← Admin</a><a href="/admin/settings">⚙️ Settings</a></div>
-
 <div class="card">
 <h2>Shadow status</h2>
 {% if configured %}
@@ -23,34 +19,31 @@
 {% if last_refresh %}<p class="small">Last check: {{ last_refresh }}{% if source %} · Source: {{ source }}{% endif %}</p>{% endif %}
 {% if last_error %}<p style="color:#b91c1c">⚠️ {{ last_error }}</p>{% endif %}
 </div>
-
 {% for item in monitored %}
 {% set fixture = item.fixture %}
 {% set sample = item.sample %}
-<div class="card fixture-set">
+<div class="card fixture-set shadow-fixture-card">
+<div class="fixture-row-grid">
 <div class="fixture-match live-fixture-match">
-<div class="fixture-home"><span class="fixture-team-cluster fixture-team-cluster-home"><strong>{{ short_team_name(fixture.home_team) }}</strong></span></div>
-<div class="fixture-centre live-score live-score-grid">
-{% if fixture.home_score is not none and fixture.away_score is not none %}<span>{{ fixture.home_score }}</span><span>–</span><span>{{ fixture.away_score }}</span>{% else %}v{% endif %}
+<div class="fixture-home"><span class="fixture-team-cluster fixture-team-cluster-home"><span class="team-badge-slot">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}</span><strong>{{ short_team_name(fixture.home_team) }}</strong></span></div>
+<div class="fixture-centre live-score live-score-grid"><span>{{ fixture.home_score if fixture.home_score is not none else "–" }}</span><span>{% if fixture.home_score is none and fixture.away_score is none %}v{% else %}–{% endif %}</span><span>{{ fixture.away_score if fixture.away_score is not none else "–" }}</span></div>
+<div class="fixture-away"><span class="fixture-team-cluster fixture-team-cluster-away"><strong>{{ short_team_name(fixture.away_team) }}</strong><span class="team-badge-slot">{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</span></span></div>
 </div>
-<div class="fixture-away"><span class="fixture-team-cluster fixture-team-cluster-away"><strong>{{ short_team_name(fixture.away_team) }}</strong></span></div>
+<div class="fixture-submeta">{{ status_label(fixture) }}</div>
+<div class="fixture-status"><span class="badge">Predictor</span></div>
 </div>
-<div class="fixture-submeta">Predictor · {{ fixture.status }}</div>
-
+<div class="shadow-comparison">
+<div class="shadow-provider-label">Big Balls</div>
 {% if sample %}
-<div style="margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0">
-<strong>Big Balls:</strong>
-{% if sample.home_score is not none and sample.away_score is not none %}{{ sample.home_score }}–{{ sample.away_score }}{% else %}No score{% endif %}
-· {{ sample.status }}
-<span class="badge {% if item.score_matches %}open{% else %}live{% endif %}" style="margin-left:8px">{% if item.score_matches %}✓ Score agrees{% else %}Review{% endif %}</span>
-<div class="small">Observed {{ local_timestamp(sample.captured_at) }} · {{ item.events|length }} event(s) retained</div>
-</div>
+<div class="shadow-score">{% if sample.home_score is not none and sample.away_score is not none %}{{ sample.home_score }}–{{ sample.away_score }}{% else %}– v –{% endif %}</div>
+<div><span class="badge {% if item.score_matches %}open{% else %}live{% endif %}">{% if item.score_matches %}✓ Agrees{% else %}Review{% endif %}</span></div>
+<div class="small shadow-observed">{{ sample.status }} · {{ local_timestamp(sample.captured_at) }}</div>
+{% if item.events %}<div class="shadow-events">{% for event in item.events %}<span>⚽ {{ event.player_name or event.player or event.scorer or event.type or "Goal event" }}{% if event.minute is defined %} {{ event.minute }}′{% endif %}</span>{% endfor %}</div>{% endif %}
 {% else %}
-<p class="small" style="margin-top:12px">Awaiting the first matching shadow observation.</p>
+<div class="small shadow-awaiting">Awaiting the first matching shadow observation.</div>
 {% endif %}
 </div>
+</div>
 {% endfor %}
-
 <p class="small">Source: <a href="https://bigballsdata.com/">Big Balls Sports Data</a>. This diagnostic page refreshes every 60 seconds.</p>
-
 {% endblock %}

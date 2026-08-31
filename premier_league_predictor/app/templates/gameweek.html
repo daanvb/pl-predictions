@@ -191,7 +191,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
                 "vector-effect": "non-scaling-stroke"
             });
             const title = make("title");
-            title.textContent = `${player.name}: ${point.row.position}${point.row.position === 1 ? "st" : point.row.position === 2 ? "nd" : point.row.position === 3 ? "rd" : "th"}, ${point.row.gameweek_points} GW pts at ${point.snapshot.label} — ${point.snapshot.cause_label || "Live update"}`;
+            title.textContent = `${player.name}: ${point.row.position}${point.row.position === 1 ? "st" : point.row.position === 2 ? "nd" : point.row.position === 3 ? "rd" : "th"}, ${point.row.gameweek_points} GW pts at ${point.snapshot.label} — ${point.snapshot.cause_label || point.snapshot.milestone || "Position change"}`;
             circle.appendChild(title);
             group.appendChild(circle);
         });
