@@ -60,7 +60,10 @@ def get_match_events(api_key, match_id):
         f"/matches/{match_id}/events",
         params={"sport": "football"},
     )
-    return payload.get("data") or [], payload.get("meta") or {}
+    data = payload.get("data") or []
+    if isinstance(data, dict):
+        data = data.get("events") or data.get("items") or []
+    return data if isinstance(data, list) else [], payload.get("meta") or {}
 
 
 def _score_value(score, side):

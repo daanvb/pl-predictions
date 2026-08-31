@@ -12,7 +12,7 @@
 <h2>Shadow status</h2>
 {% if configured %}
 <p>✅ API key configured. Gameweek {{ matchday }} is being compared.</p>
-<form method="POST" action="/admin/live-feed-test/refresh"><button class="primary">Check now</button></form>
+<form method="POST" action="/admin/live-feed-test/refresh"><button class="primary">Import this gameweek</button></form>
 {% else %}
 <p>⚠️ Add the Big Balls Sports Data key in Settings to begin the shadow run.</p>
 {% endif %}

@@ -168,6 +168,20 @@ compacted = predictor._compact_position_snapshots([
     {"state_signature": "two", "cause_label": "", "rows": compact_rows},
 ])
 assert [row["state_signature"] for row in compacted] == ["baseline"]
+long_change_rows = [{
+    "player_id": 1, "position": 1,
+    "season_points": 10, "gameweek_points": 3,
+}]
+long_return_rows = [{
+    "player_id": 1, "position": 2,
+    "season_points": 7, "gameweek_points": 0,
+}]
+long_changes = predictor._smooth_transient_position_snapshots([
+    {"captured_at": "2026-08-29T12:00:00+00:00", "rows": long_change_rows},
+    {"captured_at": "2026-08-29T12:10:00+00:00", "rows": long_return_rows},
+    {"captured_at": "2026-08-29T12:20:00+00:00", "rows": long_change_rows},
+])
+assert len(long_changes) == 3
 snapshot_ids = [
     row["id"] for row in conn.execute(
         "SELECT id FROM live_position_snapshots WHERE matchday = 99"
@@ -1444,6 +1458,13 @@ with open(
 ) as handle:
     gameweek_template = handle.read()
 
+with open(
+    os.path.join(templates_dir, "_fixture_prediction_rows.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    fixture_prediction_template = handle.read()
+
 assert '_match_stats.html' in predictions_template
 with open(
     os.path.join(templates_dir, "_match_stats.html"),
@@ -1473,7 +1494,11 @@ assert "Swipe for earlier updates" in gameweek_template
 assert "mobileTimelineWidth" in gameweek_template
 assert "stage.scrollLeft = Math.max(0, stage.scrollWidth - stage.clientWidth)" in gameweek_template
 assert 'snapshot.cause_label || snapshot.milestone || "Position change"' in gameweek_template
-assert 'class="pick-grid{% if exact_score %} exact-score-row{% endif %}"' in gameweek_template
+assert '_fixture_prediction_rows.html' in gameweek_template
+assert '_fixture_prediction_rows.html' in dashboard_template
+assert 'class="pick-grid{% if exact_score %} exact-score-row{% endif %}"' in fixture_prediction_template
+assert "reveal_map.get(fixture.id)" in fixture_prediction_template
+assert "stay hidden until this fixture kicks off" in fixture_prediction_template
 assert "labelIndexes" not in gameweek_template
 assert "button.innerHTML" not in gameweek_template
 assert "display_status not in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA')" in gameweek_template
@@ -1482,6 +1507,7 @@ assert '{% if fixture.home_score is none and fixture.away_score is none %}v{% el
 assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
 assert '_dashboard_live_summary.html' in dashboard_template
+assert dashboard_template.index('_dashboard_live_summary.html') < dashboard_template.index('{% for fixture in current_fixtures %}')
 assert 'href="#live-gameweek"' in dashboard_template
 assert "position_chart=dashboard_position_chart" in inspect.getsource(predictor.dashboard)
 assert "{% if position_chart.snapshots|length > 0 %}" in gameweek_template
@@ -1492,6 +1518,7 @@ assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_so
 gameweek_source = inspect.getsource(predictor.gameweek)
 assert "record_live_position_snapshot(conn, matchday)" in gameweek_source
 assert 'params={"sport": "football"}' in inspect.getsource(bigballs_api.get_match_events)
+assert "force_events=True" in inspect.getsource(predictor.admin_bigballs_shadow_refresh)
 
 with open(
     os.path.join(templates_dir, "leaderboard.html"),

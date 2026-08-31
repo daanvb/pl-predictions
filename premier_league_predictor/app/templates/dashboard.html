@@ -115,6 +115,8 @@ No position yet
 
 {% if current_matchday is not none %}
 
+{% include "_dashboard_live_summary.html" %}
+
 <div class="card">
 
 <div>
@@ -216,6 +218,8 @@ v
 </div>
 {% endif %}
 
+{% include "_fixture_prediction_rows.html" %}
+
 </div>
 
 </div>
@@ -234,8 +238,6 @@ Sources:
 </div>
 
 </div>
-
-{% include "_dashboard_live_summary.html" %}
 
 {% else %}
 

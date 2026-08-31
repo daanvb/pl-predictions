@@ -62,7 +62,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.11"
+APP_VERSION = "1.1.12"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -1133,8 +1133,8 @@ def _position_snapshot_state(snapshot):
     ))
 
 
-def _smooth_transient_position_snapshots(snapshots, max_seconds=1800):
-    """Remove a short-lived state when the complete prior state returns."""
+def _smooth_transient_position_snapshots(snapshots, max_seconds=180):
+    """Remove only brief provider wobble when the prior state returns."""
     smoothed = list(snapshots)
     changed = True
     while changed and len(smoothed) >= 3:
@@ -3301,7 +3301,7 @@ def live_window_active():
     )
 
 
-def refresh_bigballs_shadow():
+def refresh_bigballs_shadow(force_events=False):
     """Record changed EPL provider states without touching live app data."""
     api_key = get_setting("bigballs_api_key")
     if not api_key:
@@ -3349,7 +3349,7 @@ def refresh_bigballs_shadow():
             is_live = match["status"] in (
                 "live", "in_progress", "in_play", "paused"
             )
-            if is_live or (
+            if force_events or is_live or (
                 score_changed
                 and any(value is not None for value in current_state[1:])
             ):
@@ -5748,6 +5748,10 @@ def dashboard():
     dashboard_live_table = []
     dashboard_position_chart = {"players": [], "snapshots": []}
     dashboard_gameweek_progress = ""
+    dashboard_players = []
+    dashboard_prediction_map = {}
+    dashboard_reveal_map = {}
+    dashboard_fixture_players = {}
 
     if current_matchday is not None:
         fixture_rows = conn.execute(
@@ -5815,6 +5819,24 @@ def dashboard():
             conn, current_matchday
         )
         dashboard_gameweek_progress = gameweek_progress_label(fixture_rows)
+        dashboard_players = players
+        dashboard_prediction_map = {
+            (prediction["player_id"], prediction["fixture_id"]): prediction
+            for prediction in predictions
+        }
+        dashboard_reveal_map = {
+            fixture["id"]: fixture_is_locked(fixture)
+            for fixture in current_fixtures
+        }
+        dashboard_fixture_players = {
+            fixture["id"]: order_players_for_fixture(
+                players,
+                fixture,
+                dashboard_prediction_map,
+                dashboard_reveal_map[fixture["id"]],
+            )
+            for fixture in current_fixtures
+        }
 
     row = conn.execute(
         """
@@ -5942,6 +5964,10 @@ def dashboard():
         live_table=dashboard_live_table,
         position_chart=dashboard_position_chart,
         gameweek_progress=dashboard_gameweek_progress,
+        players=dashboard_players,
+        fixture_players=dashboard_fixture_players,
+        prediction_map=dashboard_prediction_map,
+        reveal_map=dashboard_reveal_map,
     )
 
 @app.route("/history")
@@ -8226,7 +8252,7 @@ def admin_bigballs_shadow_refresh():
     if not is_admin():
         return redirect("/")
     try:
-        changed = refresh_bigballs_shadow()
+        changed = refresh_bigballs_shadow(force_events=True)
         flash(f"Shadow feed checked; {changed} changed state(s) recorded.", "success")
     except BigBallsAPIError as exc:
         flash(str(exc), "error")
