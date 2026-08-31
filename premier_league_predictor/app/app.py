@@ -58,11 +58,12 @@ from bigballs_api import (
     BigBallsAPIError,
     get_match_events as get_bigballs_match_events,
     get_premier_league_matches as get_bigballs_premier_league_matches,
+    get_stored_premier_league_matches as get_bigballs_stored_premier_league_matches,
     normalize_match as normalize_bigballs_match,
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.13"
+APP_VERSION = "1.1.14"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -3419,6 +3420,22 @@ def refresh_bigballs_shadow(force_events=False):
                WHERE season = ? AND matchday = ?""",
             (SEASON, matchday),
         ).fetchall() if matchday is not None else []
+        if force_events and fixtures:
+            archived, archived_meta = get_bigballs_stored_premier_league_matches(
+                api_key,
+                [str(row["utc_date"])[:10] for row in fixtures],
+            )
+            matches_by_id = {
+                str(item.get("id")): item
+                for item in matches
+                if isinstance(item, dict) and item.get("id")
+            }
+            for item in archived:
+                if isinstance(item, dict) and item.get("id"):
+                    matches_by_id[str(item["id"])] = item
+            matches = list(matches_by_id.values())
+            if archived_meta:
+                meta = archived_meta
         fixture_keys = {
             (
                 normalized_team_name(row["home_team"]),
