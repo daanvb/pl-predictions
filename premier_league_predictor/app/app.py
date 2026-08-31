@@ -54,8 +54,15 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
+from bigballs_api import (
+    BigBallsAPIError,
+    get_match_events as get_bigballs_match_events,
+    get_premier_league_matches as get_bigballs_premier_league_matches,
+    normalize_match as normalize_bigballs_match,
+    test_connection as test_bigballs_connection,
+)
 
-APP_VERSION = "1.1.8"
+APP_VERSION = "1.1.9"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -973,6 +980,22 @@ def _insert_position_snapshot(
     return True
 
 
+def chart_team_code(name):
+    key = canonical_team_name(name)
+    codes = {
+        "manchester city": "MCI", "manchester united": "MUN",
+        "nottingham forest": "NFO", "crystal palace": "CRY",
+        "tottenham hotspur": "TOT", "newcastle united": "NEW",
+        "aston villa": "AVL", "afc bournemouth": "BOU",
+        "brighton hove albion": "BHA", "west ham united": "WHU",
+        "wolverhampton wanderers": "WOL", "leeds united": "LEE",
+    }
+    if key in codes:
+        return codes[key]
+    letters = re.sub(r"[^a-z]", "", key).upper()
+    return letters[:3] or "TEAM"
+
+
 def _position_snapshot_cause(fixtures):
     candidates = []
     for fixture in fixtures:
@@ -991,10 +1014,13 @@ def _position_snapshot_cause(fixtures):
         )
     if not fixture:
         return None, "Live update"
+    score = ""
+    if fixture["home_score"] is not None and fixture["away_score"] is not None:
+        score = f" {fixture['home_score']}–{fixture['away_score']}"
     return (
         fixture["id"],
-        f"{short_team_name(fixture['home_team'])} v "
-        f"{short_team_name(fixture['away_team'])}",
+        f"{chart_team_code(fixture['home_team'])}{score} "
+        f"{chart_team_code(fixture['away_team'])}",
     )
 
 
@@ -1107,7 +1133,7 @@ def _position_snapshot_state(snapshot):
     ))
 
 
-def _smooth_transient_position_snapshots(snapshots, max_seconds=600):
+def _smooth_transient_position_snapshots(snapshots, max_seconds=1800):
     """Remove a short-lived state when the complete prior state returns."""
     smoothed = list(snapshots)
     changed = True
@@ -1198,6 +1224,23 @@ def live_position_chart(conn, matchday):
         else:
             coalesced.append(snapshot)
     snapshots = coalesced
+
+    # Older releases stored points-only refreshes even when nobody moved.
+    # Hide those legacy duplicates so each displayed dot is a position change.
+    position_changes = []
+    for snapshot in snapshots:
+        current_positions = tuple(sorted(
+            (row["player_id"], row["position"])
+            for row in snapshot["rows"]
+        ))
+        previous_positions = tuple(sorted(
+            (row["player_id"], row["position"])
+            for row in position_changes[-1]["rows"]
+        )) if position_changes else None
+        if current_positions == previous_positions:
+            continue
+        position_changes.append(snapshot)
+    snapshots = position_changes
 
     if snapshots:
         snapshots[0]["milestone"] = "KO"
@@ -2116,8 +2159,7 @@ def _historical_source_rows(
             home_score,
             away_score
         FROM fixtures
-        WHERE status = 'FINISHED'
-          AND home_score IS NOT NULL
+        WHERE home_score IS NOT NULL
           AND away_score IS NOT NULL
           AND utc_date < ?
         """,
@@ -2320,7 +2362,8 @@ def build_fixture_stats(
 
 
 def import_historical_results(
-    seasons=None
+    seasons=None,
+    include_championship=True,
 ):
     """
     Import previous Premier League and Championship results.
@@ -2450,24 +2493,25 @@ def import_historical_results(
 
             imported += season_imported
 
-            try:
-                championship_imported = import_historical_csv_season(
-                    conn,
-                    season,
-                    "E1"
-                )
-                imported += championship_imported
-
-                if championship_imported:
-                    sources.append(
-                        f"{season}/{season + 1}: "
-                        "football-data.co.uk Championship"
+            if include_championship:
+                try:
+                    championship_imported = import_historical_csv_season(
+                        conn,
+                        season,
+                        "E1"
                     )
+                    imported += championship_imported
 
-            except Exception as exc:
-                errors.append(
-                    f"{season}/{season + 1}: Championship CSV {exc}"
-                )
+                    if championship_imported:
+                        sources.append(
+                            f"{season}/{season + 1}: "
+                            "football-data.co.uk Championship"
+                        )
+
+                except Exception as exc:
+                    errors.append(
+                        f"{season}/{season + 1}: Championship CSV {exc}"
+                    )
 
             # Preserve every successful season even if a later one fails.
             conn.commit()
@@ -3206,6 +3250,82 @@ def live_window_active():
     )
 
 
+def refresh_bigballs_shadow():
+    """Record changed EPL provider states without touching live app data."""
+    api_key = get_setting("bigballs_api_key")
+    if not api_key:
+        return 0
+    matches, meta = get_bigballs_premier_league_matches(api_key)
+    conn = get_db()
+    stored_count = 0
+    try:
+        matchday = dashboard_current_gameweek(conn)
+        fixtures = conn.execute(
+            """SELECT * FROM fixtures
+               WHERE season = ? AND matchday = ?""",
+            (SEASON, matchday),
+        ).fetchall() if matchday is not None else []
+        fixture_keys = {
+            (
+                normalized_team_name(row["home_team"]),
+                normalized_team_name(row["away_team"]),
+            ): row
+            for row in fixtures
+        }
+        captured_at = now_utc().isoformat()
+        for raw_match in matches:
+            match = normalize_bigballs_match(raw_match)
+            key = (
+                normalized_team_name(match["home"]),
+                normalized_team_name(match["away"]),
+            )
+            if key not in fixture_keys or not match["id"]:
+                continue
+            previous = conn.execute(
+                """SELECT * FROM bigballs_shadow_samples
+                   WHERE provider_match_id = ?
+                   ORDER BY captured_at DESC, id DESC LIMIT 1""",
+                (match["id"],),
+            ).fetchone()
+            current_state = (
+                match["status"], match["home_score"], match["away_score"]
+            )
+            previous_state = (
+                previous["status"], previous["home_score"], previous["away_score"]
+            ) if previous else None
+            if current_state == previous_state:
+                continue
+            events_json = previous["events_json"] if previous else None
+            score_changed = previous is None or current_state[1:] != previous_state[1:]
+            if score_changed and any(value is not None for value in current_state[1:]):
+                try:
+                    events, _ = get_bigballs_match_events(api_key, match["id"])
+                    events_json = json.dumps(events, separators=(",", ":"))
+                except BigBallsAPIError as exc:
+                    events_json = json.dumps({"error": str(exc)})
+            conn.execute(
+                """INSERT INTO bigballs_shadow_samples(
+                       provider_match_id, captured_at, home_team, away_team,
+                       kickoff_utc, status, home_score, away_score,
+                       events_json, raw_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    match["id"], captured_at, match["home"], match["away"],
+                    match["kickoff_utc"], match["status"],
+                    match["home_score"], match["away_score"], events_json,
+                    json.dumps(raw_match, separators=(",", ":")),
+                ),
+            )
+            stored_count += 1
+        conn.commit()
+        set_setting("last_bigballs_shadow_refresh", captured_at)
+        set_setting("last_bigballs_shadow_source", str(meta.get("source") or ""))
+        set_setting("last_bigballs_shadow_error", "")
+        return stored_count
+    finally:
+        conn.close()
+
+
 def api_refresh_worker():
     time.sleep(20)
 
@@ -3251,6 +3371,29 @@ def api_refresh_worker():
                     flush=True
                 )
 
+                stats_conn = get_db()
+                try:
+                    stats_gameweek = dashboard_current_gameweek(stats_conn)
+                finally:
+                    stats_conn.close()
+
+                stats_marker = str(stats_gameweek or "")
+                if (
+                    stats_marker
+                    and get_setting("match_stats_refreshed_gameweek")
+                    != stats_marker
+                ):
+                    stats_imported = import_historical_results(
+                        seasons=[SEASON],
+                        include_championship=False,
+                    )
+                    set_setting("match_stats_refreshed_gameweek", stats_marker)
+                    print(
+                        f"[match-stats] Refreshed {stats_imported} "
+                        f"Premier League result(s) for GW {stats_marker}",
+                        flush=True,
+                    )
+
         except Exception as e:
             set_setting(
                 "last_api_error",
@@ -3295,6 +3438,18 @@ def api_refresh_worker():
                 set_setting("last_sportscore_error", str(exc))
                 set_setting("last_sportscore_error_at", now_utc().isoformat())
                 print(f"[SportScore] {exc}", flush=True)
+
+        if delay == LIVE_REFRESH_SECONDS and get_setting("bigballs_api_key"):
+            try:
+                shadow_updates = refresh_bigballs_shadow()
+                print(
+                    f"[BigBalls shadow] Recorded {shadow_updates} changed state(s)",
+                    flush=True,
+                )
+            except Exception as exc:
+                set_setting("last_bigballs_shadow_error", str(exc))
+                set_setting("last_bigballs_shadow_error_at", now_utc().isoformat())
+                print(f"[BigBalls shadow] {exc}", flush=True)
 
         print(
             f"[auto-refresh] "
@@ -7738,6 +7893,19 @@ def settings():
                 "/admin/settings"
             )
 
+        if action == "bigballs_api":
+            api_key = request.form.get("bigballs_api_key", "").strip()
+            if api_key:
+                set_setting("bigballs_api_key", api_key)
+                flash(
+                    "Big Balls Sports Data key saved for the read-only "
+                    "Premier League shadow feed.",
+                    "success",
+                )
+            else:
+                flash("Please enter a Big Balls Sports Data API key.", "error")
+            return redirect("/admin/settings")
+
         token = request.form.get(
             "api_token",
             ""
@@ -7773,6 +7941,7 @@ def settings():
                 "football_api_token"
             )
         ),
+        bigballs_configured=bool(get_setting("bigballs_api_key")),
         last_sportscore_refresh=(
             local_timestamp(get_setting("last_sportscore_refresh"))
             if get_setting("last_sportscore_refresh")
@@ -7832,6 +8001,21 @@ def test_api():
     )
 
 
+@app.route("/admin/settings/bigballs-test", methods=["POST"])
+def test_bigballs_api():
+    if not is_admin():
+        return redirect("/")
+    try:
+        data = test_bigballs_connection(get_setting("bigballs_api_key"))
+        limits = data.get("limits") or {}
+        daily = limits.get("per_day")
+        suffix = f" Daily allowance: {daily}." if daily else ""
+        flash(f"Big Balls Sports Data connection successful.{suffix}", "success")
+    except BigBallsAPIError as exc:
+        flash(str(exc), "error")
+    return redirect("/admin/settings")
+
+
 
 
 
@@ -7859,7 +8043,85 @@ def admin_refresh_current_scorers():
 
 
 @app.route("/admin/live-feed-test")
-def admin_live_feed_test():
+def admin_bigballs_shadow_test():
+    if not is_admin():
+        return redirect("/")
+    conn = get_db()
+    try:
+        matchday = dashboard_current_gameweek(conn)
+        fixtures = conn.execute(
+            """SELECT * FROM fixtures
+               WHERE season = ? AND matchday = ? ORDER BY utc_date""",
+            (SEASON, matchday),
+        ).fetchall() if matchday is not None else []
+        latest_samples = conn.execute(
+            """SELECT sample.* FROM bigballs_shadow_samples sample
+               JOIN (
+                   SELECT provider_match_id, MAX(id) AS latest_id
+                   FROM bigballs_shadow_samples GROUP BY provider_match_id
+               ) latest ON latest.latest_id = sample.id"""
+        ).fetchall()
+    finally:
+        conn.close()
+    samples_by_key = {
+        (
+            normalized_team_name(row["home_team"]),
+            normalized_team_name(row["away_team"]),
+        ): row
+        for row in latest_samples
+    }
+    monitored = []
+    for fixture in fixtures:
+        key = (
+            normalized_team_name(fixture["home_team"]),
+            normalized_team_name(fixture["away_team"]),
+        )
+        sample = samples_by_key.get(key)
+        events = []
+        if sample and sample["events_json"]:
+            try:
+                parsed = json.loads(sample["events_json"])
+                events = parsed if isinstance(parsed, list) else []
+            except (TypeError, ValueError):
+                events = []
+        score_matches = bool(
+            sample
+            and sample["home_score"] == fixture["home_score"]
+            and sample["away_score"] == fixture["away_score"]
+        )
+        monitored.append({
+            "fixture": dict(fixture),
+            "sample": dict(sample) if sample else None,
+            "score_matches": score_matches,
+            "events": events,
+        })
+    return render_template(
+        "live_feed_test.html",
+        monitored=monitored,
+        configured=bool(get_setting("bigballs_api_key")),
+        matchday=matchday,
+        last_refresh=(
+            local_timestamp(get_setting("last_bigballs_shadow_refresh"))
+            if get_setting("last_bigballs_shadow_refresh") else None
+        ),
+        last_error=get_setting("last_bigballs_shadow_error"),
+        source=get_setting("last_bigballs_shadow_source"),
+    )
+
+
+@app.route("/admin/live-feed-test/refresh", methods=["POST"])
+def admin_bigballs_shadow_refresh():
+    if not is_admin():
+        return redirect("/")
+    try:
+        changed = refresh_bigballs_shadow()
+        flash(f"Shadow feed checked; {changed} changed state(s) recorded.", "success")
+    except BigBallsAPIError as exc:
+        flash(str(exc), "error")
+    return redirect("/admin/live-feed-test")
+
+
+def _retired_champions_league_live_feed_test():
     if not is_admin():
         return redirect("/")
 

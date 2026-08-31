@@ -206,6 +206,29 @@ def init_db(seed_default_player=True):
         ON live_position_snapshots(season, matchday, captured_at)
     """)
 
+    # Read-only shadow observations from Big Balls Sports Data. These never
+    # update Predictor fixtures, results, points or history.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bigballs_shadow_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider_match_id TEXT NOT NULL,
+            captured_at TEXT NOT NULL,
+            home_team TEXT NOT NULL,
+            away_team TEXT NOT NULL,
+            kickoff_utc TEXT,
+            status TEXT,
+            home_score INTEGER,
+            away_score INTEGER,
+            events_json TEXT,
+            raw_json TEXT NOT NULL,
+            UNIQUE(provider_match_id, captured_at)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_bigballs_shadow_match_time
+        ON bigballs_shadow_samples(provider_match_id, captured_at)
+    """)
+
     # Permanent end-of-season snapshots. Player names are copied rather than
     # linked so later account edits cannot rewrite historical tables.
     conn.execute("""

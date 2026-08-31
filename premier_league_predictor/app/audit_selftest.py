@@ -153,7 +153,9 @@ cause_fixture_id, cause_label = predictor._position_snapshot_cause(
     conn.execute("SELECT * FROM fixtures WHERE id = 99001").fetchall()
 )
 assert cause_fixture_id == 99001
-assert cause_label == "Snapshot Home v Snapshot Away"
+assert cause_label == "SNA 1–1 SNA"
+assert predictor.chart_team_code("Manchester City FC") == "MCI"
+assert predictor.chart_team_code("Manchester United FC") == "MUN"
 assert chart["snapshots"][0]["milestone"] == "KO"
 snapshot_ids = [
     row["id"] for row in conn.execute(
@@ -717,195 +719,63 @@ assert predictor.status_label({
     "utc_date": datetime.now(timezone.utc).isoformat(),
 }) == "LIVE 90+4'"
 
-original_test_match_details = predictor.get_sportscore_match_details
-predictor.get_sportscore_match_details = lambda match: {
-    "home": "LASK",
-    "away": "Celtic",
-    "home_score": "1",
-    "away_score": "2",
+# The retired Champions League diagnostic is replaced by a read-only Premier
+# League shadow page. It must render without a key and clearly state isolation.
+shadow_response = client.get("/admin/live-feed-test")
+assert shadow_response.status_code == 200
+assert b"Premier League shadow feed" in shadow_response.data
+assert b"never alter fixtures, predictions, points or history" in shadow_response.data
+assert b"Champions League" not in shadow_response.data
+
+import bigballs_api
+normalized_shadow = bigballs_api.normalize_match({
+    "id": "shadow-1",
+    "home": {"name": "Arsenal", "logo_url": "https://img/arsenal.png"},
+    "away": {"name": "Chelsea"},
     "status": "live",
-    "status_text": "Started 90+3",
-    "competition": "UEFA Champions League",
-    "live_minute": "90",
-    "incidents": [
-        {
-            "time": 75,
-            "type": "Penalty Goal",
-            "side": "away",
-            "player": "Test Scorer",
-            "is_goal": True,
-        },
-        {
-            "time": 81,
-            "type": "Red card",
-            "type_id": 4,
-            "side": "home",
-            "player": "Test Defender",
-        },
-    ],
-}
-try:
-    live_test_response = client.get(
-        "/admin/live-feed-test?slug=lask-vs-celtic"
-    )
-finally:
-    predictor.get_sportscore_match_details = original_test_match_details
-assert live_test_response.status_code == 200
-assert b"LIVE 90+3" in live_test_response.data
-assert b'<div class="fixture-submeta">LIVE' not in live_test_response.data
-assert b"Test Scorer" in live_test_response.data
-assert "(Pen)".encode() in live_test_response.data
-assert b"Test Defender" in live_test_response.data
-assert b"never affect Predictor fixtures" in live_test_response.data
-assert b'class="fixture-scorers"' in live_test_response.data
-assert b'class="card fixture-set fixture-live"' in live_test_response.data
-assert b'class="fixture-centre live-score live-score-grid"' in live_test_response.data
+    "score": {"home": 2, "away": 1},
+})
+assert normalized_shadow["home_score"] == 2
+assert normalized_shadow["away_score"] == 1
+assert normalized_shadow["status"] == "live"
 
-predictor.get_sportscore_match_details = lambda match: {
-    "home": "Europa Home",
-    "away": "Europa Away",
-    "home_score": "2",
-    "away_score": "1",
-    "status": "finished",
-    "status_text": "FT",
-    "competition": "UEFA Europa League",
-    "live_minute": None,
-    "incidents": [],
-}
-try:
-    manual_match_response = client.get(
-        "/admin/live-feed-test?match="
-        "https%3A%2F%2Fsportscore.com%2Ffootball%2Fmatch%2F"
-        "europa-home-vs-europa-away%2F"
-    )
-finally:
-    predictor.get_sportscore_match_details = original_test_match_details
-assert manual_match_response.status_code == 200
-assert b"Europa Home" in manual_match_response.data
-assert b"UEFA Champions League by SportScore" not in manual_match_response.data
-assert b"Manual matches remain read-only" in manual_match_response.data
-
-predictor.get_sportscore_match_details = lambda match: {
-    "home": "Home FC",
-    "away": "Away FC",
-    "home_score": None,
-    "away_score": None,
+# Shadow observations retain provider scores/events but never mutate the
+# matching Predictor fixture.
+original_bigballs_matches = predictor.get_bigballs_premier_league_matches
+original_bigballs_events = predictor.get_bigballs_match_events
+predictor.set_setting("bigballs_api_key", "shadow-test-key")
+predictor.get_bigballs_premier_league_matches = lambda key: ([{
+    "id": "shadow-home-away",
+    "home": {"name": "Home FC"},
+    "away": {"name": "Away FC"},
     "status": "live",
-    "status_text": "Started 90+3",
-    "competition": "Premier League",
-    "live_minute": "90",
-    "incidents": [],
-}
+    "score": {"home": 2, "away": 1},
+    "kickoff_utc": live_kickoff,
+}], {"source": "audit"})
+predictor.get_bigballs_match_events = lambda key, match_id: ([{
+    "type": "goal", "player": {"name": "Shadow Scorer"}
+}], {"source": "audit"})
 try:
-    combined_feed_response = client.get(
-        "/admin/live-feed-test?match=home-fc-vs-away-fc"
-    )
+    assert predictor.refresh_bigballs_shadow() == 1
 finally:
-    predictor.get_sportscore_match_details = original_test_match_details
-assert combined_feed_response.status_code == 200
-assert b"Sources:" in combined_feed_response.data
-assert b"SportScore" in combined_feed_response.data
-assert b"Predictor stored fixture" not in combined_feed_response.data
-assert b'<div class="fixture-sources">' not in combined_feed_response.data
-assert b"LIVE 90+3" in combined_feed_response.data
-assert b"Alex Striker" in combined_feed_response.data
-
-predictor.get_sportscore_match_details = lambda match: {
-    "home": "LASK",
-    "away": "Celtic",
-    "home_score": "1",
-    "away_score": "2",
-    "status": "live",
-    "status_text": "HT",
-    "competition": "UEFA Champions League",
-    "live_minute": None,
-    "incidents": [],
-}
-try:
-    halftime_test_response = client.get(
-        "/admin/live-feed-test?slug=lask-vs-celtic"
-    )
-finally:
-    predictor.get_sportscore_match_details = original_test_match_details
-assert halftime_test_response.status_code == 200
-assert b'<span class="badge live">HT</span>' in halftime_test_response.data
-
-# With no manual slugs, the diagnostics page discovers current matches from
-# SportScore instead of retrying expired, hard-coded match URLs.
-original_live_matches = predictor.get_sportscore_champions_league_matches
-original_test_match_details = predictor.get_sportscore_match_details
-original_competition_matches = predictor.get_football_champions_league_matches
-predictor.set_setting("football_api_token", "test-token")
-predictor.get_football_champions_league_matches = lambda token, season: [
-    {
-        "id": 7001,
-        "homeTeam": {"name": "Fresh Home"},
-        "awayTeam": {"name": "Fresh Away"},
-        "score": {"fullTime": {"home": 1, "away": 0}},
-        "status": "IN_PLAY",
-        "minute": 12,
-        "utcDate": "2026-08-26T19:00:00Z",
-    },
-    {
-        "id": 7002,
-        "homeTeam": {"name": "Football Only Home"},
-        "awayTeam": {"name": "Football Only Away"},
-        "score": {"fullTime": {"home": None, "away": None}},
-        "status": "TIMED",
-        "utcDate": "2026-08-26T20:00:00Z",
-    },
-]
-predictor.get_sportscore_champions_league_matches = lambda: [
-    {
-        "home": "Fresh Home",
-        "away": "Fresh Away",
-        "home_score": 0,
-        "away_score": 0,
-        "status": "live",
-        "status_text": "1st half",
-        "competition": "UEFA Champions League",
-        "live_minute": "12",
-        "incidents": [],
-        "url": "/football/match/fresh-home-vs-fresh-away/",
-        "_details_loaded": True,
-    },
-    {
-        "home": "Domestic Home",
-        "away": "Domestic Away",
-        "status": "live",
-        "competition": "Premier League",
-        "url": "/football/match/domestic-home-vs-domestic-away/",
-    },
-    {
-        "home": "Upcoming Home",
-        "away": "Upcoming Away",
-        "status": "upcoming",
-        "status_text": "Not started",
-        "competition": "UEFA Champions League",
-        "time": "2026-08-25T20:00:00+00:00",
-        "url": "/football/match/upcoming-home-vs-upcoming-away/",
-        "_details_loaded": True,
-    },
-]
-predictor.get_sportscore_match_details = lambda match: match
-try:
-    discovered_test_response = client.get("/admin/live-feed-test")
-finally:
-    predictor.get_sportscore_champions_league_matches = original_live_matches
-    predictor.get_sportscore_match_details = original_test_match_details
-    predictor.get_football_champions_league_matches = original_competition_matches
-    predictor.set_setting("football_api_token", "")
-assert discovered_test_response.status_code == 200
-assert b"Fresh Home" in discovered_test_response.data
-assert b"Upcoming Home" in discovered_test_response.data
-assert b"Football Only Home" in discovered_test_response.data
-assert b"Domestic Home" not in discovered_test_response.data
-assert b'<p class="small fixture-list-sources">' in discovered_test_response.data
-assert b"SportScore" in discovered_test_response.data
-assert b"football-data.org" in discovered_test_response.data
-assert b'<div class="fixture-sources">' not in discovered_test_response.data
-assert b"football-data.org Champions League comparison is enabled" in discovered_test_response.data
-assert b"available SportScore and football-data.org feeds" in discovered_test_response.data
+    predictor.get_bigballs_premier_league_matches = original_bigballs_matches
+    predictor.get_bigballs_match_events = original_bigballs_events
+    predictor.set_setting("bigballs_api_key", "")
+conn = database.get_db()
+unchanged_live_fixture = conn.execute(
+    "SELECT home_score, away_score FROM fixtures WHERE id = 8800"
+).fetchone()
+assert tuple(unchanged_live_fixture) == (2, 0)
+shadow_sample = conn.execute(
+    "SELECT * FROM bigballs_shadow_samples WHERE provider_match_id = ?",
+    ("shadow-home-away",),
+).fetchone()
+assert shadow_sample["home_score"] == 2
+assert shadow_sample["away_score"] == 1
+assert "Shadow Scorer" in shadow_sample["events_json"]
+conn.execute("DELETE FROM bigballs_shadow_samples")
+conn.commit()
+conn.close()
 conn = database.get_db()
 conn.execute("DELETE FROM fixtures WHERE id IN (8800, 8801)")
 conn.commit()
@@ -1545,7 +1415,8 @@ assert "position-chart-data" in gameweek_template
 assert "Swipe for earlier updates" in gameweek_template
 assert "mobileTimelineWidth" in gameweek_template
 assert "stage.scrollLeft = Math.max(0, stage.scrollWidth - stage.clientWidth)" in gameweek_template
-assert "`${snapshot.milestone} ${snapshot.label}`" in gameweek_template
+assert 'snapshot.cause_label || snapshot.milestone || "Position change"' in gameweek_template
+assert 'class="pick-grid{% if exact_score %} exact-score-row{% endif %}"' in gameweek_template
 assert "labelIndexes" not in gameweek_template
 assert "button.innerHTML" not in gameweek_template
 assert "display_status not in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA')" in gameweek_template
