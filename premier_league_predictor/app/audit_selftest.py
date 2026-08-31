@@ -777,6 +777,16 @@ normalized_shadow = bigballs_api.normalize_match({
 assert normalized_shadow["home_score"] == 2
 assert normalized_shadow["away_score"] == 1
 assert normalized_shadow["status"] == "live"
+normalized_stored_shadow = bigballs_api.normalize_match({
+    "id": "stored-shadow-1",
+    "home_team": {"name": "Leeds United"},
+    "away_team": {"name": "Brentford"},
+    "status": "finished",
+    "home_score": 1,
+    "away_score": 1,
+})
+assert normalized_stored_shadow["home"] == "Leeds United"
+assert normalized_stored_shadow["home_score"] == 1
 original_bigballs_request = bigballs_api._request
 try:
     def stored_event_request(key, path, params=None, timeout=20):
@@ -789,6 +799,21 @@ try:
     stored_events, stored_meta = bigballs_api.get_match_events("key", "match-id")
     assert stored_events[0]["player"]["name"] == "Stored Scorer"
     assert stored_meta["source"] == "stored"
+finally:
+    bigballs_api._request = original_bigballs_request
+
+try:
+    stored_match_requests = []
+    def stored_match_request(key, path, params=None, timeout=20):
+        stored_match_requests.append((path, params))
+        return {"data": [{"id": params["date"]}], "meta": {"source": "stored"}}
+    bigballs_api._request = stored_match_request
+    archived_matches, archived_meta = bigballs_api.get_stored_premier_league_matches(
+        "key", ["2026-08-30", "2026-08-29", "2026-08-29"]
+    )
+    assert [item["id"] for item in archived_matches] == ["2026-08-29", "2026-08-30"]
+    assert all(path == "/stored/matches" for path, _ in stored_match_requests)
+    assert archived_meta["source"] == "stored"
 finally:
     bigballs_api._request = original_bigballs_request
 
@@ -1554,6 +1579,7 @@ assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_so
 gameweek_source = inspect.getsource(predictor.gameweek)
 assert "record_live_position_snapshot(conn, matchday)" in gameweek_source
 assert 'params={"sport": "football"}' in inspect.getsource(bigballs_api.get_match_events)
+assert '"/stored/matches"' in inspect.getsource(bigballs_api.get_stored_premier_league_matches)
 assert "force_events=True" in inspect.getsource(predictor.admin_bigballs_shadow_refresh)
 
 with open(

@@ -170,8 +170,6 @@ v
 </div>
 {% endif %}
 
-{% include "_fixture_card_meta.html" %}
-
 {% if fixture.scorers.home or fixture.scorers.away or fixture.red_cards.home or fixture.red_cards.away %}
 <div class="fixture-scorers" aria-label="Goalscorers">
   <div class="fixture-scorers-home">
@@ -192,6 +190,8 @@ v
   </div>
 </div>
 {% endif %}
+
+{% include "_fixture_card_meta.html" %}
 
 {% include "_fixture_prediction_rows.html" %}
 

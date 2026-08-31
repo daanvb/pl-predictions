@@ -1,6 +1,6 @@
 name: "Preddies"
 description: "Private Premier League prediction game"
-version: "1.22.4"
+version: "1.22.5"
 slug: "premier_league_predictor"
 init: false
 arch:

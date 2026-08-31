@@ -54,6 +54,36 @@ def get_premier_league_matches(api_key, limit=200):
     return payload.get("data") or [], payload.get("meta") or {}
 
 
+def get_stored_premier_league_matches(api_key, dates, limit=200):
+    """Fetch archived EPL fixtures for the supplied UTC calendar dates."""
+    matches = []
+    seen = set()
+    meta = {}
+    for match_date in sorted(set(dates)):
+        payload = _request(
+            api_key,
+            "/stored/matches",
+            params={
+                "sport": "football",
+                "league": "epl",
+                "date": match_date,
+                "limit": limit,
+            },
+        )
+        data = payload.get("data") or []
+        if isinstance(data, dict):
+            data = data.get("matches") or data.get("items") or []
+        for match in data if isinstance(data, list) else []:
+            match_id = match.get("id") if isinstance(match, dict) else None
+            if match_id and match_id in seen:
+                continue
+            if match_id:
+                seen.add(match_id)
+            matches.append(match)
+        meta = payload.get("meta") or meta
+    return matches, meta
+
+
 def get_match_events(api_key, match_id):
     event_error = None
     try:
@@ -107,9 +137,14 @@ def _score_value(score, side):
 
 
 def normalize_match(match):
-    home = match.get("home") or {}
-    away = match.get("away") or {}
+    home = match.get("home") or match.get("home_team") or {}
+    away = match.get("away") or match.get("away_team") or {}
     score = match.get("score") or match.get("linescore") or {}
+    if not score:
+        score = {
+            "home": match.get("home_score"),
+            "away": match.get("away_score"),
+        }
     return {
         "id": match.get("id"),
         "home": home.get("name") if isinstance(home, dict) else str(home),

@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.14] - 2026-08-31
+
+### Changed
+- Restored the separate centred match status and right-aligned TV logo beneath each fixture's score and match details.
+- Increased mobile graph spacing and reduced event-label text so fixture score labels remain readable.
+
 ## [1.1.13] - 2026-08-31
 
 ### Changed
