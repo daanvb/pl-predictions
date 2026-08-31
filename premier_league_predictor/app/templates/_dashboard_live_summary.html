@@ -31,18 +31,22 @@
   const colours = ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2"];
   const ns = "http://www.w3.org/2000/svg";
   const stage = svg.parentElement;
-  const width = window.innerWidth <= 640 ? Math.max(stage.clientWidth, 160 + Math.max(0, snapshots.length - 1) * 110) : 760;
+  const pointSpacing = 55;
+  const plotWidth = Math.max(0, snapshots.length - 1) * pointSpacing;
+  const width = window.innerWidth <= 640 ? Math.max(stage.clientWidth, 74 + plotWidth) : 760;
   const height = Math.max(245, 165 + players.length * 18);
   const margin = {top: 22, right: 26, bottom: 58, left: 48};
   const innerWidth = width - margin.left - margin.right;
+  const compactPlotWidth = Math.min(innerWidth, plotWidth);
+  const plotStart = margin.left + (innerWidth - compactPlotWidth) / 2;
   const innerHeight = height - margin.top - margin.bottom;
-  const x = index => margin.left + (snapshots.length === 1 ? innerWidth / 2 : index * innerWidth / (snapshots.length - 1));
+  const x = index => snapshots.length === 1 ? margin.left + innerWidth / 2 : plotStart + index * compactPlotWidth / (snapshots.length - 1);
   const y = position => margin.top + (players.length === 1 ? innerHeight / 2 : (position - 1) * innerHeight / (players.length - 1));
   const make = (name, attrs = {}) => { const node = document.createElementNS(ns, name); Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value)); return node; };
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   if (window.innerWidth <= 640) { svg.style.width = `${width}px`; svg.style.maxWidth = "none"; }
   for (let position = 1; position <= players.length; position += 1) {
-    svg.appendChild(make("line", {x1: margin.left, x2: width - margin.right, y1: y(position), y2: y(position), class: "position-chart-grid"}));
+    svg.appendChild(make("line", {x1: snapshots.length === 1 ? margin.left : plotStart, x2: snapshots.length === 1 ? width - margin.right : plotStart + compactPlotWidth, y1: y(position), y2: y(position), class: "position-chart-grid"}));
   }
   snapshots.forEach((snapshot, index) => {
     const label = make("text", {x: x(index), y: height - 13, "text-anchor": index === 0 ? "start" : (index === snapshots.length - 1 ? "end" : "middle"), class: "position-chart-axis-label"});

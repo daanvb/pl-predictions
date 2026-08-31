@@ -65,7 +65,6 @@ def get_stored_premier_league_matches(api_key, dates, limit=200):
             "/stored/matches",
             params={
                 "sport": "football",
-                "league": "epl",
                 "date": match_date,
                 "limit": limit,
             },
@@ -95,9 +94,7 @@ def get_match_events(api_key, match_id):
     except BigBallsAPIError as exc:
         event_error = exc
         payload = {}
-    data = payload.get("data") or []
-    if isinstance(data, dict):
-        data = data.get("events") or data.get("items") or []
+    data = _event_list(payload.get("data"))
     if isinstance(data, list) and data:
         return data, payload.get("meta") or {}
 
@@ -109,15 +106,31 @@ def get_match_events(api_key, match_id):
         stored = stored_payload.get("data") or {}
         if isinstance(stored, dict) and isinstance(stored.get("match"), dict):
             stored = stored["match"]
-        stored_events = (stored.get("events") or []) if isinstance(stored, dict) else []
-        if isinstance(stored_events, dict):
-            stored_events = stored_events.get("items") or []
+        stored_events = _event_list(stored)
         if isinstance(stored_events, list):
             return stored_events, stored_payload.get("meta") or {}
     except BigBallsAPIError:
         if event_error:
             raise event_error
     return [], payload.get("meta") or {}
+
+
+def _event_list(value):
+    """Accept the live and archived event container shapes used by the API."""
+    if isinstance(value, list):
+        return value
+    if not isinstance(value, dict):
+        return []
+    for key in ("events", "incidents", "timeline", "match_events", "plays", "items"):
+        nested = value.get(key)
+        if isinstance(nested, list):
+            return nested
+        if isinstance(nested, dict):
+            events = _event_list(nested)
+            if events:
+                return events
+    match = value.get("match")
+    return _event_list(match) if isinstance(match, dict) else []
 
 
 def _score_value(score, side):
@@ -136,9 +149,21 @@ def _score_value(score, side):
     return None
 
 
+def _team_value(match, side):
+    team = next((match.get(key) for key in (
+        side, f"{side}_team", f"{side}Team", f"{side}_team_name",
+    ) if match.get(key)), {})
+    if isinstance(team, dict):
+        nested = team.get("team")
+        if isinstance(nested, dict):
+            team = nested
+        return team.get("name") or team.get("display_name") or team.get("short_name") or ""
+    return str(team)
+
+
 def normalize_match(match):
-    home = match.get("home") or match.get("home_team") or {}
-    away = match.get("away") or match.get("away_team") or {}
+    home = match.get("home") or match.get("home_team") or match.get("homeTeam") or {}
+    away = match.get("away") or match.get("away_team") or match.get("awayTeam") or {}
     score = match.get("score") or match.get("linescore") or {}
     if not score:
         score = {
@@ -147,8 +172,8 @@ def normalize_match(match):
         }
     return {
         "id": match.get("id"),
-        "home": home.get("name") if isinstance(home, dict) else str(home),
-        "away": away.get("name") if isinstance(away, dict) else str(away),
+        "home": _team_value(match, "home"),
+        "away": _team_value(match, "away"),
         "home_logo": home.get("logo_url") if isinstance(home, dict) else None,
         "away_logo": away.get("logo_url") if isinstance(away, dict) else None,
         "home_score": _score_value(score, "home"),

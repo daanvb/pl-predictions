@@ -2,6 +2,15 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.15] - 2026-08-31
+
+### Changed
+- Compacted live graph changes to half their previous horizontal spacing.
+- Centred the Make Predictions action on the gameweek card.
+
+### Fixed
+- Kept the match status and TV channel row directly above predictions and points on every score card.
+
 ## [1.1.14] - 2026-08-31
 
 ### Changed

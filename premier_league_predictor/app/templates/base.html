@@ -399,11 +399,13 @@ input{
   padding:8px 0
 }
 .fixture-predictions{
+  grid-area:predictions;
   margin-top:14px;
   border-top:1px solid var(--line);
   padding-top:10px
 }
 .fixture-predictions-locked{
+  grid-area:predictions;
   margin-top:14px;
   border-top:1px solid var(--line);
   padding-top:12px
@@ -844,6 +846,7 @@ th,td{
         "scorers"
         "meta"
         "status"
+        "predictions"
         "sources";
     column-gap: 0;
     row-gap: 7px;
@@ -1088,14 +1091,15 @@ th,td{
 .dashboard-gameweek-actions {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     gap: 10px;
     width: 100%;
     margin-top: 14px;
 }
 
-.dashboard-gameweek-actions a:last-child {
+.dashboard-gameweek-actions a {
     margin-left: auto;
+    margin-right: auto;
 }
 
 @media (max-width: 640px) {
@@ -1144,6 +1148,7 @@ th,td{
             "scorers"
             "meta"
             "status"
+            "predictions"
             "sources";
         row-gap: 8px;
         column-gap: 0;
