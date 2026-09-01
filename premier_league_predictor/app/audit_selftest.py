@@ -1798,8 +1798,8 @@ assert 'tv-logo-dark' in base_template
 assert 'broadcaster_dark_logo_url' in inspect.getsource(predictor)
 assert 'TNT_Sports_%282023%29_alt.svg' in inspect.getsource(predictor)
 assert '{% include "_fixture_card_meta.html" %}' in live_feed_test_template
-assert '{% set hide_finished_status_badge = true %}' in gameweek_template
-assert 'hide_finished_status_badge|default(false)' in fixture_card_meta_template
+assert "'AWAITING_LIVE_DATA','FINISHED'" in gameweek_template
+assert '<span class="badge">FT</span>' in fixture_card_meta_template
 assert 'html[data-theme="dark"]' in base_template
 assert "prefers-color-scheme: dark" in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template

@@ -21,7 +21,7 @@ All notable changes to Preddies are documented here.
 - Added broadcaster logos to Admin Test fixture cards using the same layout as the live scorecards.
 - Switched TNT Sports to a transparent white wordmark in dark mode for better readability.
 - Added a red outline to the dark-mode Log out button.
-- Removed the duplicate circled FT badge from completed gameweek result cards.
+- Removed the duplicate plain FT line from completed gameweek result cards while retaining the FT badge.
 
 ## [1.1.19] - 2026-09-01
 
