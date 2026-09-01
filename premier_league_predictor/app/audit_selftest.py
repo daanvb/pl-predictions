@@ -35,6 +35,9 @@ conn = database.get_db()
 assert conn.execute("PRAGMA journal_mode").fetchone()[0].casefold() == "wal"
 assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 30000
+assert conn.execute("PRAGMA secure_delete").fetchone()[0] == 1
+assert conn.execute("PRAGMA trusted_schema").fetchone()[0] == 0
+assert conn.execute("PRAGMA temp_store").fetchone()[0] == 2
 assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(predictions)").fetchall()}
 assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "incidents_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
@@ -75,10 +78,67 @@ assert conn.execute("SELECT COUNT(*) FROM players WHERE login_name IS NULL").fet
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='historical_fixtures'"
 ).fetchone() is not None
+assert conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='prediction_audit_events'"
+).fetchone() is not None
 assert "competition" in {
     row["name"]
     for row in conn.execute("PRAGMA table_info(historical_fixtures)").fetchall()
 }
+
+# Prediction changes form an append-only chain and any direct score or ledger
+# mutation is detected before the shared Tegrity page reports it as healthy.
+audit_player_id = conn.execute(
+    "SELECT id FROM players ORDER BY id LIMIT 1"
+).fetchone()["id"]
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team
+       ) VALUES (98999, 2026, 98, ?, 'SCHEDULED', 'Audit Home', 'Audit Away')""",
+    ((datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),),
+)
+conn.execute(
+    """INSERT INTO predictions(player_id, fixture_id, home_score, away_score, dp)
+       VALUES (?, 98999, 2, 1, 1)""",
+    (audit_player_id,),
+)
+database.append_prediction_audit_event(
+    conn,
+    player_id=audit_player_id,
+    fixture_id=98999,
+    home_score=2,
+    away_score=1,
+    dp=1,
+    action="submitted",
+    changed_at="2026-08-30T12:00:00+00:00",
+)
+conn.commit()
+assert database.verify_prediction_audit_chain(conn)["valid"]
+audit_event = conn.execute(
+    "SELECT * FROM prediction_audit_events WHERE fixture_id = 98999"
+).fetchone()
+assert audit_event["score_commitment"] == database.prediction_score_commitment(
+    audit_player_id, 98999, 2, 1, 1, audit_event["commitment_salt"]
+)
+conn.execute("UPDATE predictions SET home_score = 3 WHERE fixture_id = 98999")
+assert not database.verify_prediction_audit_chain(conn)["valid"]
+conn.execute("UPDATE predictions SET home_score = 2 WHERE fixture_id = 98999")
+assert database.verify_prediction_audit_chain(conn)["valid"]
+try:
+    conn.execute(
+        "UPDATE prediction_audit_events SET away_score = 2 WHERE fixture_id = 98999"
+    )
+    raise AssertionError("Immutable prediction audit row accepted an update")
+except sqlite3.IntegrityError:
+    pass
+try:
+    conn.execute("DELETE FROM prediction_audit_events WHERE fixture_id = 98999")
+    raise AssertionError("Immutable prediction audit row accepted a delete")
+except sqlite3.IntegrityError:
+    pass
+conn.execute("DELETE FROM predictions WHERE fixture_id = 98999")
+conn.execute("DELETE FROM fixtures WHERE id = 98999")
+conn.commit()
 conn.close()
 
 # Import the real Flask app after redirecting its database module.
@@ -584,6 +644,56 @@ assert client.get(
     "/team-badge?url=https%3A%2F%2Fexample.com%2Fbadge.png"
 ).status_code == 404
 
+# Normal prediction saves and later edits are committed to the ledger in the
+# same database transaction, including Double Points changes.
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team
+       ) VALUES (98777, ?, 77, ?, 'SCHEDULED', 'Ledger Home', 'Ledger Away')""",
+    (
+        predictor.SEASON,
+        (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),
+    ),
+)
+conn.commit()
+conn.close()
+save_response = client.post(
+    "/predict/77",
+    data={"home_98777": "2", "away_98777": "1", "dp_fixture_id": "98777"},
+    follow_redirects=False,
+)
+assert save_response.status_code == 302
+conn = database.get_db()
+saved_event = conn.execute(
+    """SELECT * FROM prediction_audit_events
+       WHERE player_id = ? AND fixture_id = 98777 ORDER BY revision""",
+    (admin["id"],),
+).fetchall()
+assert len(saved_event) == 1
+assert saved_event[0]["action"] == "submitted"
+assert (saved_event[0]["home_score"], saved_event[0]["away_score"], saved_event[0]["dp"]) == (2, 1, 1)
+assert database.verify_prediction_audit_chain(conn)["valid"]
+conn.close()
+client.post(
+    "/predict/77",
+    data={"home_98777": "3", "away_98777": "1", "dp_fixture_id": "98777"},
+    follow_redirects=False,
+)
+conn = database.get_db()
+saved_event = conn.execute(
+    """SELECT * FROM prediction_audit_events
+       WHERE player_id = ? AND fixture_id = 98777 ORDER BY revision""",
+    (admin["id"],),
+).fetchall()
+assert [event["revision"] for event in saved_event] == [1, 2]
+assert saved_event[-1]["action"] == "updated"
+assert database.verify_prediction_audit_chain(conn)["valid"]
+conn.execute("DELETE FROM predictions WHERE fixture_id = 98777")
+conn.execute("DELETE FROM fixtures WHERE id = 98777")
+conn.commit()
+conn.close()
+
 # Display names can change without changing the stable login identifier.
 conn = database.get_db()
 original_login = conn.execute(
@@ -963,6 +1073,7 @@ conn.close()
 for route in [
     "/dashboard",
     "/side-events",
+    "/tegrity",
     "/rules",
     "/stats",
     "/league-stats",
@@ -974,6 +1085,10 @@ for route in [
 ]:
     response = client.get(route)
     assert response.status_code == 200, (route, response.status_code)
+
+tegrity_response = client.get("/tegrity")
+assert b"Tegrity" in tegrity_response.data
+assert b"Scores remain concealed until their match kicks off" in tegrity_response.data
 
 retired_test_response = client.get("/test-mode", follow_redirects=False)
 assert retired_test_response.status_code == 302
@@ -2131,7 +2246,7 @@ conn.close()
 releases = predictor.read_app_changelog()
 assert releases and releases[0]["version"] == predictor.APP_VERSION
 assert [section["title"] for section in releases[0]["sections"]] == [
-    "New", "Changes", "Fixes"
+    "Important", "New", "Changes", "Fixes"
 ]
 sample_sections = predictor.normalise_changelog_sections([
     {"title": "Fixed", "items": [

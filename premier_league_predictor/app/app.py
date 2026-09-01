@@ -26,12 +26,15 @@ from googleapiclient.http import MediaFileUpload
 
 from database import (
     DB,
+    append_prediction_audit_event,
     get_db,
     get_setting,
+    harden_path_permissions,
     hash_pin,
     init_db,
     is_legacy_pin_hash,
     set_setting,
+    verify_prediction_audit_chain,
     verify_pin,
 )
 from database_restore import (
@@ -63,7 +66,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -143,8 +146,12 @@ app.wsgi_app = ProxyFix(
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(BACKUP_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+harden_path_permissions(DATA_DIR, 0o700)
+harden_path_permissions(BACKUP_DIR, 0o700)
+harden_path_permissions(UPLOAD_DIR, 0o700)
 
 if os.path.exists(SECRET_FILE):
+    harden_path_permissions(SECRET_FILE)
     with open(SECRET_FILE, "r") as f:
         app.secret_key = f.read().strip()
 else:
@@ -153,6 +160,7 @@ else:
     with open(SECRET_FILE, "w") as f:
         f.write(secret)
 
+    harden_path_permissions(SECRET_FILE)
     app.secret_key = secret
 
 init_db(seed_default_player=False)
@@ -3773,6 +3781,7 @@ def create_automatic_backup():
         destination.close()
         source.close()
 
+    harden_path_permissions(backup_path)
     prune_auto_backups()
 
     set_setting(
@@ -3833,6 +3842,7 @@ def create_database_backup():
         destination.close()
         source.close()
 
+    harden_path_permissions(backup_path)
     return (
         backup_path,
         backup_name
@@ -5009,6 +5019,53 @@ def side_events():
     if not logged_in():
         return redirect("/")
     return render_template("side_events.html")
+
+
+@app.route("/tegrity")
+def tegrity():
+    if not logged_in():
+        return redirect("/")
+
+    conn = get_db()
+    chain_status = verify_prediction_audit_chain(conn)
+    rows = conn.execute(
+        """SELECT e.*
+           FROM prediction_audit_events e
+           JOIN fixtures f ON f.id = e.fixture_id
+           WHERE f.season = ?
+           ORDER BY e.id DESC
+           LIMIT 300""",
+        (SEASON,),
+    ).fetchall()
+    conn.close()
+
+    action_labels = {
+        "baseline": "Existing prediction registered",
+        "submitted": "Prediction submitted",
+        "updated": "Prediction changed",
+        "dp_changed": "Double Points changed",
+    }
+    events = []
+    for row in rows:
+        event = dict(row)
+        event["revealed"] = kickoff_passed(event["kickoff_utc"])
+        event["changed_local"] = local_timestamp(event["changed_at"])
+        event["action_label"] = action_labels.get(
+            event["action"], "Prediction recorded"
+        )
+        event["commitment_short"] = event["score_commitment"][:16]
+        event["event_hash_short"] = event["event_hash"][:16]
+        if not event["revealed"]:
+            event["home_score"] = None
+            event["away_score"] = None
+            event["commitment_salt"] = None
+        events.append(event)
+
+    return render_template(
+        "tegrity.html",
+        events=events,
+        chain_status=chain_status,
+    )
 
 
 @app.route("/first-run/restore", methods=["GET", "POST"])
@@ -6339,6 +6396,21 @@ def predictions(matchday):
         saved = 0
         locked_attempts = 0
 
+        fixture_ids_for_audit = [fixture["id"] for fixture in fixtures]
+        audit_placeholders = ",".join("?" for _ in fixture_ids_for_audit)
+        before_audit_rows = conn.execute(
+            f"""SELECT fixture_id, home_score, away_score, COALESCE(dp, 0) AS dp
+                FROM predictions
+                WHERE player_id = ? AND fixture_id IN ({audit_placeholders})""",
+            (session["player_id"], *fixture_ids_for_audit),
+        ).fetchall()
+        before_audit = {
+            row["fixture_id"]: (
+                row["home_score"], row["away_score"], row["dp"]
+            )
+            for row in before_audit_rows
+        }
+
         requested_dp_id = None
         requested_dp_raw = request.form.get(
             "dp_fixture_id",
@@ -6572,6 +6644,35 @@ def predictions(matchday):
                     errors.append(
                         "Enter and save a score for your DP match."
                     )
+
+        after_audit_rows = conn.execute(
+            f"""SELECT fixture_id, home_score, away_score, COALESCE(dp, 0) AS dp
+                FROM predictions
+                WHERE player_id = ? AND fixture_id IN ({audit_placeholders})""",
+            (session["player_id"], *fixture_ids_for_audit),
+        ).fetchall()
+        audit_changed_at = now_utc().isoformat()
+        for row in after_audit_rows:
+            after_state = (row["home_score"], row["away_score"], row["dp"])
+            before_state = before_audit.get(row["fixture_id"])
+            if before_state == after_state:
+                continue
+            if before_state is None:
+                audit_action = "submitted"
+            elif before_state[:2] == after_state[:2]:
+                audit_action = "dp_changed"
+            else:
+                audit_action = "updated"
+            append_prediction_audit_event(
+                conn,
+                player_id=session["player_id"],
+                fixture_id=row["fixture_id"],
+                home_score=row["home_score"],
+                away_score=row["away_score"],
+                dp=row["dp"],
+                action=audit_action,
+                changed_at=audit_changed_at,
+            )
 
         conn.commit()
 
@@ -7866,6 +7967,7 @@ def restore_backup():
     uploaded.save(
         temp_path
     )
+    harden_path_permissions(temp_path)
 
     try:
         validate_restore_database(

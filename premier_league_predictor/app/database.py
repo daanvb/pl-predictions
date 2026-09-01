@@ -2,20 +2,36 @@ import sqlite3
 import os
 import hashlib
 import hmac
+import json
 import re
+import secrets
+from datetime import datetime, timezone
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
 DB = "/data/predictor.db"
 
 
+def harden_path_permissions(path, mode=0o600):
+    """Apply private Unix permissions where the host filesystem supports it."""
+    try:
+        os.chmod(path, mode)
+        return True
+    except (OSError, TypeError):
+        return False
+
+
 def get_db():
     os.makedirs(os.path.dirname(DB) or ".", exist_ok=True)
     conn = sqlite3.connect(DB, timeout=30, check_same_thread=False)
+    harden_path_permissions(DB)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 30000")
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA secure_delete = ON")
+    conn.execute("PRAGMA trusted_schema = OFF")
+    conn.execute("PRAGMA temp_store = MEMORY")
     return conn
 
 
@@ -174,6 +190,77 @@ def init_db(seed_default_player=True):
         ON predictions(fixture_id)
     """)
 
+    # Append-only, hash-chained record of prediction and DP changes. Scores
+    # remain concealed in the player-facing ledger until the fixture locks.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS prediction_audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_id INTEGER NOT NULL,
+            fixture_id INTEGER NOT NULL,
+            player_name TEXT NOT NULL,
+            home_team TEXT NOT NULL,
+            away_team TEXT NOT NULL,
+            kickoff_utc TEXT NOT NULL,
+            matchday INTEGER,
+            changed_at TEXT NOT NULL,
+            action TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            home_score INTEGER NOT NULL,
+            away_score INTEGER NOT NULL,
+            dp INTEGER NOT NULL DEFAULT 0,
+            commitment_salt TEXT NOT NULL,
+            score_commitment TEXT NOT NULL,
+            previous_hash TEXT NOT NULL,
+            event_hash TEXT NOT NULL UNIQUE,
+            UNIQUE(player_id, fixture_id, revision)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_prediction_audit_fixture_time
+        ON prediction_audit_events(fixture_id, changed_at, id)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_prediction_audit_player_time
+        ON prediction_audit_events(player_id, changed_at, id)
+    """)
+
+    # Existing installations receive one baseline commitment per prediction.
+    # This is additive and does not alter live prediction rows or points.
+    existing_audit_count = conn.execute(
+        "SELECT COUNT(*) FROM prediction_audit_events"
+    ).fetchone()[0]
+    if existing_audit_count == 0:
+        existing_predictions = conn.execute(
+            """SELECT player_id, fixture_id, home_score, away_score,
+                      COALESCE(dp, 0) AS dp, updated_at
+               FROM predictions ORDER BY id"""
+        ).fetchall()
+        for prediction in existing_predictions:
+            append_prediction_audit_event(
+                conn,
+                player_id=prediction["player_id"],
+                fixture_id=prediction["fixture_id"],
+                home_score=prediction["home_score"],
+                away_score=prediction["away_score"],
+                dp=prediction["dp"],
+                action="baseline",
+                changed_at=(prediction["updated_at"] or datetime.now(timezone.utc).isoformat()),
+            )
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS prediction_audit_no_update
+        BEFORE UPDATE ON prediction_audit_events
+        BEGIN
+            SELECT RAISE(ABORT, 'prediction audit events are immutable');
+        END
+    """)
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS prediction_audit_no_delete
+        BEFORE DELETE ON prediction_audit_events
+        BEGIN
+            SELECT RAISE(ABORT, 'prediction audit events are immutable');
+        END
+    """)
+
     # Change-only snapshots power the live Gameweek position chart and remain
     # available when the completed Gameweek is viewed later.
     conn.execute("""
@@ -309,6 +396,144 @@ def init_db(seed_default_player=True):
         conn.commit()
 
     conn.close()
+
+
+def _audit_payload(player_id, fixture_id, changed_at, action, revision,
+                   home_score, away_score, dp, commitment_salt,
+                   score_commitment, previous_hash, player_name,
+                   home_team, away_team, kickoff_utc, matchday):
+    return {
+        "action": str(action),
+        "away_score": int(away_score),
+        "changed_at": str(changed_at),
+        "commitment_salt": str(commitment_salt),
+        "dp": 1 if dp else 0,
+        "fixture_id": int(fixture_id),
+        "home_team": str(home_team),
+        "home_score": int(home_score),
+        "kickoff_utc": str(kickoff_utc),
+        "matchday": int(matchday) if matchday is not None else None,
+        "player_id": int(player_id),
+        "player_name": str(player_name),
+        "previous_hash": str(previous_hash),
+        "revision": int(revision),
+        "score_commitment": str(score_commitment),
+        "away_team": str(away_team),
+    }
+
+
+def prediction_score_commitment(player_id, fixture_id, home_score,
+                                away_score, dp, salt):
+    payload = json.dumps({
+        "away_score": int(away_score),
+        "dp": 1 if dp else 0,
+        "fixture_id": int(fixture_id),
+        "home_score": int(home_score),
+        "player_id": int(player_id),
+        "salt": str(salt),
+    }, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def append_prediction_audit_event(conn, *, player_id, fixture_id,
+                                  home_score, away_score, dp, action,
+                                  changed_at=None):
+    changed_at = changed_at or datetime.now(timezone.utc).isoformat()
+    last_event = conn.execute(
+        "SELECT event_hash FROM prediction_audit_events ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    previous_hash = last_event["event_hash"] if last_event else "0" * 64
+    revision = conn.execute(
+        """SELECT COALESCE(MAX(revision), 0) + 1
+           FROM prediction_audit_events
+           WHERE player_id = ? AND fixture_id = ?""",
+        (player_id, fixture_id),
+    ).fetchone()[0]
+    salt = secrets.token_hex(16)
+    player = conn.execute(
+        "SELECT name FROM players WHERE id = ?", (player_id,)
+    ).fetchone()
+    fixture = conn.execute(
+        """SELECT home_team, away_team, utc_date, matchday
+           FROM fixtures WHERE id = ?""",
+        (fixture_id,),
+    ).fetchone()
+    if not player or not fixture:
+        raise ValueError("Prediction audit requires an existing player and fixture")
+    commitment = prediction_score_commitment(
+        player_id, fixture_id, home_score, away_score, dp, salt
+    )
+    payload = _audit_payload(
+        player_id, fixture_id, changed_at, action, revision,
+        home_score, away_score, dp, salt, commitment, previous_hash,
+        player["name"], fixture["home_team"], fixture["away_team"],
+        fixture["utc_date"], fixture["matchday"],
+    )
+    event_hash = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    conn.execute(
+        """INSERT INTO prediction_audit_events(
+               player_id, fixture_id, player_name, home_team, away_team,
+               kickoff_utc, matchday, changed_at, action, revision,
+               home_score, away_score, dp, commitment_salt,
+               score_commitment, previous_hash, event_hash
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            player_id, fixture_id, player["name"], fixture["home_team"],
+            fixture["away_team"], fixture["utc_date"], fixture["matchday"],
+            changed_at, action, revision,
+            home_score, away_score, 1 if dp else 0, salt,
+            commitment, previous_hash, event_hash,
+        ),
+    )
+    return event_hash
+
+
+def verify_prediction_audit_chain(conn):
+    previous_hash = "0" * 64
+    latest = {}
+    rows = conn.execute(
+        "SELECT * FROM prediction_audit_events ORDER BY id"
+    ).fetchall()
+    for row in rows:
+        commitment = prediction_score_commitment(
+            row["player_id"], row["fixture_id"], row["home_score"],
+            row["away_score"], row["dp"], row["commitment_salt"],
+        )
+        payload = _audit_payload(
+            row["player_id"], row["fixture_id"], row["changed_at"],
+            row["action"], row["revision"], row["home_score"],
+            row["away_score"], row["dp"], row["commitment_salt"],
+            row["score_commitment"], row["previous_hash"],
+            row["player_name"], row["home_team"], row["away_team"],
+            row["kickoff_utc"], row["matchday"],
+        )
+        calculated = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if (
+            row["previous_hash"] != previous_hash
+            or row["score_commitment"] != commitment
+            or not hmac.compare_digest(row["event_hash"], calculated)
+        ):
+            return {"valid": False, "event_count": len(rows), "error_id": row["id"]}
+        previous_hash = row["event_hash"]
+        latest[(row["player_id"], row["fixture_id"])] = row
+
+    predictions = conn.execute(
+        """SELECT player_id, fixture_id, home_score, away_score,
+                  COALESCE(dp, 0) AS dp FROM predictions"""
+    ).fetchall()
+    for prediction in predictions:
+        event = latest.get((prediction["player_id"], prediction["fixture_id"]))
+        if not event or any(
+            int(event[field]) != int(prediction[field])
+            for field in ("home_score", "away_score", "dp")
+        ):
+            return {"valid": False, "event_count": len(rows), "error_id": None}
+
+    return {"valid": True, "event_count": len(rows), "error_id": None}
 
 
 def get_setting(key):
