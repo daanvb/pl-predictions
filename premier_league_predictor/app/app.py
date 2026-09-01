@@ -63,7 +63,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.18"
+APP_VERSION = "1.1.19"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -8353,6 +8353,12 @@ def admin_bigballs_shadow_test():
                    FROM bigballs_shadow_samples GROUP BY provider_match_id
                ) latest ON latest.latest_id = sample.id"""
         ).fetchall()
+        event_samples = conn.execute(
+            """SELECT * FROM bigballs_shadow_samples
+               WHERE events_json IS NOT NULL
+                 AND TRIM(events_json) NOT IN ('', '[]')
+               ORDER BY id DESC"""
+        ).fetchall()
     finally:
         conn.close()
     samples_by_key = {
@@ -8362,6 +8368,13 @@ def admin_bigballs_shadow_test():
         ): row
         for row in latest_samples
     }
+    event_samples_by_key = {}
+    for row in event_samples:
+        row_key = (
+            normalized_team_name(row["home_team"]),
+            normalized_team_name(row["away_team"]),
+        )
+        event_samples_by_key.setdefault(row_key, row)
     monitored = []
     for fixture in fixtures:
         key = (
@@ -8370,9 +8383,10 @@ def admin_bigballs_shadow_test():
         )
         sample = samples_by_key.get(key)
         events = []
-        if sample and sample["events_json"]:
+        event_sample = event_samples_by_key.get(key) or sample
+        if event_sample and event_sample["events_json"]:
             try:
-                parsed = json.loads(sample["events_json"])
+                parsed = json.loads(event_sample["events_json"])
                 events = parsed if isinstance(parsed, list) else []
             except (TypeError, ValueError):
                 events = []
@@ -8502,6 +8516,28 @@ def admin_bigballs_shadow_test():
                     "clock": clock,
                     "marker": marker,
                 })
+        for side in ("home", "away", "other"):
+            grouped_events = []
+            grouped_by_player = {}
+            for event in display_events[side]:
+                group_key = (event["icon"], event["player"].casefold())
+                grouped = grouped_by_player.get(group_key)
+                if grouped is None:
+                    grouped = {
+                        "icon": event["icon"],
+                        "player": event["player"],
+                        "moments": [],
+                    }
+                    grouped_by_player[group_key] = grouped
+                    grouped_events.append(grouped)
+                moment = ""
+                if event["clock"]:
+                    moment = f"{event['clock']}'"
+                if event["marker"]:
+                    moment = f"{moment} {event['marker']}".strip()
+                if moment and moment not in grouped["moments"]:
+                    grouped["moments"].append(moment)
+            display_events[side] = grouped_events
         score_matches = bool(
             sample
             and sample["home_score"] == fixture["home_score"]

@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.19] - 2026-09-01
+
+### Changed
+- Internal maintenance release.
+
 ## [1.1.18] - 2026-09-01
 
 ### Fixed

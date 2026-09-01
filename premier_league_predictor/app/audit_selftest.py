@@ -875,6 +875,10 @@ try:
         },
     ], {"source": "audit"})
     assert predictor.refresh_bigballs_shadow() == 1
+    # A later finished observation may omit events. The admin comparison must
+    # retain the richer scorer timeline captured while the match was live.
+    predictor.get_bigballs_match_events = lambda key, match_id: ([], {"source": "audit"})
+    assert predictor.refresh_bigballs_shadow() == 1
 finally:
     predictor.get_bigballs_premier_league_matches = original_bigballs_matches
     predictor.get_bigballs_match_events = original_bigballs_events
@@ -891,13 +895,25 @@ shadow_sample = conn.execute(
 ).fetchone()
 assert shadow_sample["home_score"] == 2
 assert shadow_sample["away_score"] == 1
-assert "Shadow Scorer" in shadow_sample["events_json"]
-assert "Shadow Defender" in shadow_sample["events_json"]
+assert shadow_sample["events_json"] == "[]"
+eventful_shadow_sample = conn.execute(
+    """SELECT * FROM bigballs_shadow_samples
+       WHERE provider_match_id = ? AND events_json != '[]'
+       ORDER BY id DESC LIMIT 1""",
+    ("shadow-home-away",),
+).fetchone()
+assert "Shadow Scorer" in eventful_shadow_sample["events_json"]
+assert "Shadow Defender" in eventful_shadow_sample["events_json"]
 shadow_with_events = client.get("/admin/live-feed-test")
 assert b"Shadow Defender" in shadow_with_events.data
-assert b"Shadow Scorer 42' (Pen)" in shadow_with_events.data
-assert b"Shadow Own Goal 67' og" in shadow_with_events.data
-assert b"Shadow Defender 74'" in shadow_with_events.data
+assert b"Shadow Scorer" in shadow_with_events.data
+assert b"42" in shadow_with_events.data
+assert b"(Pen)" in shadow_with_events.data
+assert b"Shadow Own Goal" in shadow_with_events.data
+assert b"67" in shadow_with_events.data
+assert b" og" in shadow_with_events.data
+assert b"Shadow Defender" in shadow_with_events.data
+assert b"74" in shadow_with_events.data
 assert b"shadow-events-home" in shadow_with_events.data
 assert b"shadow-events-away" in shadow_with_events.data
 assert b'class="badge live"' in shadow_with_events.data
