@@ -7,6 +7,7 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 COPY app/ /app/
+COPY CHANGELOG.md /repository-CHANGELOG.md
 
 RUN pip3 install \
     --no-cache-dir \
@@ -20,7 +21,8 @@ RUN pip3 install \
 
 # Build-time regression tests run with the same Flask/Jinja dependencies as runtime.
 RUN python3 -m py_compile /app/app.py /app/database.py /app/database_restore.py /app/scoring.py /app/football_api.py /app/sportscore.py \
+    && cmp -s /repository-CHANGELOG.md /app/CHANGELOG.md \
     && python3 /app/audit_selftest.py \
-    && rm -rf /data/*
+    && rm -rf /data/* /repository-CHANGELOG.md
 
 CMD ["python3", "/app/app.py"]
