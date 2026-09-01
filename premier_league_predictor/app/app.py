@@ -14,6 +14,7 @@ import json
 import csv
 import io
 import zlib
+import xml.etree.ElementTree as ET
 from urllib.parse import quote, urljoin, urlparse
 from html.parser import HTMLParser
 from html import unescape
@@ -111,6 +112,14 @@ SIGNAL_NOTIFICATION_CHECK_SECONDS = 15 * 60
 SIGNAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF = 24
 SIGNAL_FINAL_REMINDER_HOURS_BEFORE_FIRST_KICKOFF = 2
 
+PREMIER_LEAGUE_NEWS_FEED = (
+    "https://feeds.bbci.co.uk/sport/football/premier-league/rss.xml"
+)
+NEWS_CACHE_SECONDS = 15 * 60
+NEWS_MAX_HEADLINES = 10
+news_cache = {"headlines": [], "fetched_at": 0.0, "error": None}
+news_cache_lock = threading.Lock()
+
 PREMIER_LEAGUE_FIXTURE_SOURCE = (
     "https://www.premierleague.com/en/news/4675097/"
     "all-380-fixtures-for-202627-premier-league-season"
@@ -165,6 +174,66 @@ else:
 
 init_db(seed_default_player=False)
 database_restore_lock = threading.Lock()
+
+
+def _parse_premier_league_news(xml_text):
+    headlines = []
+    seen_links = set()
+    root = ET.fromstring(xml_text)
+    for item in root.findall("./channel/item"):
+        title = " ".join((item.findtext("title") or "").split())
+        link = (item.findtext("link") or "").strip()
+        parsed_link = urlparse(link)
+        if (
+            not title
+            or parsed_link.scheme != "https"
+            or parsed_link.hostname not in {"www.bbc.co.uk", "www.bbc.com"}
+            or link in seen_links
+        ):
+            continue
+        seen_links.add(link)
+        headlines.append({"title": title, "url": link})
+        if len(headlines) >= NEWS_MAX_HEADLINES:
+            break
+    return headlines
+
+
+def premier_league_news():
+    now = time.monotonic()
+    with news_cache_lock:
+        if now - news_cache["fetched_at"] < NEWS_CACHE_SECONDS:
+            return dict(news_cache)
+        if app.config.get("TESTING"):
+            return {
+                "headlines": [{
+                    "title": "Premier League news ticker test headline",
+                    "url": "https://www.bbc.co.uk/sport/football",
+                }],
+                "fetched_at": now,
+                "error": None,
+            }
+        try:
+            response = requests.get(
+                PREMIER_LEAGUE_NEWS_FEED,
+                timeout=8,
+                headers={"User-Agent": "Preddies/1.2 (+admin news ticker)"},
+            )
+            response.raise_for_status()
+            if len(response.content) > 512 * 1024:
+                raise ValueError("News feed response was unexpectedly large.")
+            headlines = _parse_premier_league_news(response.text)
+            if not headlines:
+                raise ValueError("News feed did not contain any usable headlines.")
+            news_cache.update({
+                "headlines": headlines,
+                "fetched_at": now,
+                "error": None,
+            })
+        except (requests.RequestException, ET.ParseError, ValueError) as exc:
+            # Keep the last good headlines if a refresh fails. The diagnostic
+            # page must never depend on the availability of an external feed.
+            news_cache.update({"fetched_at": now, "error": str(exc)})
+        return dict(news_cache)
 
 
 def ensure_first_run_restore_token():
@@ -8866,6 +8935,7 @@ def admin_bigballs_shadow_test():
         })
     return render_template(
         "live_feed_test.html",
+        news=premier_league_news(),
         monitored=monitored,
         configured=bool(get_setting("bigballs_api_key")),
         matchday=matchday,
