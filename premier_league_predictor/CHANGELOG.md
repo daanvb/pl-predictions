@@ -9,14 +9,14 @@ All notable changes to Preddies are documented here.
 - The migration is additive: it does not recalculate scores, change points or alter submitted predictions.
 
 ### New
-- Added a shared Tegrity page where every player can confirm that saved predictions agree with the protected record.
-- Added concealed score commitments so prediction values remain hidden until the relevant fixture kicks off, including when an integrity problem is being investigated.
+- Added a shared Tegridy page where every player can confirm that saved predictions agree with the protected record.
+- Added concealed score commitments so prediction values remain hidden on Tegridy until the relevant fixture kicks off, including when an integrity problem is being investigated.
 - Added an immutable, hash-chained prediction ledger with a visible health check and retained revision history.
 
 ### Changes
 - Restricted filesystem access to the live database, application secret, restore uploads and local backups.
 - Enabled stronger SQLite deletion, temporary-storage and trusted-schema protections.
-- Simplified Tegrity in plain English and kept detailed prediction records hidden while all integrity checks pass. Audit details are shown to the group only if the chain is broken or the saved predictions no longer match it.
+- Simplified Tegridy in plain English and kept detailed prediction records hidden while all integrity checks pass. Audit details are shown to the group only if the chain is broken or the saved predictions no longer match it, with failures highlighted clearly in red.
 
 ### Fixes
 - Database integrity checks now detect prediction values that no longer agree with the latest recorded ledger entry.
