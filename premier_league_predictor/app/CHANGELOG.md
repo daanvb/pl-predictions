@@ -12,11 +12,13 @@ All notable changes to Preddies are documented here.
 - Added a shared Tegridy page where every player can confirm that saved predictions agree with the protected record.
 - Added concealed score commitments so prediction values remain hidden on Tegridy until the relevant fixture kicks off, including when an integrity problem is being investigated.
 - Added an immutable, hash-chained prediction ledger with a visible health check and retained revision history.
+- Added an automatically scrolling BBC Sport Premier League news ticker, with publication times, beneath the Signal button on the live dashboard.
 
 ### Changes
 - Restricted filesystem access to the live database, application secret, restore uploads and local backups.
 - Enabled stronger SQLite deletion, temporary-storage and trusted-schema protections.
 - Simplified Tegridy in plain English and kept detailed prediction records hidden while all integrity checks pass. Audit details are shown to the group only if the chain is broken or the saved predictions no longer match it, with failures highlighted clearly in red.
+- Added a My Account preference allowing each player to hide the news ticker.
 
 ### Fixes
 - Database integrity checks now detect prediction values that no longer agree with the latest recorded ledger entry.

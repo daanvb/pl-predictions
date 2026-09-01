@@ -81,6 +81,9 @@ def init_db(seed_default_player=True):
     """)
     _add_column_if_missing(conn, "players", "login_name", "TEXT")
     _add_column_if_missing(conn, "players", "email", "TEXT")
+    _add_column_if_missing(
+        conn, "players", "hide_news_ticker", "INTEGER NOT NULL DEFAULT 0"
+    )
     conn.execute(
         "UPDATE players SET login_name = name WHERE login_name IS NULL OR TRIM(login_name) = ''"
     )

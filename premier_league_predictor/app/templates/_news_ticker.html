@@ -1,0 +1,18 @@
+<section class="news-ticker" aria-label="Latest Premier League news">
+<a class="news-ticker-label" href="https://www.bbc.co.uk/sport/football/premier-league" target="_blank" rel="noopener noreferrer" aria-label="BBC Sport Premier League news">
+<img class="news-ticker-logo" src="https://upload.wikimedia.org/wikipedia/commons/c/c3/BBC_Sport_%282022%2C_alt_boxed%29.svg" alt="BBC Sport" loading="lazy">
+</a>
+{% if news and news.headlines %}
+<div class="news-ticker-window">
+<div class="news-ticker-track">
+{% for copy in range(2) %}
+<div class="news-ticker-group"{% if copy == 1 %} aria-hidden="true"{% endif %}>
+{% for headline in news.headlines %}<a href="{{ headline.url }}" target="_blank" rel="noopener noreferrer">{% if headline.published %}<span class="news-ticker-time">{{ headline.published }}</span>{% endif %}{{ headline.title }}</a>{% endfor %}
+</div>
+{% endfor %}
+</div>
+</div>
+{% else %}
+<div class="news-ticker-unavailable">Headlines temporarily unavailable</div>
+{% endif %}
+</section>

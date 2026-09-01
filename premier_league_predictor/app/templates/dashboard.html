@@ -115,6 +115,10 @@ No position yet
 
 </div>
 
+{% if show_news_ticker %}
+{% include "_news_ticker.html" %}
+{% endif %}
+
 {% if current_matchday is not none %}
 
 {% include "_dashboard_live_summary.html" %}

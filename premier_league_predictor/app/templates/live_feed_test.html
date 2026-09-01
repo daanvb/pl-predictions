@@ -7,23 +7,6 @@
 <h1>🧪 Premier League shadow feed</h1>
 <p>Big Balls Sports Data is compared with Predictor once per minute during live matches. It cannot alter scores, predictions, points or history.</p>
 </div>
-<section class="news-ticker" aria-label="Latest Premier League news">
-<div class="news-ticker-label">📰 PL News</div>
-{% if news.headlines %}
-<div class="news-ticker-window">
-<div class="news-ticker-track">
-{% for copy in range(2) %}
-<div class="news-ticker-group"{% if copy == 1 %} aria-hidden="true"{% endif %}>
-{% for headline in news.headlines %}<a href="{{ headline.url }}" target="_blank" rel="noopener noreferrer">{% if headline.published %}<span class="news-ticker-time">{{ headline.published }}</span>{% endif %}{{ headline.title }}</a>{% endfor %}
-</div>
-{% endfor %}
-</div>
-</div>
-{% else %}
-<div class="news-ticker-unavailable">Headlines temporarily unavailable</div>
-{% endif %}
-<a class="news-ticker-source" href="https://www.bbc.co.uk/sport/football/premier-league" target="_blank" rel="noopener noreferrer">BBC Sport</a>
-</section>
 <div class="nav">
 <a href="/admin">← Admin</a>
 {% if previous_matchday is not none %}<a href="/admin/live-feed-test?matchday={{ previous_matchday }}">← GW{{ previous_matchday }}</a>{% endif %}
