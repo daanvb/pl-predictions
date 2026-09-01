@@ -85,6 +85,10 @@ assert "competition" in {
     row["name"]
     for row in conn.execute("PRAGMA table_info(historical_fixtures)").fetchall()
 }
+assert "hide_news_ticker" in {
+    row["name"]
+    for row in conn.execute("PRAGMA table_info(players)").fetchall()
+}
 
 # Prediction changes form an append-only chain and any direct score or ledger
 # mutation is detected before the shared Tegridy page reports it as healthy.
@@ -753,6 +757,43 @@ response = client.post(
 )
 assert response.status_code == 302 and response.headers["Location"].endswith("/dashboard")
 
+dashboard_news_response = client.get("/dashboard")
+assert b"Latest Premier League news" in dashboard_news_response.data
+assert b"Premier League news ticker test headline" in dashboard_news_response.data
+assert b"BBC Sport" in dashboard_news_response.data
+assert b"Hide Premier League news ticker" in client.get("/account").data
+hide_news_response = client.post(
+    "/account",
+    data={
+        "name": admin["name"],
+        "email": "dan@example.com",
+        "pin": "",
+        "pin_confirm": "",
+        "hide_news_ticker": "1",
+    },
+    follow_redirects=False,
+)
+assert hide_news_response.status_code == 302
+conn = database.get_db()
+assert conn.execute(
+    "SELECT hide_news_ticker FROM players WHERE id = ?", (admin["id"],)
+).fetchone()["hide_news_ticker"] == 1
+conn.close()
+hidden_news_response = client.get("/dashboard")
+assert b"Latest Premier League news" not in hidden_news_response.data
+show_news_response = client.post(
+    "/account",
+    data={
+        "name": admin["name"],
+        "email": "dan@example.com",
+        "pin": "",
+        "pin_confirm": "",
+    },
+    follow_redirects=False,
+)
+assert show_news_response.status_code == 302
+assert b"Latest Premier League news" in client.get("/dashboard").data
+
 # Live dashboard scores, scorers, injury time, penalties and auto-refresh.
 goal_events = [
     {
@@ -907,9 +948,7 @@ assert predictor.status_label({
 # The retired Champions League diagnostic is replaced by a read-only Premier
 # League shadow page. It must render without a key and clearly state isolation.
 shadow_response = client.get("/admin/live-feed-test")
-assert b"PL News" in shadow_response.data
-assert b"Premier League news ticker test headline" in shadow_response.data
-assert b"BBC Sport" in shadow_response.data
+assert b"Latest Premier League news" not in shadow_response.data
 assert shadow_response.status_code == 200
 assert b"Premier League shadow feed" in shadow_response.data
 assert b"cannot alter scores, predictions, points or history" in shadow_response.data

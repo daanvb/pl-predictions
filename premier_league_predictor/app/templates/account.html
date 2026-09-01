@@ -24,6 +24,10 @@
 <p class="small" style="margin-top:0">Leave blank if you do not want to change your PIN.</p>
 <label><strong>Confirm new PIN</strong></label>
 <input style="width:100%;margin:7px 0 18px" name="pin_confirm" type="password" inputmode="numeric" minlength="4" maxlength="8" placeholder="Repeat new PIN">
+<label class="account-preference">
+<input name="hide_news_ticker" type="checkbox" value="1"{% if player.hide_news_ticker %} checked{% endif %}>
+<span><strong>Hide Premier League news ticker</strong><br><span class="small">You can turn it back on here at any time.</span></span>
+</label>
 <button class="primary">💾 Save Changes</button>
 </form>
 </div>

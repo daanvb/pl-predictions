@@ -5390,7 +5390,9 @@ def account():
 
     conn = get_db()
     player = conn.execute(
-        "SELECT id, name, login_name, email, admin FROM players WHERE id = ?",
+        """SELECT id, name, login_name, email, admin,
+                  COALESCE(hide_news_ticker, 0) AS hide_news_ticker
+           FROM players WHERE id = ?""",
         (session["player_id"],)
     ).fetchone()
 
@@ -5404,6 +5406,7 @@ def account():
         email = request.form.get("email", "").strip().casefold()
         pin = request.form.get("pin", "").strip()
         pin_confirm = request.form.get("pin_confirm", "").strip()
+        hide_news_ticker = 1 if request.form.get("hide_news_ticker") == "1" else 0
 
         if len(name) < 2 or len(name) > 30:
             conn.close()
@@ -5444,13 +5447,18 @@ def account():
                 flash("PINs do not match.", "error")
                 return redirect("/account")
             conn.execute(
-                "UPDATE players SET name=?, email=?, pin_hash=? WHERE id=?",
-                (name, email, hash_pin(pin), session["player_id"])
+                """UPDATE players SET name=?, email=?, pin_hash=?,
+                          hide_news_ticker=? WHERE id=?""",
+                (
+                    name, email, hash_pin(pin), hide_news_ticker,
+                    session["player_id"],
+                )
             )
         else:
             conn.execute(
-                "UPDATE players SET name=?, email=? WHERE id=?",
-                (name, email, session["player_id"])
+                """UPDATE players SET name=?, email=?, hide_news_ticker=?
+                   WHERE id=?""",
+                (name, email, hide_news_ticker, session["player_id"])
             )
 
         conn.commit()
@@ -6366,10 +6374,21 @@ def dashboard():
             league_position = position
             break
 
+    news_preference = conn.execute(
+        """SELECT COALESCE(hide_news_ticker, 0) AS hide_news_ticker
+           FROM players WHERE id = ?""",
+        (session["player_id"],),
+    ).fetchone()
+    show_news_ticker = bool(
+        news_preference and not news_preference["hide_news_ticker"]
+    )
+
     conn.close()
 
     return render_template(
         "dashboard.html",
+        news=premier_league_news() if show_news_ticker else None,
+        show_news_ticker=show_news_ticker,
         current_matchday=current_matchday,
         current_fixtures=current_fixtures,
         total_points=row["total"],
@@ -8951,7 +8970,6 @@ def admin_bigballs_shadow_test():
         })
     return render_template(
         "live_feed_test.html",
-        news=premier_league_news(),
         monitored=monitored,
         configured=bool(get_setting("bigballs_api_key")),
         matchday=matchday,
