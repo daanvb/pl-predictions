@@ -4,11 +4,19 @@ All notable changes to Preddies are documented here.
 
 ## [1.2.2] - 2026-09-01
 
+### Important
+- This update is additive and does not alter existing players, predictions, points or account preferences.
+
 ### New
-- Added an automatically scrolling BBC Sport Premier League news ticker beneath the Signal button on the live dashboard, with publication times and a consistent compact headline style.
+- Added an automatically scrolling BBC Sport Premier League news ticker beneath the Signal button on the live dashboard, with publication times.
 
 ### Changes
 - Added a My Account preference allowing each player to hide the news ticker.
+
+### Fixes
+
+#### UI
+- Standardised all ticker headlines to the same compact font size.
 
 ## [1.2.1] - 2026-09-01
 
