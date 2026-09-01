@@ -5028,15 +5028,17 @@ def tegrity():
 
     conn = get_db()
     chain_status = verify_prediction_audit_chain(conn)
-    rows = conn.execute(
-        """SELECT e.*
-           FROM prediction_audit_events e
-           JOIN fixtures f ON f.id = e.fixture_id
-           WHERE f.season = ?
-           ORDER BY e.id DESC
-           LIMIT 300""",
-        (SEASON,),
-    ).fetchall()
+    rows = []
+    if not chain_status["valid"]:
+        rows = conn.execute(
+            """SELECT e.*
+               FROM prediction_audit_events e
+               JOIN fixtures f ON f.id = e.fixture_id
+               WHERE f.season = ?
+               ORDER BY e.id DESC
+               LIMIT 300""",
+            (SEASON,),
+        ).fetchall()
     conn.close()
 
     action_labels = {

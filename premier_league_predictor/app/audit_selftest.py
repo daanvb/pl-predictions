@@ -1088,7 +1088,12 @@ for route in [
 
 tegrity_response = client.get("/tegrity")
 assert b"Tegrity" in tegrity_response.data
-assert b"Scores remain concealed until their match kicks off" in tegrity_response.data
+assert b"Ledger verified" in tegrity_response.data
+assert b"No detailed prediction records need to be displayed" in tegrity_response.data
+assert b"What does Tegrity do?" in tegrity_response.data
+assert b"have not been secretly altered" in tegrity_response.data
+assert b"Predictions for matches that have not kicked off remain hidden" in tegrity_response.data
+assert b"Integrity failure details" not in tegrity_response.data
 
 retired_test_response = client.get("/test-mode", follow_redirects=False)
 assert retired_test_response.status_code == 302
