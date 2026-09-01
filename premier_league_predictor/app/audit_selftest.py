@@ -873,6 +873,10 @@ try:
             "type": "red_card", "description": "Red card — Shadow Defender",
             "home_away": "away", "clock": {"display": "74"},
         },
+        {
+            "type": "goal", "description": "Goal — Inferred Home",
+            "minute": 88,
+        },
     ], {"source": "audit"})
     assert predictor.refresh_bigballs_shadow() == 1
     # A later finished observation may omit events. The admin comparison must
@@ -914,6 +918,8 @@ assert b"67" in shadow_with_events.data
 assert b" og" in shadow_with_events.data
 assert b"Shadow Defender" in shadow_with_events.data
 assert b"74" in shadow_with_events.data
+assert b"Inferred Home" in shadow_with_events.data
+assert b"Inferred Home 88" in shadow_with_events.data
 assert b"shadow-events-home" in shadow_with_events.data
 assert b"shadow-events-away" in shadow_with_events.data
 assert b'class="badge live"' in shadow_with_events.data

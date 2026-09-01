@@ -8463,6 +8463,9 @@ def admin_bigballs_shadow_test():
             team_name = ""
             team_id = None
             if isinstance(team, dict):
+                nested_team = team.get("team")
+                if isinstance(nested_team, dict):
+                    team = nested_team
                 team_name = str(
                     team.get("name") or team.get("display_name")
                     or team.get("short_name") or ""
@@ -8516,6 +8519,36 @@ def admin_bigballs_shadow_test():
                     "clock": clock,
                     "marker": marker,
                 })
+        known_goal_counts = {
+            side: sum(
+                1 for event in display_events[side]
+                if event["icon"] == "⚽"
+            )
+            for side in ("home", "away")
+        }
+        goal_targets = {
+            "home": sample["home_score"] if sample else None,
+            "away": sample["away_score"] if sample else None,
+        }
+        unresolved_goals = [
+            event for event in display_events["other"]
+            if event["icon"] == "⚽"
+        ]
+        for event in list(unresolved_goals):
+            deficits = {
+                side: max(0, goal_targets[side] - known_goal_counts[side])
+                for side in ("home", "away")
+                if goal_targets[side] is not None
+            }
+            possible_sides = [
+                side for side, deficit in deficits.items() if deficit > 0
+            ]
+            if len(possible_sides) != 1:
+                break
+            inferred_side = possible_sides[0]
+            display_events["other"].remove(event)
+            display_events[inferred_side].append(event)
+            known_goal_counts[inferred_side] += 1
         for side in ("home", "away", "other"):
             grouped_events = []
             grouped_by_player = {}
