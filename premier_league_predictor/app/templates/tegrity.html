@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Tegrity{% endblock %}
+{% block content %}
+
+<div class="hero">
+<div style="font-size:14px;font-weight:800;color:#94a3b8">PREDICTION INTEGRITY</div>
+<h1>🛡️ Tegrity</h1>
+<p>A shared record of when predictions were submitted or changed. Scores remain concealed until their match kicks off.</p>
+</div>
+
+<div class="nav"><a href="/dashboard">← Dashboard</a></div>
+
+<div class="card tegrity-status{% if not chain_status.valid %} tegrity-status-alert{% endif %}">
+{% if chain_status.valid %}
+<h2>✅ Ledger verified</h2>
+<p>All {{ chain_status.event_count }} recorded prediction events form an unbroken chain and agree with the current predictions.</p>
+{% else %}
+<h2>⚠️ Ledger check failed</h2>
+<p>The prediction record does not agree with its integrity chain. An administrator should investigate before results are settled.</p>
+{% endif %}
+<p class="small">Each saved change creates a new commitment. Earlier entries are retained rather than overwritten.</p>
+</div>
+
+<div class="card">
+<h2>Recent activity</h2>
+{% if events %}
+<div class="tegrity-list">
+{% for event in events %}
+<article class="tegrity-event">
+<div class="tegrity-event-heading">
+<strong>{{ event.player_name }}</strong>
+<span class="badge">Revision {{ event.revision }}</span>
+</div>
+<div>{{ event.action_label }} · GW{{ event.matchday }}</div>
+<div class="small">{{ short_team_name(event.home_team) }} v {{ short_team_name(event.away_team) }} · {{ event.changed_local }}</div>
+{% if event.revealed %}
+<div class="tegrity-score">{{ event.home_score }}–{{ event.away_score }}{% if event.dp %} · 🔥 DP{% endif %}</div>
+<details class="tegrity-proof">
+<summary>Check commitment</summary>
+<code>{{ event.score_commitment }}</code>
+<span class="small">Salt: <code>{{ event.commitment_salt }}</code></span>
+</details>
+{% else %}
+<div class="tegrity-concealed">🔒 Score concealed until kick-off</div>
+<div class="small">Commitment {{ event.commitment_short }}…</div>
+{% endif %}
+<div class="small">Ledger {{ event.event_hash_short }}…</div>
+</article>
+{% endfor %}
+</div>
+{% else %}
+<p class="muted">No prediction activity has been recorded yet.</p>
+{% endif %}
+</div>
+
+{% endblock %}
