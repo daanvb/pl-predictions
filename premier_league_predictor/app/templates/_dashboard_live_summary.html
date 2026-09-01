@@ -33,9 +33,9 @@
   const stage = svg.parentElement;
   const pointSpacing = 80;
   const plotWidth = Math.max(0, snapshots.length - 1) * pointSpacing;
-  const width = window.innerWidth <= 640 ? Math.max(stage.clientWidth, 74 + plotWidth) : 760;
+  const width = window.innerWidth <= 640 ? Math.max(stage.clientWidth, 82 + plotWidth) : 760;
   const height = Math.max(245, 165 + players.length * 18);
-  const margin = {top: 22, right: 26, bottom: 58, left: 48};
+  const margin = {top: 22, right: 50, bottom: 58, left: 32};
   const innerWidth = width - margin.left - margin.right;
   const compactPlotWidth = Math.min(innerWidth, plotWidth);
   const plotStart = margin.left;
@@ -52,7 +52,7 @@
     svg.appendChild(positionLabel);
   }
   snapshots.forEach((snapshot, index) => {
-    const label = make("text", {x: x(index), y: height - 13, "text-anchor": index === 0 ? "start" : (index === snapshots.length - 1 ? "end" : "middle"), class: "position-chart-axis-label"});
+    const label = make("text", {x: x(index), y: height - 13, "text-anchor": "middle", class: "position-chart-axis-label"});
     const cause = snapshot.cause_label || snapshot.milestone || "Position change";
     const parts = cause.match(/^(\S+)\s+(\d+[–-]\d+)\s+(\S+)$/);
     if (snapshot.milestone === "KO" || !parts) {

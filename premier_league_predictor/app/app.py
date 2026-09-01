@@ -63,7 +63,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.17"
+APP_VERSION = "1.1.18"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -8318,7 +8318,29 @@ def admin_bigballs_shadow_test():
         return redirect("/")
     conn = get_db()
     try:
-        matchday = dashboard_current_gameweek(conn)
+        current_matchday = dashboard_current_gameweek(conn)
+        available_matchdays = [
+            row["matchday"] for row in conn.execute(
+                """SELECT DISTINCT matchday FROM fixtures
+                   WHERE season = ? AND matchday IS NOT NULL
+                   ORDER BY matchday""",
+                (SEASON,),
+            ).fetchall()
+        ]
+        requested_matchday = request.args.get("matchday", type=int)
+        matchday = (
+            requested_matchday
+            if requested_matchday in available_matchdays
+            else current_matchday
+        )
+        previous_matchday = next(
+            (value for value in reversed(available_matchdays) if value < matchday),
+            None,
+        ) if matchday is not None else None
+        next_matchday = next(
+            (value for value in available_matchdays if value > matchday),
+            None,
+        ) if matchday is not None else None
         fixtures = conn.execute(
             """SELECT * FROM fixtures
                WHERE season = ? AND matchday = ? ORDER BY utc_date""",
@@ -8384,10 +8406,21 @@ def admin_bigballs_shadow_test():
             if isinstance(clock, dict):
                 clock = (
                     clock.get("display") or clock.get("label")
-                    or clock.get("minute") or clock.get("value")
+                    or clock.get("minute") or clock.get("elapsed")
+                    or clock.get("match_minute") or clock.get("value")
                 )
             if clock is None:
-                clock = event.get("minute") or event.get("time")
+                clock = (
+                    event.get("minute") or event.get("match_minute")
+                    or event.get("elapsed") or event.get("elapsed_time")
+                    or event.get("time")
+                )
+            if isinstance(clock, dict):
+                clock = (
+                    clock.get("display") or clock.get("label")
+                    or clock.get("minute") or clock.get("elapsed")
+                    or clock.get("match_minute") or clock.get("value")
+                )
             if clock is not None:
                 clock = str(clock).strip().rstrip("'")
 
@@ -8409,7 +8442,10 @@ def admin_bigballs_shadow_test():
                 "is_own_goal", "own_goal", "ownGoal"
             )) or "own goal" in event_text or " og " in f" {event_text} "
 
-            team = event.get("team") or event.get("club") or {}
+            team = (
+                event.get("team") or event.get("club")
+                or event.get("participant_team") or {}
+            )
             team_name = ""
             team_id = None
             if isinstance(team, dict):
@@ -8425,10 +8461,15 @@ def admin_bigballs_shadow_test():
             ).strip()
             side = str(
                 event.get("side") or event.get("home_away")
-                or event.get("homeAway") or ""
+                or event.get("homeAway") or event.get("team_side")
+                or (team.get("side") if isinstance(team, dict) else "")
+                or ""
             ).casefold()
-            if not side and event.get("is_home") is not None:
-                side = "home" if event.get("is_home") else "away"
+            is_home = event.get("is_home")
+            if is_home is None:
+                is_home = event.get("is_home_team")
+            if not side and is_home is not None:
+                side = "home" if is_home else "away"
             fixture_keys = set(fixture.keys())
             home_id = fixture["home_team_id"] if "home_team_id" in fixture_keys else None
             away_id = fixture["away_team_id"] if "away_team_id" in fixture_keys else None
@@ -8477,6 +8518,9 @@ def admin_bigballs_shadow_test():
         monitored=monitored,
         configured=bool(get_setting("bigballs_api_key")),
         matchday=matchday,
+        current_matchday=current_matchday,
+        previous_matchday=previous_matchday,
+        next_matchday=next_matchday,
         last_refresh=(
             local_timestamp(get_setting("last_bigballs_shadow_refresh"))
             if get_setting("last_bigballs_shadow_refresh") else None

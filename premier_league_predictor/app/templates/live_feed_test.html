@@ -7,11 +7,17 @@
 <h1>🧪 Premier League shadow feed</h1>
 <p>Big Balls Sports Data is compared with Predictor once per minute during live matches. It cannot alter scores, predictions, points or history.</p>
 </div>
-<div class="nav"><a href="/admin">← Admin</a><a href="/admin/settings">⚙️ Settings</a></div>
+<div class="nav">
+<a href="/admin">← Admin</a>
+{% if previous_matchday is not none %}<a href="/admin/live-feed-test?matchday={{ previous_matchday }}">← GW{{ previous_matchday }}</a>{% endif %}
+{% if matchday != current_matchday %}<a href="/admin/live-feed-test">Current GW{{ current_matchday }}</a>{% elif next_matchday is not none %}<a href="/admin/live-feed-test?matchday={{ next_matchday }}">GW{{ next_matchday }} →</a>{% endif %}
+<a href="/admin/settings">⚙️ Settings</a>
+</div>
 <div class="card">
 <h2>Shadow status</h2>
 {% if configured %}
-<p>✅ API key configured. Gameweek {{ matchday }} is being compared.</p>
+{% if matchday == current_matchday %}<p>✅ API key configured. Gameweek {{ matchday }} is being compared.</p>
+{% else %}<p>📚 Viewing the stored Gameweek {{ matchday }} shadow comparison. Gameweek {{ current_matchday }} remains the active test.</p>{% endif %}
 <form method="POST" action="/admin/live-feed-test/refresh"><button class="primary">Import this gameweek</button></form>
 {% else %}
 <p>⚠️ Add the Big Balls Sports Data key in Settings to begin the shadow run.</p>

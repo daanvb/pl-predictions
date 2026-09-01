@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.18] - 2026-09-01
+
+### Fixed
+- Shifted the live position graph and its numbered scale further left for cleaner alignment.
+- Kept every fixture label centred beneath its corresponding graph point, including the final label.
+
 ## [1.1.17] - 2026-08-31
 
 ### Changed

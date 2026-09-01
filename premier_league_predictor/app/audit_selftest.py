@@ -860,8 +860,19 @@ predictor.get_bigballs_match_events = lambda key, match_id: ([{
 try:
     assert predictor.refresh_bigballs_shadow() == 1
     predictor.get_bigballs_match_events = lambda key, match_id: ([
-        {"type": "goal", "description": "Goal — Shadow Scorer"},
-        {"type": "red_card", "description": "Red card — Shadow Defender"},
+        {
+            "type": "goal", "description": "Goal — Shadow Scorer",
+            "team": {"name": "Home FC"}, "time": {"elapsed": 42},
+            "penalty": True,
+        },
+        {
+            "type": "goal", "description": "Goal — Shadow Own Goal",
+            "team_side": "away", "match_minute": "67", "own_goal": True,
+        },
+        {
+            "type": "red_card", "description": "Red card — Shadow Defender",
+            "home_away": "away", "clock": {"display": "74"},
+        },
     ], {"source": "audit"})
     assert predictor.refresh_bigballs_shadow() == 1
 finally:
@@ -884,6 +895,11 @@ assert "Shadow Scorer" in shadow_sample["events_json"]
 assert "Shadow Defender" in shadow_sample["events_json"]
 shadow_with_events = client.get("/admin/live-feed-test")
 assert b"Shadow Defender" in shadow_with_events.data
+assert b"Shadow Scorer 42' (Pen)" in shadow_with_events.data
+assert b"Shadow Own Goal 67' og" in shadow_with_events.data
+assert b"Shadow Defender 74'" in shadow_with_events.data
+assert b"shadow-events-home" in shadow_with_events.data
+assert b"shadow-events-away" in shadow_with_events.data
 assert b'class="badge live"' in shadow_with_events.data
 conn.execute("DELETE FROM bigballs_shadow_samples")
 conn.commit()
@@ -1550,6 +1566,17 @@ with open(
     encoding="utf-8",
 ) as handle:
     fixture_prediction_template = handle.read()
+
+with open(
+    os.path.join(templates_dir, "live_feed_test.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    live_feed_test_template = handle.read()
+
+assert "?matchday={{ previous_matchday }}" in live_feed_test_template
+assert "Current GW{{ current_matchday }}" in live_feed_test_template
+assert "Viewing the stored Gameweek {{ matchday }} shadow comparison" in live_feed_test_template
 
 assert '_match_stats.html' in predictions_template
 assert 'Live GW{{ matchday }}' not in predictions_template
