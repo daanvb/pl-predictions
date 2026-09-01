@@ -63,7 +63,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.19"
+APP_VERSION = "1.2.0"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -4385,14 +4385,11 @@ def signal_gw_open_message(matchday, fixtures):
         return None
 
     return "\n".join([
-        f"⚽ Preddies — GW{matchday}",
+        f"GW {matchday} - Put Your Pre-Dicks In",
         "",
-        "Predictions are now open!",
+        f"First Kick Off: {local_datetime(fixtures[0]['utc_date'])}",
         "",
-        f"First kick-off: {local_datetime(fixtures[0]['utc_date'])}",
-        "",
-        "Get Your Pre-Dicks In:",
-        "https://predictions.battleship.live",
+        "Preddies: https://predictions.battleship.live",
     ])
 
 
@@ -4925,7 +4922,7 @@ def login():
             FROM players
             WHERE (
                 LOWER(email) = LOWER(?)
-                OR (email IS NULL AND LOWER(COALESCE(login_name, name)) = LOWER(?))
+                OR LOWER(COALESCE(login_name, name)) = LOWER(?)
             )
             """,
             (
@@ -4959,7 +4956,7 @@ def login():
         record_failed_login(attempt_key)
 
         flash(
-            "Incorrect email or PIN.",
+            "Incorrect email, username or PIN.",
             "error"
         )
 
@@ -4967,6 +4964,13 @@ def login():
         "login.html",
         registration_enabled=registration_enabled
     )
+
+
+@app.route("/side-events")
+def side_events():
+    if not logged_in():
+        return redirect("/")
+    return render_template("side_events.html")
 
 
 @app.route("/first-run/restore", methods=["GET", "POST"])

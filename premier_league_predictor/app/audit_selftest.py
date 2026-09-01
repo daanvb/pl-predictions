@@ -603,7 +603,10 @@ conn.close()
 logout_response = client.post("/logout", follow_redirects=False)
 assert logout_response.status_code == 302
 login_response = client.get("/")
-assert b"Remember my email on this device" in login_response.data
+assert b"Remember my email address or username" in login_response.data
+assert b"Preddies logo" in login_response.data
+assert b"Predict. Compete. Win." not in login_response.data
+assert b"Who's playing?" not in login_response.data
 assert b'autocomplete="current-password"' in login_response.data
 response = client.post(
     "/", data={"identifier": original_login, "pin": "1234"},
@@ -933,6 +936,7 @@ conn.close()
 
 for route in [
     "/dashboard",
+    "/side-events",
     "/rules",
     "/stats",
     "/league-stats",
@@ -1107,6 +1111,14 @@ try:
     assert predictor.signal_current_gameweek(conn) == 2
     conn.close()
     assert predictor.signal_next_gameweek_open_ready(2) is True
+
+    open_message = predictor.signal_gw_open_message(2, [{
+        "utc_date": "2026-08-29T11:30:00+00:00",
+    }])
+    assert open_message.startswith("GW 2 - Put Your Pre-Dicks In\n")
+    assert "First Kick Off:" in open_message
+    assert "Preddies: https://predictions.battleship.live" in open_message
+    assert "Predictions are now open!" not in open_message
 finally:
     predictor.now_utc = original_now_utc
 
@@ -1672,8 +1684,13 @@ assert 'data-label="Correct Draws"' in leaderboard_template
 assert 'data-label="Correct Scores"' in leaderboard_template
 assert 'data-label="Correct Winners"' in leaderboard_template
 assert "position-chart-player" in leaderboard_template
+assert "height:240px" in leaderboard_template
+assert "height:220px" in leaderboard_template
+assert "Math.max(220, box.height || 240)" in leaderboard_template
 assert 'button.setAttribute("aria-label", `Highlight ${player.name}`)' in dashboard_live_summary_template
 assert "No settled position changes yet." in dashboard_live_summary_template
+assert "Math.max(205, 135 + players.length * 14)" in dashboard_live_summary_template
+assert "Math.max(205, 135 + players.length * 14)" in gameweek_template
 assert "selectedPlayerId" in leaderboard_template
 assert "item.innerHTML" not in leaderboard_template
 assert "league-mobile-details" in leaderboard_template
@@ -1688,6 +1705,8 @@ with open(
 assert "DPs USED" not in stats_template
 assert "BEST GAMEWEEK" in stats_template
 assert "CURRENT LEADER" not in stats_template
+assert "CORRECT SCORES WITH DP" in stats_template
+assert "EXACT SCORES WITH DP" not in stats_template
 
 with open(
     os.path.join(templates_dir, "league_stats.html"),
@@ -1727,6 +1746,7 @@ assert predictor.mobile_prediction_team_name("AFC Bournemouth") == "B'mouth"
 assert '.save-bar{\n  position:sticky;' in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template
+assert 'href="/side-events"' in dashboard_template
 assert 'fixture.home_logo' in dashboard_template
 assert 'fixture.away_logo' in dashboard_template
 
