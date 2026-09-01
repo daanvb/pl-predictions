@@ -5,7 +5,7 @@
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">PREDICTION INTEGRITY</div>
 <h1>🛡️ Tegrity</h1>
-<p>A shared record of when predictions were submitted or changed. Scores remain concealed until their match kicks off.</p>
+<p>A simple way for everyone in the league to check that saved predictions have not been secretly altered.</p>
 </div>
 
 <div class="nav"><a href="/dashboard">← Dashboard</a></div>
@@ -14,6 +14,7 @@
 {% if chain_status.valid %}
 <h2>✅ Ledger verified</h2>
 <p>All {{ chain_status.event_count }} recorded prediction events form an unbroken chain and agree with the current predictions.</p>
+<p class="small">No detailed prediction records need to be displayed.</p>
 {% else %}
 <h2>⚠️ Ledger check failed</h2>
 <p>The prediction record does not agree with its integrity chain. An administrator should investigate before results are settled.</p>
@@ -22,7 +23,21 @@
 </div>
 
 <div class="card">
-<h2>Recent activity</h2>
+<h2>What does Tegrity do?</h2>
+<p>Whenever someone saves or changes a prediction, Preddies adds a new entry to a protected timeline. Each entry is linked to the one before it, rather like numbered pages in a sealed record book.</p>
+<p>If somebody changes a prediction directly in the database, removes an entry or rewrites the history, those links will no longer match and Tegrity will raise a warning.</p>
+
+<h3>What can players see?</h3>
+<p>While everything is healthy, Tegrity shows only that the checks passed and how many changes were checked. It does not reveal anyone's prediction history.</p>
+<p>If a problem is detected, the relevant audit details become visible so the group can see what needs investigating. Predictions for matches that have not kicked off remain hidden.</p>
+
+<h3>What does a green check mean?</h3>
+<p>It means the saved predictions agree with the protected timeline and the chain has not been broken. It gives the whole league a shared, independent warning system rather than asking players to rely on an administrator's word alone.</p>
+</div>
+
+{% if not chain_status.valid %}
+<div class="card">
+<h2>Integrity failure details</h2>
 {% if events %}
 <div class="tegrity-list">
 {% for event in events %}
@@ -49,8 +64,9 @@
 {% endfor %}
 </div>
 {% else %}
-<p class="muted">No prediction activity has been recorded yet.</p>
+<p class="muted">The current predictions do not match the ledger, but no matching audit entries were found for this season.</p>
 {% endif %}
 </div>
+{% endif %}
 
 {% endblock %}
