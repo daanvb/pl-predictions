@@ -1784,7 +1784,13 @@ assert 'aria-label="Switch to dark mode"' in base_template
 assert "dark ? 'Switch to light mode' : 'Switch to dark mode'" in base_template
 assert 'html[data-theme="dark"] .fixture.fixture-set' in base_template
 assert 'html[data-theme="dark"] .match-stat-panel' in base_template
+assert 'html[data-theme="dark"] .logout-button' in base_template
+assert 'border-color:#ef4444' in base_template
 assert 'background:#0f172a;' in base_template
+assert 'tv-logo-dark' in base_template
+assert 'broadcaster_dark_logo_url' in inspect.getsource(predictor)
+assert 'TNT_Sports_%282023%29_alt.svg' in inspect.getsource(predictor)
+assert '{% include "_fixture_card_meta.html" %}' in live_feed_test_template
 assert 'html[data-theme="dark"]' in base_template
 assert "prefers-color-scheme: dark" in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template

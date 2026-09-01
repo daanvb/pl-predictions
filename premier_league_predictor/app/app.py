@@ -123,6 +123,11 @@ TNT_SPORTS_LOGO = (
     "TNT_Sports_%282023%29.svg"
 )
 
+TNT_SPORTS_DARK_LOGO = (
+    "https://upload.wikimedia.org/wikipedia/commons/a/a2/"
+    "TNT_Sports_%282023%29_alt.svg"
+)
+
 app = Flask(__name__, template_folder="templates")
 app.config["MAX_CONTENT_LENGTH"] = 128 * 1024 * 1024
 
@@ -1801,6 +1806,13 @@ def broadcaster_logo_url(broadcaster):
 
     if broadcaster == "TNT Sports":
         return TNT_SPORTS_LOGO
+
+    return None
+
+
+def broadcaster_dark_logo_url(broadcaster):
+    if broadcaster == "TNT Sports":
+        return TNT_SPORTS_DARK_LOGO
 
     return None
 
@@ -4857,6 +4869,7 @@ def inject_globals():
         "app_version": APP_VERSION,
         "changelog_has_update": changelog_has_unread_update(),
         "broadcaster_logo_url": broadcaster_logo_url,
+        "broadcaster_dark_logo_url": broadcaster_dark_logo_url,
         "team_badge_url": team_badge_url,
         "compact_record_name": compact_record_name,
         "is_logged_in": logged_in(),

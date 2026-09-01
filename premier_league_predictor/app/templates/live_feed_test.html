@@ -44,13 +44,7 @@
 {% endif %}
 </div>
 <div class="fixture-submeta">Predictor feed</div>
-<div class="fixture-status">
-{% set display_status = fixture_display_status(fixture) %}
-{% if display_status in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA') %}<span class="badge live">{{ status_label(fixture) }}</span>
-{% elif display_status == 'FINISHED' %}<span class="badge">FT</span>
-{% elif display_status == 'AWAITING_RESULT' %}<span class="badge">{{ status_label(fixture) }}</span>
-{% else %}<span class="badge open">● Upcoming</span>{% endif %}
-</div>
+{% include "_fixture_card_meta.html" %}
 </div>
 <div class="shadow-comparison">
 <div class="shadow-provider-label">Big Balls</div>
