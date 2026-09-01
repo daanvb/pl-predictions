@@ -146,6 +146,15 @@ import app as predictor
 predictor.app.config["TESTING"] = True
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
+news_items = predictor._parse_premier_league_news("""<?xml version="1.0"?>
+<rss><channel>
+<item><title>  Manager &amp; club update  </title><link>https://www.bbc.co.uk/sport/football/articles/example</link></item>
+<item><title>Unsafe story</title><link>https://example.com/not-bbc</link></item>
+</channel></rss>""")
+assert news_items == [{
+    "title": "Manager & club update",
+    "url": "https://www.bbc.co.uk/sport/football/articles/example",
+}]
 assert predictor.compact_record_name("Pendragon ⚔️") == "Pendragon"
 assert predictor.gameweek_progress_label([]) == ""
 assert predictor.gameweek_progress_label([
@@ -897,6 +906,9 @@ assert predictor.status_label({
 # The retired Champions League diagnostic is replaced by a read-only Premier
 # League shadow page. It must render without a key and clearly state isolation.
 shadow_response = client.get("/admin/live-feed-test")
+assert b"PL News" in shadow_response.data
+assert b"Premier League news ticker test headline" in shadow_response.data
+assert b"BBC Sport" in shadow_response.data
 assert shadow_response.status_code == 200
 assert b"Premier League shadow feed" in shadow_response.data
 assert b"cannot alter scores, predictions, points or history" in shadow_response.data

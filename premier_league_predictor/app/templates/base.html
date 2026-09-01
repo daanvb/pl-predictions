@@ -1987,6 +1987,115 @@ html[data-theme="dark"] .tegrity-concealed {
   color: #a8b7cc;
 }
 
+.news-ticker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  overflow: hidden;
+  margin: 0 0 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, .06);
+}
+.news-ticker-label,
+.news-ticker-source {
+  position: relative;
+  z-index: 2;
+  padding: 12px 14px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.news-ticker-source {
+  color: #bfdbfe;
+  text-decoration: none;
+}
+.news-ticker-window {
+  min-width: 0;
+  overflow: hidden;
+}
+.news-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: news-ticker-scroll 70s linear infinite;
+}
+.news-ticker-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.news-ticker-group a {
+  color: #172033;
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.news-ticker-group a::after {
+  content: "\2022";
+  display: inline-block;
+  margin: 0 18px;
+  color: #2563eb;
+}
+.news-ticker:hover .news-ticker-track,
+.news-ticker:focus-within .news-ticker-track {
+  animation-play-state: paused;
+}
+.news-ticker-group a:hover,
+.news-ticker-group a:focus-visible {
+  color: #2563eb;
+  text-decoration: underline;
+}
+.news-ticker-unavailable {
+  padding: 12px 14px;
+  color: #64748b;
+  font-size: 14px;
+}
+@keyframes news-ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+html[data-theme="dark"] .news-ticker {
+  border-color: #25334a;
+  background: #0f172a;
+}
+html[data-theme="dark"] .news-ticker-label,
+html[data-theme="dark"] .news-ticker-source {
+  background: #162238;
+}
+html[data-theme="dark"] .news-ticker-group a {
+  color: #e5edf8;
+}
+html[data-theme="dark"] .news-ticker-group a:hover,
+html[data-theme="dark"] .news-ticker-group a:focus-visible {
+  color: #93c5fd;
+}
+@media (max-width: 520px) {
+  .news-ticker {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .news-ticker-source {
+    display: none;
+  }
+  .news-ticker-label {
+    padding-inline: 11px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .news-ticker-track {
+    animation: none;
+  }
+  .news-ticker-group[aria-hidden="true"] {
+    display: none;
+  }
+  .news-ticker-window {
+    overflow-x: auto;
+  }
+}
+
 </style>
 </head>
 <body>
