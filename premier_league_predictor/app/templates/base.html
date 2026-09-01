@@ -1941,6 +1941,16 @@ html[data-theme="dark"] .footer{color:#94a3b8}
 }
 .tegrity-status-alert {
   border-color: #dc2626;
+  background: #fff1f2;
+  color: #7f1d1d;
+}
+.tegrity-failure-details {
+  border: 2px solid #dc2626;
+  background: #fff1f2;
+}
+.tegrity-status-alert .small,
+.tegrity-failure-details .small {
+  color: #9f1239;
 }
 .tegrity-list {
   display: grid;
@@ -1986,6 +1996,16 @@ html[data-theme="dark"] .tegrity-event {
 html[data-theme="dark"] .tegrity-concealed {
   color: #a8b7cc;
 }
+html[data-theme="dark"] .tegrity-status-alert,
+html[data-theme="dark"] .tegrity-failure-details {
+  border-color: #f87171;
+  background: #2a1018;
+  color: #fecaca;
+}
+html[data-theme="dark"] .tegrity-status-alert .small,
+html[data-theme="dark"] .tegrity-failure-details .small {
+  color: #fda4af;
+}
 
 .news-ticker {
   display: grid;
@@ -2016,11 +2036,17 @@ html[data-theme="dark"] .tegrity-concealed {
 .news-ticker-window {
   min-width: 0;
   overflow: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.news-ticker-window::-webkit-scrollbar {
+  display: none;
 }
 .news-ticker-track {
   display: flex;
   width: max-content;
-  animation: news-ticker-scroll 70s linear infinite;
+  will-change: transform;
+  animation: news-ticker-scroll 65s linear infinite;
 }
 .news-ticker-group {
   display: flex;
@@ -2039,6 +2065,14 @@ html[data-theme="dark"] .tegrity-concealed {
   display: inline-block;
   margin: 0 18px;
   color: #2563eb;
+}
+.news-ticker-time {
+  display: inline-block;
+  margin-right: 7px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .02em;
 }
 .news-ticker:hover .news-ticker-track,
 .news-ticker:focus-within .news-ticker-track {
@@ -2069,6 +2103,9 @@ html[data-theme="dark"] .news-ticker-source {
 html[data-theme="dark"] .news-ticker-group a {
   color: #e5edf8;
 }
+html[data-theme="dark"] .news-ticker-time {
+  color: #93a4bd;
+}
 html[data-theme="dark"] .news-ticker-group a:hover,
 html[data-theme="dark"] .news-ticker-group a:focus-visible {
   color: #93c5fd;
@@ -2084,18 +2121,6 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
     padding-inline: 11px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .news-ticker-track {
-    animation: none;
-  }
-  .news-ticker-group[aria-hidden="true"] {
-    display: none;
-  }
-  .news-ticker-window {
-    overflow-x: auto;
-  }
-}
-
 </style>
 </head>
 <body>

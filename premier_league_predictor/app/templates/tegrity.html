@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Tegrity{% endblock %}
+{% block title %}Tegridy{% endblock %}
 {% block content %}
 
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">PREDICTION INTEGRITY</div>
-<h1>🛡️ Tegrity</h1>
+<h1>🛡️ Tegridy</h1>
 <p>A simple way for everyone in the league to check that saved predictions have not been secretly altered.</p>
 </div>
 
@@ -23,12 +23,12 @@
 </div>
 
 <div class="card">
-<h2>What does Tegrity do?</h2>
+<h2>What does Tegridy do?</h2>
 <p>Whenever someone saves or changes a prediction, Preddies adds a new entry to a protected timeline. Each entry is linked to the one before it, rather like numbered pages in a sealed record book.</p>
-<p>If somebody changes a prediction directly in the database, removes an entry or rewrites the history, those links will no longer match and Tegrity will raise a warning.</p>
+<p>If somebody changes a prediction directly in the database, removes an entry or rewrites the history, those links will no longer match and Tegridy will raise a warning.</p>
 
 <h3>What can players see?</h3>
-<p>While everything is healthy, Tegrity shows only that the checks passed and how many changes were checked. It does not reveal anyone's prediction history.</p>
+<p>While everything is healthy, Tegridy shows only that the checks passed and how many changes were checked. It does not reveal anyone's prediction history.</p>
 <p>If a problem is detected, the relevant audit details become visible so the group can see what needs investigating. Predictions for matches that have not kicked off remain hidden.</p>
 
 <h3>What does a green check mean?</h3>
@@ -36,7 +36,7 @@
 </div>
 
 {% if not chain_status.valid %}
-<div class="card">
+<div class="card tegrity-failure-details">
 <h2>Integrity failure details</h2>
 {% if events %}
 <div class="tegrity-list">

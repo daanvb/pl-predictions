@@ -87,7 +87,7 @@ assert "competition" in {
 }
 
 # Prediction changes form an append-only chain and any direct score or ledger
-# mutation is detected before the shared Tegrity page reports it as healthy.
+# mutation is detected before the shared Tegridy page reports it as healthy.
 audit_player_id = conn.execute(
     "SELECT id FROM players ORDER BY id LIMIT 1"
 ).fetchone()["id"]
@@ -148,12 +148,13 @@ assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
 news_items = predictor._parse_premier_league_news("""<?xml version="1.0"?>
 <rss><channel>
-<item><title>  Manager &amp; club update  </title><link>https://www.bbc.co.uk/sport/football/articles/example</link></item>
+<item><title>  Manager &amp; club update  </title><link>https://www.bbc.co.uk/sport/football/articles/example</link><pubDate>Tue, 01 Sep 2026 20:35:00 GMT</pubDate></item>
 <item><title>Unsafe story</title><link>https://example.com/not-bbc</link></item>
 </channel></rss>""")
 assert news_items == [{
     "title": "Manager & club update",
     "url": "https://www.bbc.co.uk/sport/football/articles/example",
+    "published": "Tue 21:35",
 }]
 assert predictor.compact_record_name("Pendragon ⚔️") == "Pendragon"
 assert predictor.gameweek_progress_label([]) == ""
@@ -1099,13 +1100,26 @@ for route in [
     assert response.status_code == 200, (route, response.status_code)
 
 tegrity_response = client.get("/tegrity")
-assert b"Tegrity" in tegrity_response.data
+assert b"Tegridy" in tegrity_response.data
 assert b"Ledger verified" in tegrity_response.data
 assert b"No detailed prediction records need to be displayed" in tegrity_response.data
-assert b"What does Tegrity do?" in tegrity_response.data
+assert b"What does Tegridy do?" in tegrity_response.data
 assert b"have not been secretly altered" in tegrity_response.data
 assert b"Predictions for matches that have not kicked off remain hidden" in tegrity_response.data
 assert b"Integrity failure details" not in tegrity_response.data
+
+# A failed verification exposes a clearly marked red investigation area.
+original_chain_verifier = predictor.verify_prediction_audit_chain
+try:
+    predictor.verify_prediction_audit_chain = lambda conn: {
+        "valid": False, "event_count": 1, "error_id": 1,
+    }
+    tegrity_failed_response = client.get("/tegrity")
+    assert b"Ledger check failed" in tegrity_failed_response.data
+    assert b"tegrity-status-alert" in tegrity_failed_response.data
+    assert b"tegrity-failure-details" in tegrity_failed_response.data
+finally:
+    predictor.verify_prediction_audit_chain = original_chain_verifier
 
 retired_test_response = client.get("/test-mode", follow_redirects=False)
 assert retired_test_response.status_code == 302

@@ -15,6 +15,7 @@ import csv
 import io
 import zlib
 import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
 from urllib.parse import quote, urljoin, urlparse
 from html.parser import HTMLParser
 from html import unescape
@@ -183,6 +184,7 @@ def _parse_premier_league_news(xml_text):
     for item in root.findall("./channel/item"):
         title = " ".join((item.findtext("title") or "").split())
         link = (item.findtext("link") or "").strip()
+        published_text = (item.findtext("pubDate") or "").strip()
         parsed_link = urlparse(link)
         if (
             not title
@@ -191,8 +193,21 @@ def _parse_premier_league_news(xml_text):
             or link in seen_links
         ):
             continue
+        published = ""
+        if published_text:
+            try:
+                published_dt = parsedate_to_datetime(published_text)
+                if published_dt.tzinfo is None:
+                    published_dt = published_dt.replace(tzinfo=timezone.utc)
+                published = published_dt.astimezone(UK).strftime("%a %H:%M")
+            except (TypeError, ValueError, OverflowError):
+                published = ""
         seen_links.add(link)
-        headlines.append({"title": title, "url": link})
+        headlines.append({
+            "title": title,
+            "url": link,
+            "published": published,
+        })
         if len(headlines) >= NEWS_MAX_HEADLINES:
             break
     return headlines
@@ -208,6 +223,7 @@ def premier_league_news():
                 "headlines": [{
                     "title": "Premier League news ticker test headline",
                     "url": "https://www.bbc.co.uk/sport/football",
+                    "published": "Tue 21:35",
                 }],
                 "fetched_at": now,
                 "error": None,
