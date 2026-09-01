@@ -74,7 +74,9 @@ GW{{ fixture.matchday }}
 {% if fixture.broadcaster %}
 ·
 <span class="tv-logo-wrap" title="{{ fixture.broadcaster }}">
-<img class="tv-logo" src="{{ broadcaster_logo_url(fixture.broadcaster) }}" alt="{{ fixture.broadcaster }}">
+{% set dark_tv_logo = broadcaster_dark_logo_url(fixture.broadcaster) %}
+<img class="tv-logo tv-logo-light{% if dark_tv_logo %} tv-logo-has-dark{% endif %}" src="{{ broadcaster_logo_url(fixture.broadcaster) }}" alt="{{ fixture.broadcaster }}">
+{% if dark_tv_logo %}<img class="tv-logo tv-logo-dark" src="{{ dark_tv_logo }}" alt="" aria-hidden="true">{% endif %}
 </span>
 {% endif %}
 

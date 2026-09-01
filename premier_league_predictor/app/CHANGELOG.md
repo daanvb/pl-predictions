@@ -17,6 +17,12 @@ All notable changes to Preddies are documented here.
 - Reorganised release notes into Important, New, Changes and categorised Fixes sections.
 - Simplified the Signal gameweek-open announcement with the gameweek, first kick-off and Preddies link.
 
+### Fixes
+- Added broadcaster logos to Admin Test fixture cards using the same layout as the live scorecards.
+- Switched TNT Sports to a transparent white wordmark in dark mode for better readability.
+- Added a red outline to the dark-mode Log out button.
+- Removed the duplicate circled FT badge from completed gameweek result cards.
+
 ## [1.1.19] - 2026-09-01
 
 ### Changed

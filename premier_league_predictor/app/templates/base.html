@@ -804,6 +804,15 @@ html[data-theme="dark"] .theme-toggle-icon-sun{display:block}
     max-width: 76px;
     object-fit: contain;
 }
+.tv-logo-dark {
+    display: none;
+}
+html[data-theme="dark"] .tv-logo-has-dark.tv-logo-light {
+    display: none;
+}
+html[data-theme="dark"] .tv-logo-dark {
+    display: block;
+}
 
 .tv-logo-wrap {
     display: inline-flex;
@@ -1839,6 +1848,10 @@ html[data-theme="dark"] .button:not(.primary):not(.danger){
   background:#26364d;
   color:#f8fafc;
   border-color:#475569
+}
+html[data-theme="dark"] .logout-button{
+  color:#fecaca;
+  border-color:#ef4444
 }
 html[data-theme="dark"] .points-pill{
   background:#1e3a5f;
