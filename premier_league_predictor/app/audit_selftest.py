@@ -2246,7 +2246,7 @@ conn.close()
 releases = predictor.read_app_changelog()
 assert releases and releases[0]["version"] == predictor.APP_VERSION
 assert [section["title"] for section in releases[0]["sections"]] == [
-    "New", "Changes", "Fixes"
+    "Important", "New", "Changes", "Fixes"
 ]
 sample_sections = predictor.normalise_changelog_sections([
     {"title": "Fixed", "items": [
