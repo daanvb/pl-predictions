@@ -4,7 +4,7 @@
 {% if display_status in ('LIVE','IN_PLAY','PAUSED','AWAITING_LIVE_DATA') %}
 <span class="badge live">{{ status_label(fixture) }}</span>
 {% elif display_status == 'FINISHED' %}
-<span class="badge">FT</span>
+{% if not hide_finished_status_badge|default(false) %}<span class="badge">FT</span>{% endif %}
 {% elif display_status == 'AWAITING_RESULT' %}
 <span class="badge">{{ status_label(fixture) }}</span>
 {% else %}

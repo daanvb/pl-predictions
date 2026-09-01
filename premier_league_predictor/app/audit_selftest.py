@@ -1628,6 +1628,13 @@ with open(
     fixture_prediction_template = handle.read()
 
 with open(
+    os.path.join(templates_dir, "_fixture_card_meta.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    fixture_card_meta_template = handle.read()
+
+with open(
     os.path.join(templates_dir, "live_feed_test.html"),
     "r",
     encoding="utf-8",
@@ -1791,6 +1798,8 @@ assert 'tv-logo-dark' in base_template
 assert 'broadcaster_dark_logo_url' in inspect.getsource(predictor)
 assert 'TNT_Sports_%282023%29_alt.svg' in inspect.getsource(predictor)
 assert '{% include "_fixture_card_meta.html" %}' in live_feed_test_template
+assert '{% set hide_finished_status_badge = true %}' in gameweek_template
+assert 'hide_finished_status_badge|default(false)' in fixture_card_meta_template
 assert 'html[data-theme="dark"]' in base_template
 assert "prefers-color-scheme: dark" in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
