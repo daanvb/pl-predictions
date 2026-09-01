@@ -1076,16 +1076,41 @@ th,td{
 
 .shadow-observed,
 .shadow-awaiting,
-.shadow-events {
+.shadow-events-grid {
     grid-column: 1 / -1;
 }
 
-.shadow-events {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px 14px;
+.shadow-events-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
     color: #64748b;
     font-size: 12px;
+}
+
+.shadow-events-side {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.shadow-events-home {
+    text-align: right;
+}
+
+.shadow-events-away {
+    text-align: left;
+}
+
+.shadow-events-other {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 5px 14px;
+    text-align: center;
 }
 
 .dashboard-gameweek-actions {

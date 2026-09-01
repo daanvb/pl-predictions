@@ -128,7 +128,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
     const margin = {top: 22, right: 26, bottom: 58, left: 48};
     const innerWidth = width - margin.left - margin.right;
     const compactPlotWidth = Math.min(innerWidth, plotWidth);
-    const plotStart = margin.left + (innerWidth - compactPlotWidth) / 2;
+    const plotStart = margin.left;
     const innerHeight = height - margin.top - margin.bottom;
     const x = index => snapshots.length === 1
         ? margin.left + innerWidth / 2
