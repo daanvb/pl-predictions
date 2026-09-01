@@ -68,7 +68,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
