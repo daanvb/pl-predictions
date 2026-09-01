@@ -1714,6 +1714,8 @@ assert "position-chart-player" in leaderboard_template
 assert "height:240px" in leaderboard_template
 assert "height:220px" in leaderboard_template
 assert "Math.max(220, box.height || 240)" in leaderboard_template
+assert "const pad = {left: 22, right: 18, top: 18, bottom: 42}" in leaderboard_template
+assert "window.addEventListener('preddies-theme-change', draw)" in leaderboard_template
 assert "['#2563eb','#dc2626','#059669','#d97706','#7c3aed','#0891b2']" in leaderboard_template
 assert '["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2"]' in dashboard_live_summary_template
 assert 'button.setAttribute("aria-label", `Highlight ${player.name}`)' in dashboard_live_summary_template
@@ -1773,6 +1775,14 @@ assert predictor.mobile_prediction_team_name("Crystal Palace FC") == "Palace"
 assert predictor.mobile_prediction_team_name("Manchester United FC") == "Man United"
 assert predictor.mobile_prediction_team_name("AFC Bournemouth") == "B'mouth"
 assert '.save-bar{\n  position:sticky;' in base_template
+assert "preddies_theme" in base_template
+assert 'id="theme-toggle"' in base_template
+assert 'theme-toggle-corner' in base_template
+assert 'aria-label="Switch to dark mode"' in base_template
+assert "dark ? 'Switch to light mode' : 'Switch to dark mode'" in base_template
+assert "dark ? '☀️' : '🌙'" in base_template
+assert 'html[data-theme="dark"]' in base_template
+assert "prefers-color-scheme: dark" in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template
 assert 'href="/side-events"' in dashboard_template
@@ -2101,6 +2111,42 @@ conn.close()
 # Changelog parser must actually parse packaged release notes.
 releases = predictor.read_app_changelog()
 assert releases and releases[0]["version"] == predictor.APP_VERSION
+assert [section["title"] for section in releases[0]["sections"]] == [
+    "New", "Changes"
+]
+sample_sections = predictor.normalise_changelog_sections([
+    {"title": "Fixed", "items": [
+        "Corrected mobile card alignment.",
+        "Corrected Double Points scoring calculations.",
+        "Repaired a database migration.",
+        "Restored live provider scores.",
+        "Fixed Signal reminder delivery.",
+        "Hardened login session security.",
+        "Repaired Google Drive backup restore.",
+        "Corrected an uncategorised issue.",
+    ]},
+    {"title": "Changed", "items": ["Updated wording."]},
+    {"title": "Added", "items": ["Added a new page."]},
+    {"title": "Safety", "items": ["Important upgrade guidance."]},
+])
+assert [section["title"] for section in sample_sections] == [
+    "Important", "New", "Changes", "Fixes"
+]
+assert [group["title"] for group in sample_sections[-1]["groups"]] == [
+    "UI", "Calculations", "Database", "Live Data",
+    "Notifications", "Security", "Backups", "General",
+]
+assert predictor.changelog_fix_category("Chart spacing") == "UI"
+assert predictor.changelog_fix_category("Database query") == "Database"
+
+with open(
+    os.path.join(templates_dir, "changelog.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    changelog_template = handle.read()
+assert "changelog-fix-heading" in changelog_template
+assert "section.get('groups')" in changelog_template
 
 os.remove(tmp.name)
 print("Preddies self-test: PASS")

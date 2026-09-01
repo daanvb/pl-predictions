@@ -4,13 +4,16 @@ All notable changes to Preddies are documented here.
 
 ## [1.2.0] - 2026-09-01
 
-### Added
+### New
 - Added a new Side Events area ready for future prediction competitions.
 - Added an option to remember an email address or username on the sign-in device.
+- Added a remembered light and dark display mode, controlled by an accessible icon in the top-right corner.
 
-### Changed
+### Changes
 - Refreshed the sign-in screen with the Preddies logo and a cleaner layout.
 - Reduced the vertical height of the season and live position charts.
+- Aligned the season position chart more closely with its legend and adapted its labels and grid lines to both display modes.
+- Reorganised release notes into Important, New, Changes and categorised Fixes sections.
 - Simplified the Signal gameweek-open announcement with the gameweek, first kick-off and Preddies link.
 
 ## [1.1.19] - 2026-09-01
