@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.1.17] - 2026-08-31
+
+### Changed
+- Left-aligned the live position graph and added a visible league-position scale.
+- The dashboard Make Predictions action now disappears when the gameweek's final fixture kicks off.
+- Removed the redundant Live GW link from the prediction entry page.
+
 ## [1.1.16] - 2026-08-31
 
 ### Fixed

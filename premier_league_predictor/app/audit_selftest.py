@@ -112,6 +112,18 @@ try:
     }])
 finally:
     predictor.now_utc = original_now_utc
+original_now_utc = predictor.now_utc
+try:
+    predictor.now_utc = lambda: datetime(2026, 8, 29, 14, 59, tzinfo=timezone.utc)
+    prediction_window_fixtures = [
+        {"utc_date": "2026-08-29T11:30:00+00:00", "status": "FINISHED"},
+        {"utc_date": "2026-08-29T15:00:00+00:00", "status": "SCHEDULED"},
+    ]
+    assert predictor.gameweek_predictions_open(prediction_window_fixtures)
+    predictor.now_utc = lambda: datetime(2026, 8, 29, 15, 0, tzinfo=timezone.utc)
+    assert not predictor.gameweek_predictions_open(prediction_window_fixtures)
+finally:
+    predictor.now_utc = original_now_utc
 assert predictor.compact_record_name("Two Part Name") == "Two"
 assert predictor.compact_record_name("") == "—"
 assert predictor.sportscore_team_slug("Brighton & Hove Albion") == "brighton-hove-albion"
@@ -1540,6 +1552,7 @@ with open(
     fixture_prediction_template = handle.read()
 
 assert '_match_stats.html' in predictions_template
+assert 'Live GW{{ matchday }}' not in predictions_template
 with open(
     os.path.join(templates_dir, "_match_stats.html"),
     "r",
@@ -1581,6 +1594,7 @@ assert '{% if fixture.home_score is none and fixture.away_score is none %}v{% el
 assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
 assert '_dashboard_live_summary.html' in dashboard_template
+assert '{% if gameweek_predictions_open %}' in dashboard_template
 assert dashboard_template.index('_dashboard_live_summary.html') < dashboard_template.index('{% for fixture in current_fixtures %}')
 assert 'href="#live-gameweek"' not in dashboard_template
 assert '_fixture_card_meta.html' in dashboard_template

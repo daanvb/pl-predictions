@@ -63,7 +63,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.1.16"
+APP_VERSION = "1.1.17"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -583,6 +583,17 @@ def live_gameweek_visible(fixtures):
     ]
     kickoffs = [kickoff for kickoff in kickoffs if kickoff]
     return bool(kickoffs and now_utc() >= min(kickoffs))
+
+
+def gameweek_predictions_open(fixtures):
+    """Keep the dashboard action until the final active fixture kicks off."""
+    kickoffs = [
+        parse_utc(fixture["utc_date"])
+        for fixture in fixtures
+        if fixture["status"] != "CANCELLED" and fixture["utc_date"]
+    ]
+    kickoffs = [kickoff for kickoff in kickoffs if kickoff]
+    return bool(kickoffs and now_utc() < max(kickoffs))
 
 
 def season_label(season):
@@ -6102,6 +6113,7 @@ def dashboard():
         position_chart=dashboard_position_chart,
         gameweek_progress=dashboard_gameweek_progress,
         live_gameweek_visible=live_gameweek_visible(current_fixtures),
+        gameweek_predictions_open=gameweek_predictions_open(current_fixtures),
         players=dashboard_players,
         fixture_players=dashboard_fixture_players,
         prediction_map=dashboard_prediction_map,
@@ -8342,7 +8354,7 @@ def admin_bigballs_shadow_test():
                 events = parsed if isinstance(parsed, list) else []
             except (TypeError, ValueError):
                 events = []
-        display_events = []
+        display_events = {"home": [], "away": [], "other": []}
         for event in events:
             if not isinstance(event, dict):
                 continue
@@ -8376,14 +8388,79 @@ def admin_bigballs_shadow_test():
                 )
             if clock is None:
                 clock = event.get("minute") or event.get("time")
-            icon = "🟥" if "red" in event_type or (
-                "card" in event_type and "red" in description.casefold()
-            ) else "⚽" if "goal" in event_type else "•"
-            display_events.append({
-                "icon": icon,
-                "description": description,
-                "clock": clock,
-            })
+            if clock is not None:
+                clock = str(clock).strip().rstrip("'")
+
+            event_text = " ".join(str(value) for value in (
+                event_type,
+                description,
+                event.get("event_detail"),
+                event.get("goal_type"),
+                event.get("subtype"),
+            ) if value).casefold().replace("_", " ").replace("-", " ")
+            is_red = "red" in event_text and (
+                "card" in event_text or "red card" in event_text
+            )
+            is_goal = "goal" in event_text or event_type == "score"
+            is_penalty = any(event.get(key) is True for key in (
+                "is_penalty", "penalty", "penalty_goal"
+            )) or "penalty" in event_text or " pen " in f" {event_text} "
+            is_own_goal = any(event.get(key) is True for key in (
+                "is_own_goal", "own_goal", "ownGoal"
+            )) or "own goal" in event_text or " og " in f" {event_text} "
+
+            team = event.get("team") or event.get("club") or {}
+            team_name = ""
+            team_id = None
+            if isinstance(team, dict):
+                team_name = str(
+                    team.get("name") or team.get("display_name")
+                    or team.get("short_name") or ""
+                )
+                team_id = team.get("id") or team.get("team_id")
+            elif team:
+                team_name = str(team)
+            team_name = str(
+                event.get("team_name") or event.get("teamName") or team_name
+            ).strip()
+            side = str(
+                event.get("side") or event.get("home_away")
+                or event.get("homeAway") or ""
+            ).casefold()
+            if not side and event.get("is_home") is not None:
+                side = "home" if event.get("is_home") else "away"
+            fixture_keys = set(fixture.keys())
+            home_id = fixture["home_team_id"] if "home_team_id" in fixture_keys else None
+            away_id = fixture["away_team_id"] if "away_team_id" in fixture_keys else None
+            if side not in {"home", "away"}:
+                if team_id is not None and home_id is not None and str(team_id) == str(home_id):
+                    side = "home"
+                elif team_id is not None and away_id is not None and str(team_id) == str(away_id):
+                    side = "away"
+                elif team_name and normalized_team_name(team_name) == normalized_team_name(fixture["home_team"]):
+                    side = "home"
+                elif team_name and normalized_team_name(team_name) == normalized_team_name(fixture["away_team"]):
+                    side = "away"
+                else:
+                    side = "other"
+
+            if is_goal or is_red:
+                label = str(player or description or "Match event").strip()
+                # Some payloads put a ready-made "Goal — Player" label in
+                # description. Keep only the useful player portion.
+                if "—" in label:
+                    label = label.rsplit("—", 1)[-1].strip()
+                marker = ""
+                if is_own_goal:
+                    marker = "og"
+                elif is_penalty:
+                    marker = "(Pen)"
+                display_events[side].append({
+                    "icon": "🟥" if is_red else "⚽",
+                    "player": label,
+                    "clock": clock,
+                    "marker": marker,
+                })
         score_matches = bool(
             sample
             and sample["home_score"] == fixture["home_score"]

@@ -38,7 +38,7 @@
   const margin = {top: 22, right: 26, bottom: 58, left: 48};
   const innerWidth = width - margin.left - margin.right;
   const compactPlotWidth = Math.min(innerWidth, plotWidth);
-  const plotStart = margin.left + (innerWidth - compactPlotWidth) / 2;
+  const plotStart = margin.left;
   const innerHeight = height - margin.top - margin.bottom;
   const x = index => snapshots.length === 1 ? margin.left + innerWidth / 2 : plotStart + index * compactPlotWidth / (snapshots.length - 1);
   const y = position => margin.top + (players.length === 1 ? innerHeight / 2 : (position - 1) * innerHeight / (players.length - 1));
@@ -47,6 +47,9 @@
   if (window.innerWidth <= 640) { svg.style.width = `${width}px`; svg.style.maxWidth = "none"; }
   for (let position = 1; position <= players.length; position += 1) {
     svg.appendChild(make("line", {x1: snapshots.length === 1 ? margin.left : plotStart, x2: snapshots.length === 1 ? width - margin.right : plotStart + compactPlotWidth, y1: y(position), y2: y(position), class: "position-chart-grid"}));
+    const positionLabel = make("text", {x: margin.left - 12, y: y(position) + 4, "text-anchor": "end", class: "position-chart-axis-label"});
+    positionLabel.textContent = position;
+    svg.appendChild(positionLabel);
   }
   snapshots.forEach((snapshot, index) => {
     const label = make("text", {x: x(index), y: height - 13, "text-anchor": index === 0 ? "start" : (index === snapshots.length - 1 ? "end" : "middle"), class: "position-chart-axis-label"});

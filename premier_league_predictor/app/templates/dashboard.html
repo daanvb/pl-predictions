@@ -124,13 +124,13 @@ No position yet
 <p class="muted" style="margin-top:0">Current Round</p>
 </div>
 
-<div class="dashboard-gameweek-actions">
+{% if gameweek_predictions_open %}<div class="dashboard-gameweek-actions">
 
 <a href="/predict/{{ current_matchday }}">
 <button class="primary">✍️ Make Predictions</button>
 </a>
 
-</div>
+</div>{% endif %}
 
 <div style="margin-top:10px">
 
