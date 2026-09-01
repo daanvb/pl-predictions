@@ -3,30 +3,28 @@
 {% endblock %}
 {% block content %}
 
-<div style="max-width:430px;margin:55px auto">
+<div class="login-shell">
 
-<div class="hero">
-<div style="font-size:50px">⚽</div>
+<div class="login-brand">
+<img src="/static/predictor-icon.png" alt="Preddies logo">
 <h1>Preddies</h1>
-<p>Predict. Compete. Win.</p>
 </div>
 
-<div class="card">
+<div class="card login-card">
 
-<h2>Who's playing?</h2>
+<h2>Welcome back</h2>
 
 <form method="POST" id="login-form">
 
-<label><strong>Email address</strong></label>
+<label><strong>Email address or username</strong></label>
 <input style="width:100%;margin:7px 0 15px" id="login-identifier" name="identifier" autocomplete="username" inputmode="email" required>
-<p class="small">Existing players can use their old login name until they add an email in My Account.</p>
 
 <label><strong>PIN</strong></label>
 <input style="width:100%;margin:7px 0 12px" name="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" required>
 
 <label style="display:flex;align-items:center;gap:9px;margin:0 0 18px">
 <input id="remember-email" type="checkbox" style="width:18px;height:18px">
-<span>Remember my email on this device</span>
+<span>Remember my email address or username</span>
 </label>
 
 <button class="primary" style="width:100%">LOG IN</button>
@@ -48,12 +46,15 @@
   const email = document.getElementById("login-identifier");
   const remember = document.getElementById("remember-email");
   const form = document.getElementById("login-form");
-  const key = "predictor_login_email";
+  const key = "predictor_login_identifier";
+  const oldKey = "predictor_login_email";
   try {
-    const saved = window.localStorage.getItem(key);
+    const saved = window.localStorage.getItem(key) || window.localStorage.getItem(oldKey);
     if (saved) {
       email.value = saved;
       remember.checked = true;
+      window.localStorage.setItem(key, saved);
+      window.localStorage.removeItem(oldKey);
     }
     form.addEventListener("submit", () => {
       if (remember.checked) window.localStorage.setItem(key, email.value.trim());
