@@ -3421,7 +3421,6 @@ def refresh_bigballs_shadow(force_events=False):
     api_key = get_setting("bigballs_api_key")
     if not api_key:
         return 0
-    matches, meta = get_bigballs_premier_league_matches(api_key)
     conn = get_db()
     stored_count = 0
     try:
@@ -3431,6 +3430,32 @@ def refresh_bigballs_shadow(force_events=False):
                WHERE season = ? AND matchday = ?""",
             (SEASON, matchday),
         ).fetchall() if matchday is not None else []
+        predictor_captured_at = now_utc().isoformat()
+        for fixture in fixtures:
+            previous_live = conn.execute(
+                """SELECT status, home_score, away_score
+                   FROM predictor_live_samples
+                   WHERE fixture_id = ? ORDER BY id DESC LIMIT 1""",
+                (fixture["id"],),
+            ).fetchone()
+            current_live_state = (
+                fixture["status"], fixture["home_score"], fixture["away_score"]
+            )
+            previous_live_state = tuple(previous_live) if previous_live else None
+            if current_live_state != previous_live_state:
+                conn.execute(
+                    """INSERT INTO predictor_live_samples(
+                           fixture_id, captured_at, status,
+                           home_score, away_score
+                       ) VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        fixture["id"], predictor_captured_at,
+                        fixture["status"], fixture["home_score"],
+                        fixture["away_score"],
+                    ),
+                )
+        conn.commit()
+        matches, meta = get_bigballs_premier_league_matches(api_key)
         if force_events and fixtures:
             archived, archived_meta = get_bigballs_stored_premier_league_matches(
                 api_key,
@@ -8363,6 +8388,16 @@ def admin_bigballs_shadow_test():
                  AND TRIM(events_json) NOT IN ('', '[]')
                ORDER BY id DESC"""
         ).fetchall()
+        shadow_score_samples = conn.execute(
+            """SELECT * FROM bigballs_shadow_samples
+               WHERE home_score IS NOT NULL AND away_score IS NOT NULL
+               ORDER BY captured_at, id"""
+        ).fetchall()
+        predictor_score_samples = conn.execute(
+            """SELECT * FROM predictor_live_samples
+               WHERE home_score IS NOT NULL AND away_score IS NOT NULL
+               ORDER BY captured_at, id"""
+        ).fetchall()
     finally:
         conn.close()
     samples_by_key = {
@@ -8379,6 +8414,27 @@ def admin_bigballs_shadow_test():
             normalized_team_name(row["away_team"]),
         )
         event_samples_by_key.setdefault(row_key, row)
+    shadow_changed_at = {}
+    previous_shadow_score = {}
+    for row in shadow_score_samples:
+        row_key = (
+            normalized_team_name(row["home_team"]),
+            normalized_team_name(row["away_team"]),
+        )
+        score = (row["home_score"], row["away_score"])
+        if row_key in previous_shadow_score and score != previous_shadow_score[row_key]:
+            shadow_changed_at.setdefault((row_key, score), row["captured_at"])
+        previous_shadow_score[row_key] = score
+    predictor_changed_at = {}
+    previous_predictor_score = {}
+    for row in predictor_score_samples:
+        fixture_id = row["fixture_id"]
+        score = (row["home_score"], row["away_score"])
+        if fixture_id in previous_predictor_score and score != previous_predictor_score[fixture_id]:
+            predictor_changed_at.setdefault(
+                (fixture_id, score), row["captured_at"]
+            )
+        previous_predictor_score[fixture_id] = score
     monitored = []
     for fixture in fixtures:
         key = (
@@ -8580,10 +8636,30 @@ def admin_bigballs_shadow_test():
             and sample["home_score"] == fixture["home_score"]
             and sample["away_score"] == fixture["away_score"]
         )
+        update_lag_label = None
+        if score_matches:
+            score = (sample["home_score"], sample["away_score"])
+            live_changed = parse_utc(
+                predictor_changed_at.get((fixture["id"], score))
+            )
+            shadow_changed = parse_utc(shadow_changed_at.get((key, score)))
+            if live_changed and shadow_changed:
+                lag_seconds = round((shadow_changed - live_changed).total_seconds())
+                absolute_seconds = abs(lag_seconds)
+                if absolute_seconds < 2:
+                    update_lag_label = "Updated on the same check as Live"
+                else:
+                    minutes, seconds = divmod(absolute_seconds, 60)
+                    duration = (
+                        f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+                    )
+                    relation = "after" if lag_seconds > 0 else "before"
+                    update_lag_label = f"Big Balls updated {duration} {relation} Live"
         monitored.append({
             "fixture": dict(fixture),
             "sample": dict(sample) if sample else None,
             "score_matches": score_matches,
+            "update_lag_label": update_lag_label,
             "events": display_events,
         })
     return render_template(

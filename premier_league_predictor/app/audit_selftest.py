@@ -926,7 +926,33 @@ assert b"Inferred Home 88" in shadow_with_events.data
 assert b"shadow-events-home" in shadow_with_events.data
 assert b"shadow-events-away" in shadow_with_events.data
 assert b'class="badge live"' in shadow_with_events.data
+assert b"Timing starts with the next score change observed by both feeds" in shadow_with_events.data
+
+# Once both feeds have observed a genuine score change, the comparison reports
+# the measured delay rather than treating the first imported score as timing.
+conn.execute(
+    "UPDATE fixtures SET home_score = 2, away_score = 2 WHERE id = 8800"
+)
+conn.execute(
+    """INSERT INTO predictor_live_samples(
+           fixture_id, captured_at, status, home_score, away_score
+       ) VALUES (8800, '2030-01-01T12:00:00+00:00', 'IN_PLAY', 2, 2)"""
+)
+conn.execute(
+    """INSERT INTO bigballs_shadow_samples(
+           provider_match_id, captured_at, home_team, away_team,
+           kickoff_utc, status, home_score, away_score, events_json, raw_json
+       ) VALUES (
+           'shadow-home-away', '2030-01-01T12:01:00+00:00',
+           'Home FC', 'Away FC', ?, 'live', 2, 2, '[]', '{}'
+       )""",
+    (live_kickoff,),
+)
+conn.commit()
+timed_shadow_response = client.get("/admin/live-feed-test")
+assert b"Big Balls updated 1m 0s after Live" in timed_shadow_response.data
 conn.execute("DELETE FROM bigballs_shadow_samples")
+conn.execute("DELETE FROM predictor_live_samples")
 conn.commit()
 conn.close()
 conn = database.get_db()
@@ -1611,6 +1637,7 @@ with open(
 assert "?matchday={{ previous_matchday }}" in live_feed_test_template
 assert "Current GW{{ current_matchday }}" in live_feed_test_template
 assert "Viewing the stored Gameweek {{ matchday }} shadow comparison" in live_feed_test_template
+assert "shadow-update-lag" in live_feed_test_template
 
 assert '_match_stats.html' in predictions_template
 assert 'Live GW{{ matchday }}' not in predictions_template
@@ -1687,6 +1714,8 @@ assert "position-chart-player" in leaderboard_template
 assert "height:240px" in leaderboard_template
 assert "height:220px" in leaderboard_template
 assert "Math.max(220, box.height || 240)" in leaderboard_template
+assert "['#2563eb','#dc2626','#059669','#d97706','#7c3aed','#0891b2']" in leaderboard_template
+assert '["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2"]' in dashboard_live_summary_template
 assert 'button.setAttribute("aria-label", `Highlight ${player.name}`)' in dashboard_live_summary_template
 assert "No settled position changes yet." in dashboard_live_summary_template
 assert "Math.max(205, 135 + players.length * 14)" in dashboard_live_summary_template
@@ -1747,6 +1776,7 @@ assert '.save-bar{\n  position:sticky;' in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template
 assert 'href="/side-events"' in dashboard_template
+assert dashboard_template.index('href="/leaderboard"') < dashboard_template.index('href="/side-events"') < dashboard_template.index('href="/stats"')
 assert 'fixture.home_logo' in dashboard_template
 assert 'fixture.away_logo' in dashboard_template
 

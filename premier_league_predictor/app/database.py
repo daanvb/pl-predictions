@@ -229,6 +229,25 @@ def init_db(seed_default_player=True):
         ON bigballs_shadow_samples(provider_match_id, captured_at)
     """)
 
+    # Change-only observations of the production Predictor score. These make
+    # it possible for the read-only shadow test to compare provider latency
+    # without allowing the shadow provider to alter live app data.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS predictor_live_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fixture_id INTEGER NOT NULL,
+            captured_at TEXT NOT NULL,
+            status TEXT,
+            home_score INTEGER,
+            away_score INTEGER,
+            FOREIGN KEY(fixture_id) REFERENCES fixtures(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_predictor_live_sample_fixture_time
+        ON predictor_live_samples(fixture_id, captured_at)
+    """)
+
     # Permanent end-of-season snapshots. Player names are copied rather than
     # linked so later account edits cannot rewrite historical tables.
     conn.execute("""
