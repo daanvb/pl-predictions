@@ -3,6 +3,17 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f172a">
+<script>
+(function () {
+  try {
+    const saved = window.localStorage.getItem('preddies_theme');
+    const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = theme;
+  } catch (_) {
+    document.documentElement.dataset.theme = 'light';
+  }
+})();
+</script>
 <link rel="icon" type="image/png" href="/static/predictor-icon.png">
 <link rel="apple-touch-icon" href="/static/predictor-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -472,6 +483,33 @@ th,td{
   background:#fff;
   color:var(--danger);
   border:1px solid #fecaca
+}
+.changelog-fix-heading{
+  margin:18px 0 4px;
+  color:var(--muted);
+  font-size:13px;
+  letter-spacing:.04em;
+  text-transform:uppercase
+}
+.theme-toggle{
+  background:#fff;
+  color:#334155;
+  border:1px solid var(--line)
+}
+.theme-toggle-corner{
+  position:fixed;
+  top:max(12px, env(safe-area-inset-top));
+  right:max(12px, env(safe-area-inset-right));
+  z-index:80;
+  display:grid;
+  place-items:center;
+  width:44px;
+  height:44px;
+  padding:0;
+  border-radius:50%;
+  font-size:20px;
+  line-height:1;
+  box-shadow:0 8px 22px rgba(15,23,42,.18)
 }
 
 /* Compact supporting pages: retain the shared visual language while fitting
@@ -1738,6 +1776,73 @@ th,td{
   font-size:9px
 }
 
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --ink:#e5edf8;
+  --muted:#a9b7ca;
+  --line:#334155;
+  --accent:#3b82f6;
+  --danger:#f87171;
+  --soft:#172033
+}
+html[data-theme="dark"] body{
+  background:linear-gradient(180deg,#070b14 0,#0f172a 300px);
+  color:var(--ink)
+}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .nav a,
+html[data-theme="dark"] .theme-toggle,
+html[data-theme="dark"] .logout-button,
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] .gameweek-buttons button{
+  background:#111827;
+  color:var(--ink);
+  border-color:var(--line)
+}
+html[data-theme="dark"] .card{
+  box-shadow:0 10px 30px rgba(0,0,0,.28)
+}
+html[data-theme="dark"] .hero{
+  background:linear-gradient(135deg,#111827,#1e293b);
+  box-shadow:0 18px 45px rgba(0,0,0,.35)
+}
+html[data-theme="dark"] a{color:#93c5fd}
+html[data-theme="dark"] .badge{
+  background:#334155;
+  color:#e2e8f0
+}
+html[data-theme="dark"] .badge.open{
+  background:#14532d;
+  color:#bbf7d0
+}
+html[data-theme="dark"] .badge.live{
+  background:#7f1d1d;
+  color:#fecaca
+}
+html[data-theme="dark"] .flash.success{
+  background:#14532d;
+  color:#bbf7d0
+}
+html[data-theme="dark"] .flash.error{
+  background:#7f1d1d;
+  color:#fecaca
+}
+html[data-theme="dark"] .pick-grid.exact-score-row{
+  background:#123b2a;
+  color:#bbf7d0
+}
+html[data-theme="dark"] .position-chart-player{color:#cbd5e1}
+html[data-theme="dark"] .position-chart-player[aria-pressed="true"]{
+  background:#334155;
+  color:#fff
+}
+html[data-theme="dark"] .position-chart-grid{stroke:#334155}
+html[data-theme="dark"] .position-chart-axis-label,
+html[data-theme="dark"] .position-chart-cause-label{fill:#cbd5e1}
+html[data-theme="dark"] .footer{color:#94a3b8}
+
 
 /* v1.0.1 desktop-only Live Gameweek score alignment */
 @media (min-width: 641px) {
@@ -1786,6 +1891,11 @@ th,td{
 </head>
 <body>
 
+{% if is_logged_in %}
+<button class="theme-toggle theme-toggle-corner" id="theme-toggle" type="button"
+        aria-pressed="false" aria-label="Switch to dark mode" title="Switch to dark mode">🌙</button>
+{% endif %}
+
 <div class="container">
 
 {% with messages = get_flashed_messages(with_categories=true) %}
@@ -1807,6 +1917,36 @@ Preddies v{{ app_version }}
 </div>
 
 </div>
+
+<script>
+(function () {
+  const root = document.documentElement;
+  const toggle = document.getElementById('theme-toggle');
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  function applyTheme(theme, remember) {
+    root.dataset.theme = theme;
+    if (remember) {
+      try { window.localStorage.setItem('preddies_theme', theme); } catch (_) {}
+    }
+    if (themeMeta) themeMeta.content = theme === 'dark' ? '#070b14' : '#0f172a';
+    if (toggle) {
+      const dark = theme === 'dark';
+      const label = dark ? 'Switch to light mode' : 'Switch to dark mode';
+      toggle.setAttribute('aria-pressed', String(dark));
+      toggle.setAttribute('aria-label', label);
+      toggle.title = label;
+      toggle.textContent = dark ? '☀️' : '🌙';
+    }
+    window.dispatchEvent(new Event('preddies-theme-change'));
+  }
+  applyTheme(root.dataset.theme || 'light', false);
+  if (toggle) {
+    toggle.addEventListener('click', function () {
+      applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark', true);
+    });
+  }
+})();
+</script>
 
 </body>
 </html>

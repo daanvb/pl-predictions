@@ -42,11 +42,22 @@ v{{ release['version'] }}
 
 <h3 style="margin-top:22px">{{ section['title'] }}</h3>
 
+{% if section.get('groups') %}
+{% for group in section['groups'] %}
+<h4 class="changelog-fix-heading">{{ group['title'] }}</h4>
+<ul style="line-height:1.7">
+{% for item in group['items'] %}
+<li>{{ item }}</li>
+{% endfor %}
+</ul>
+{% endfor %}
+{% else %}
 <ul style="line-height:1.7">
 {% for item in section['items'] %}
 <li>{{ item }}</li>
 {% endfor %}
 </ul>
+{% endif %}
 
 {% endfor %}
 

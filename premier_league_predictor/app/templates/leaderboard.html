@@ -262,7 +262,7 @@ Positions are ranked by total points. If points are level, the tie-break order i
     ctx.scale(ratio, ratio);
     const width = canvas.width / ratio;
     const height = canvas.height / ratio;
-    const pad = {left: 46, right: 18, top: 18, bottom: 42};
+    const pad = {left: 22, right: 18, top: 18, bottom: 42};
     const plotW = width - pad.left - pad.right;
     const plotH = height - pad.top - pad.bottom;
     const maxPosition = Math.max(1, data.players.length);
@@ -271,8 +271,9 @@ Positions are ranked by total points. If points are level, the tie-break order i
 
     ctx.clearRect(0, 0, width, height);
     ctx.font = '12px system-ui, sans-serif';
-    ctx.strokeStyle = '#dbe3ef';
-    ctx.fillStyle = '#64748b';
+    const darkMode = document.documentElement.dataset.theme === 'dark';
+    ctx.strokeStyle = darkMode ? '#334155' : '#dbe3ef';
+    ctx.fillStyle = darkMode ? '#cbd5e1' : '#64748b';
     ctx.lineWidth = 1;
     for (let position = 1; position <= maxPosition; position++) {
       const py = y(position);
@@ -325,6 +326,7 @@ Positions are ranked by total points. If points are level, the tie-break order i
   });
   draw();
   window.addEventListener('resize', draw);
+  window.addEventListener('preddies-theme-change', draw);
 })();
 </script>
 {% else %}

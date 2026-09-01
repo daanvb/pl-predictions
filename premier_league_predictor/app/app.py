@@ -5307,6 +5307,86 @@ def account():
 
 
 
+CHANGELOG_SECTION_ORDER = ("Important", "New", "Changes", "Fixes")
+CHANGELOG_FIX_ORDER = (
+    "UI", "Calculations", "Database", "Live Data",
+    "Notifications", "Security", "Backups", "General",
+)
+
+
+def changelog_section_name(title):
+    value = (title or "").strip().casefold()
+    if value in {
+        "important", "safety", "security / integrity",
+        "locking / integrity", "privacy / processing",
+    }:
+        return "Important"
+    if value in {"new", "added", "what's new since gameweek 1"}:
+        return "New"
+    if value in {"fixes", "fixed", "reliability", "diagnostics", "audit"}:
+        return "Fixes"
+    return "Changes"
+
+
+def changelog_fix_category(item):
+    value = (item or "").casefold()
+    categories = (
+        ("Backups", ("backup", "google drive", "restore backup")),
+        ("Notifications", ("signal", "notification", "reminder", "message")),
+        ("Security", (
+            "security", "login", "password", "pin", "session",
+            "rate limit", "authentication", "permission", "locked",
+        )),
+        ("Calculations", (
+            "point", "scoring", "calculation", "tie-break", "tie break",
+            "double points", " dp", "league ordering", "winner",
+        )),
+        ("Database", (
+            "database", "sqlite", "migration", "query", "stored row",
+            "historical fixture", "archive",
+        )),
+        ("Live Data", (
+            "live", "provider", "sportscore", "football-data", "fixture",
+            "score", "result", "scorer", "goal", "kick-off", "kickoff",
+            "match clock", "red card",
+        )),
+        ("UI", (
+            "layout", "display", "screen", "page", "card", "graph", "chart",
+            "label", "button", "logo", "mobile", "alignment", "heading",
+            "navigation", "typography", "highlight", "spacing", "colour",
+        )),
+    )
+    for category, keywords in categories:
+        if any(keyword in value for keyword in keywords):
+            return category
+    return "General"
+
+
+def normalise_changelog_sections(sections):
+    buckets = {title: [] for title in CHANGELOG_SECTION_ORDER}
+    for section in sections:
+        title = changelog_section_name(section.get("title"))
+        buckets[title].extend(section.get("items") or [])
+
+    normalised = []
+    for title in CHANGELOG_SECTION_ORDER:
+        items = buckets[title]
+        if not items:
+            continue
+        section = {"title": title, "items": items, "groups": []}
+        if title == "Fixes":
+            grouped = {category: [] for category in CHANGELOG_FIX_ORDER}
+            for item in items:
+                grouped[changelog_fix_category(item)].append(item)
+            section["groups"] = [
+                {"title": category, "items": grouped[category]}
+                for category in CHANGELOG_FIX_ORDER
+                if grouped[category]
+            ]
+        normalised.append(section)
+    return normalised
+
+
 def read_app_changelog():
     candidates = [
         "/app/CHANGELOG.md",
@@ -5378,6 +5458,11 @@ def read_app_changelog():
             section["items"][-1] += (
                 " · " + raw_line.strip()[2:].strip()
             )
+
+    for parsed_release in releases:
+        parsed_release["sections"] = normalise_changelog_sections(
+            parsed_release["sections"]
+        )
 
     return releases
 
