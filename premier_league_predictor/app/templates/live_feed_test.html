@@ -34,6 +34,14 @@
 <div class="fixture-home"><span class="fixture-team-cluster fixture-team-cluster-home"><span class="team-badge-slot">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}</span><strong>{{ short_team_name(fixture.home_team) }}</strong></span></div>
 <div class="fixture-centre live-score live-score-grid"><span>{{ fixture.home_score if fixture.home_score is not none else "–" }}</span><span>{% if fixture.home_score is none and fixture.away_score is none %}v{% else %}–{% endif %}</span><span>{{ fixture.away_score if fixture.away_score is not none else "–" }}</span></div>
 <div class="fixture-away"><span class="fixture-team-cluster fixture-team-cluster-away"><strong>{{ short_team_name(fixture.away_team) }}</strong><span class="team-badge-slot">{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</span></span></div>
+{% if item.events.home or item.events.away or item.events.other %}
+<div class="shadow-events-grid">
+<div class="shadow-events-side shadow-events-home">{% for event in item.events.home %}<span>{{ event.icon }} {{ event.player }}{% if event.moments %} {{ event.moments|join(', ') }}{% endif %}</span>{% endfor %}</div>
+<div></div>
+<div class="shadow-events-side shadow-events-away">{% for event in item.events.away %}<span>{{ event.icon }} {{ event.player }}{% if event.moments %} {{ event.moments|join(', ') }}{% endif %}</span>{% endfor %}</div>
+{% if item.events.other %}<div class="shadow-events-other">{% for event in item.events.other %}<span>{{ event.icon }} {{ event.player }}{% if event.moments %} {{ event.moments|join(', ') }}{% endif %}</span>{% endfor %}</div>{% endif %}
+</div>
+{% endif %}
 </div>
 <div class="fixture-submeta">Predictor feed</div>
 <div class="fixture-status">
@@ -50,14 +58,7 @@
 <div class="shadow-score">{% if sample.home_score is not none and sample.away_score is not none %}{{ sample.home_score }}–{{ sample.away_score }}{% else %}– v –{% endif %}</div>
 <div><span class="badge {% if item.score_matches %}open{% else %}live{% endif %}">{% if item.score_matches %}✓ Agrees{% else %}Review{% endif %}</span></div>
 <div class="small shadow-observed">{{ sample.status }} · {{ local_timestamp(sample.captured_at) }}</div>
-{% if item.events.home or item.events.away or item.events.other %}
-<div class="shadow-events-grid">
-<div class="shadow-events-side shadow-events-home">{% for event in item.events.home %}<span>{{ event.icon }} {{ event.player }}{% if event.clock %} {{ event.clock }}'{% endif %}{% if event.marker %} {{ event.marker }}{% endif %}</span>{% endfor %}</div>
-<div></div>
-<div class="shadow-events-side shadow-events-away">{% for event in item.events.away %}<span>{{ event.icon }} {{ event.player }}{% if event.clock %} {{ event.clock }}'{% endif %}{% if event.marker %} {{ event.marker }}{% endif %}</span>{% endfor %}</div>
-{% if item.events.other %}<div class="shadow-events-other">{% for event in item.events.other %}<span>{{ event.icon }} {{ event.player }}{% if event.clock %} {{ event.clock }}'{% endif %}{% if event.marker %} {{ event.marker }}{% endif %}</span>{% endfor %}</div>{% endif %}
-</div>
-{% elif sample.home_score is not none or sample.away_score is not none %}<div class="small shadow-events-unavailable">No event or scorer data was returned by Big Balls for this observation.</div>{% endif %}
+{% if not (item.events.home or item.events.away or item.events.other) and (sample.home_score is not none or sample.away_score is not none) %}<div class="small shadow-events-unavailable">No event or scorer data was returned by Big Balls for any stored observation of this match.</div>{% endif %}
 {% else %}
 <div class="small shadow-awaiting">Awaiting the first matching shadow observation.</div>
 {% endif %}
