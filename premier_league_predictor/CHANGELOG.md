@@ -2,6 +2,25 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.2.1] - 2026-09-01
+
+### Important
+- Existing predictions are preserved and automatically registered as the starting point of the new integrity ledger during the update.
+- The migration is additive: it does not recalculate scores, change points or alter submitted predictions.
+
+### New
+- Added a shared Tegrity page where every player can see when predictions and Double Points selections were submitted or changed.
+- Added concealed score commitments: prediction values remain hidden on Tegrity until the relevant fixture kicks off.
+- Added an immutable, hash-chained prediction ledger with a visible health check and retained revision history.
+
+### Changes
+- Restricted filesystem access to the live database, application secret, restore uploads and local backups.
+- Enabled stronger SQLite deletion, temporary-storage and trusted-schema protections.
+
+### Fixes
+- Database integrity checks now detect prediction values that no longer agree with the latest recorded ledger entry.
+- Database audit rows are protected against accidental updates or deletion.
+
 ## [1.2.0] - 2026-09-01
 
 ### New
