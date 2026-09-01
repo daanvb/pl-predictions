@@ -121,11 +121,11 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
     const plotWidth = Math.max(0, snapshots.length - 1) * pointSpacing;
     const mobileTimelineWidth = Math.max(
         stage ? stage.clientWidth : 0,
-        74 + plotWidth
+        82 + plotWidth
     );
     const width = window.innerWidth <= 640 ? mobileTimelineWidth : 760;
     const height = Math.max(245, 165 + players.length * 18);
-    const margin = {top: 22, right: 26, bottom: 58, left: 48};
+    const margin = {top: 22, right: 50, bottom: 58, left: 32};
     const innerWidth = width - margin.left - margin.right;
     const compactPlotWidth = Math.min(innerWidth, plotWidth);
     const plotStart = margin.left;
@@ -168,7 +168,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
     snapshots.forEach((snapshot, index) => {
         const label = make("text", {
             x: x(index), y: height - 13,
-            "text-anchor": index === 0 ? "start" : (index === snapshots.length - 1 ? "end" : "middle"),
+            "text-anchor": "middle",
             class: "position-chart-axis-label"
         });
         const cause = snapshot.cause_label || snapshot.milestone || "Position change";
