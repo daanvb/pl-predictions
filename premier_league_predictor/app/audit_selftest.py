@@ -1778,9 +1778,13 @@ assert '.save-bar{\n  position:sticky;' in base_template
 assert "preddies_theme" in base_template
 assert 'id="theme-toggle"' in base_template
 assert 'theme-toggle-corner' in base_template
+assert 'theme-toggle-icon-moon' in base_template
+assert 'theme-toggle-icon-sun' in base_template
 assert 'aria-label="Switch to dark mode"' in base_template
 assert "dark ? 'Switch to light mode' : 'Switch to dark mode'" in base_template
-assert "dark ? '☀️' : '🌙'" in base_template
+assert 'html[data-theme="dark"] .fixture.fixture-set' in base_template
+assert 'html[data-theme="dark"] .match-stat-panel' in base_template
+assert 'background:#0f172a;' in base_template
 assert 'html[data-theme="dark"]' in base_template
 assert "prefers-color-scheme: dark" in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
