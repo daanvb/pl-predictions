@@ -2002,6 +2002,7 @@ assert 'dashboard-season-stat' in dashboard_template
 assert '-webkit-text-size-adjust: none' in base_template
 assert '.dashboard-hero{margin-top:56px}' in base_template
 assert 'flex:0 0 32px' in base_template
+assert 'height:32px;min-height:32px;max-height:32px;inline-size:32px;block-size:32px' in base_template
 assert dashboard_template.index('{% include "_news_ticker.html" %}') < dashboard_template.index('{% include "_dashboard_live_summary.html" %}')
 assert dashboard_template.index('{% include "_dashboard_live_summary.html" %}') < dashboard_template.index('Current Round')
 assert 'fixture.home_logo' in dashboard_template
