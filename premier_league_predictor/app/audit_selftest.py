@@ -2000,6 +2000,10 @@ assert 'class="nav"' not in dashboard_template
 assert 'dashboard-position-stat' in dashboard_template
 assert 'dashboard-season-stat' in dashboard_template
 assert '-webkit-text-size-adjust: none' in base_template
+assert '.dashboard-hero{margin-top:56px}' in base_template
+assert 'flex:0 0 32px' in base_template
+assert dashboard_template.index('{% include "_news_ticker.html" %}') < dashboard_template.index('{% include "_dashboard_live_summary.html" %}')
+assert dashboard_template.index('{% include "_dashboard_live_summary.html" %}') < dashboard_template.index('Current Round')
 assert 'fixture.home_logo' in dashboard_template
 assert 'fixture.away_logo' in dashboard_template
 
