@@ -24,6 +24,7 @@ All notable changes to Preddies are documented here.
 - Reserved a clear row above the mobile welcome card for the floating navigation and account controls.
 - Kept the compact menu close control perfectly circular on iPhone.
 - Prevented mobile minimum-height styling from stretching the menu close control into an oval.
+- Lightened the BBC Sport logo panel in light mode while retaining its dark-mode contrast.
 - Kept the live gameweek table and position graph directly below the news ticker.
 - Spread the season-total and league-position content more evenly, enlarged their labels and reduced the season-points figure.
 
