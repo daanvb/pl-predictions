@@ -21,6 +21,9 @@ All notable changes to Preddies are documented here.
 - Improved the spacing and label fit inside the compact league-position card.
 - Reduced and condensed the slide-out menu while retaining comfortable touch targets.
 - Further narrowed the mobile menu and tightened its heading and navigation rows.
+- Reserved a clear row above the mobile welcome card for the floating navigation and account controls.
+- Kept the compact menu close control perfectly circular on iPhone.
+- Kept the live gameweek table and position graph directly below the news ticker.
 - Spread the season-total and league-position content more evenly, enlarged their labels and reduced the season-points figure.
 
 ## [1.2.2] - 2026-09-01
