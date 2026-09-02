@@ -1075,43 +1075,46 @@ html[data-theme="dark"] .tv-logo-dark {
   position:fixed;
   inset:0 auto 0 0;
   z-index:89;
-  width:min(330px,86vw);
-  padding:max(20px, env(safe-area-inset-top)) 18px 24px;
+  width:min(290px,76vw);
+  padding:max(16px, env(safe-area-inset-top)) 14px 20px;
   overflow-y:auto;
   background:#fff;
   color:#0f172a;
   box-shadow:20px 0 50px rgba(15,23,42,.25);
   transform:translateX(-105%);
-  transition:transform .22s ease
+  transition:transform .22s ease;
+  -webkit-text-size-adjust:none;
+  text-size-adjust:none
 }
 .dashboard-menu-drawer.is-open{transform:translateX(0)}
 .dashboard-menu-heading{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  margin-bottom:16px;
-  font-size:22px
+  margin-bottom:12px;
+  font-size:19px
 }
 .dashboard-menu-heading button{
-  width:40px;
-  height:40px;
+  width:36px;
+  height:36px;
   padding:0;
   border-radius:50%;
-  font-size:28px;
+  font-size:25px;
   line-height:1
 }
-.dashboard-menu-drawer nav{display:grid;gap:8px}
+.dashboard-menu-drawer nav{display:grid;gap:6px}
 .dashboard-menu-drawer nav a{
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:10px;
-  min-height:46px;
-  padding:11px 13px;
+  min-height:42px;
+  padding:9px 11px;
   border:1px solid var(--line);
   border-radius:12px;
   background:#f8fafc;
   color:#1e293b;
+  font-size:14px;
   font-weight:700;
   text-decoration:none
 }
@@ -1120,21 +1123,30 @@ body.dashboard-menu-open{overflow:hidden}
   padding:10px 8px;
   border-radius:13px
 }
-.dashboard-position-stat{
+.dashboard-primary-stat{
   display:flex;
   flex-direction:column;
   align-items:center;
-  justify-content:center
+  justify-content:space-between;
+  gap:4px
 }
-.dashboard-position-stat > .small{
+.dashboard-primary-stat > .small{
   white-space:nowrap;
-  line-height:1.1
+  font-size:11px;
+  line-height:1.15
 }
 .dashboard-position-stat .stat-number{
-  margin:3px 0 2px;
+  margin:0;
   line-height:1
 }
-.dashboard-position-stat > .muted{line-height:1.1}
+.dashboard-stats .dashboard-season-stat .stat-number{
+  font-size:23px;
+  line-height:1
+}
+.dashboard-primary-stat > .muted{
+  font-size:12px;
+  line-height:1.15
+}
 .dashboard-stats .stat-number{font-size:27px;line-height:1.05}
 .dashboard-stats .small{font-size:10px}
 .dashboard-stats .muted{font-size:12px}
@@ -2265,7 +2277,7 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
   .dashboard-menu-toggle{left:max(8px, env(safe-area-inset-left));width:40px;height:40px}
   .dashboard-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
   .dashboard-stats .stat:last-child:nth-child(odd){grid-column:auto;width:auto;justify-self:stretch}
-  .dashboard-position-stat > .small{font-size:9px}
+  .dashboard-primary-stat > .small{font-size:11px}
 }
 
 .account-preference {

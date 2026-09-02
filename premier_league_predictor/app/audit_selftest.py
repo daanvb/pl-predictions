@@ -1998,6 +1998,7 @@ assert 'class="corner-action" href="/tegrity"' in dashboard_template
 assert 'class="corner-action" href="/admin"' in dashboard_template
 assert 'class="nav"' not in dashboard_template
 assert 'dashboard-position-stat' in dashboard_template
+assert 'dashboard-season-stat' in dashboard_template
 assert '-webkit-text-size-adjust: none' in base_template
 assert 'fixture.home_logo' in dashboard_template
 assert 'fixture.away_logo' in dashboard_template
