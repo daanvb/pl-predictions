@@ -2,6 +2,23 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.2.3] - 2026-09-02
+
+### Important
+- This visual update does not alter players, predictions, points or account preferences.
+
+### New
+- Added a left-hand slide-out dashboard menu for League, Side Events, statistics, history, rules, prizes, past winners and the changelog.
+- Added prominent My Account, Tegridy and administrator icons to the dashboard header.
+
+### Changes
+- Reduced the dashboard stat-card height and arranged the season total, league position and Signal cards in one compact mobile row.
+
+### Fixes
+
+#### UI
+- Enforced one consistent compact font size across every news ticker headline.
+
 ## [1.2.2] - 2026-09-01
 
 ### Important

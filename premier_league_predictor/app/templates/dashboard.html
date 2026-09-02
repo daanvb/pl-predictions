@@ -1,6 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
+{% block corner_actions %}
+<a class="corner-action" href="/account" aria-label="My Account" title="My Account">
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg>
+</a>
+<a class="corner-action" href="/tegrity" aria-label="Tegridy" title="Tegridy">
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5.2-3.3 8.3-8 10-4.7-1.7-8-4.8-8-10V6l8-3Z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg>
+</a>
+{% if session.admin %}<a class="corner-action" href="/admin" aria-label="Admin" title="Admin">
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg>
+</a>{% endif %}
+{% endblock %}
 {% block content %}
+
+<button class="dashboard-menu-toggle" id="dashboard-menu-toggle" type="button" aria-controls="dashboard-menu" aria-expanded="false" aria-label="Open navigation menu">
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+</button>
+<div class="dashboard-menu-backdrop" id="dashboard-menu-backdrop" hidden></div>
+<aside class="dashboard-menu-drawer" id="dashboard-menu" aria-label="Main navigation" aria-hidden="true">
+<div class="dashboard-menu-heading"><strong>Menu</strong><button id="dashboard-menu-close" type="button" aria-label="Close navigation menu">×</button></div>
+<nav>
+<a href="/leaderboard">🏆 League</a>
+<a href="/side-events">🎯 Side Events</a>
+<a href="/stats">📊 Your Stats</a>
+<a href="/history">🕘 Previous GW History</a>
+<a href="/rules">📘 Rules</a>
+<a href="/prize-structure">💷 Prize Structure</a>
+<a href="/seasons">👑 Past Winners</a>
+<a href="/changelog">📝 Changelog{% if changelog_has_update %}<span class="badge live">NEW</span>{% endif %}</a>
+</nav>
+</aside>
 
 <div class="hero dashboard-hero">
 <img class="dashboard-logo" src="/static/predictor-icon.png" alt="Preddies logo">
@@ -10,27 +39,6 @@ PREDDIES
 </div>
 <h1>Welcome, {{ session.player_name }}</h1>
 </div>
-</div>
-
-<div class="nav">
-<a href="/leaderboard">🏆 League</a>
-<a href="/side-events">🎯 Side Events</a>
-<a href="/stats">📊 Your Stats</a>
-<a href="/history">🕘 Previous GW History</a>
-<a href="/rules">📘 Rules</a>
-<a href="/prize-structure">💷 Prize Structure</a>
-<a href="/seasons">👑 Past Winners</a>
-<a href="/account">👤 My Account</a>
-<a href="/tegrity">🛡️ Tegridy</a>
-{% if session.admin %}
-<a href="/admin">⚙️ Admin</a>
-{% endif %}
-<a href="/changelog">
-📝 Changelog
-{% if changelog_has_update %}
-<span class="badge live" style="margin-left:6px">NEW</span>
-{% endif %}
-</a>
 </div>
 
 {% if changelog_has_update %}
@@ -236,5 +244,28 @@ window.setTimeout(function () {
 }, 60000);
 </script>
 {% endif %}
+
+<script>
+(function () {
+  const toggle = document.getElementById('dashboard-menu-toggle');
+  const drawer = document.getElementById('dashboard-menu');
+  const close = document.getElementById('dashboard-menu-close');
+  const backdrop = document.getElementById('dashboard-menu-backdrop');
+  function setOpen(open) {
+    drawer.classList.toggle('is-open', open);
+    drawer.setAttribute('aria-hidden', String(!open));
+    toggle.setAttribute('aria-expanded', String(open));
+    backdrop.hidden = !open;
+    document.body.classList.toggle('dashboard-menu-open', open);
+    if (open) close.focus();
+  }
+  toggle.addEventListener('click', function () { setOpen(true); });
+  close.addEventListener('click', function () { setOpen(false); toggle.focus(); });
+  backdrop.addEventListener('click', function () { setOpen(false); });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false);
+  });
+})();
+</script>
 
 {% endblock %}
