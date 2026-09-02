@@ -19,6 +19,8 @@ All notable changes to Preddies are documented here.
 #### UI
 - Enforced one consistent compact font size across every news ticker headline, including on iPhone where automatic text enlargement previously altered individual items.
 - Improved the spacing and label fit inside the compact league-position card.
+- Reduced and condensed the slide-out menu while retaining comfortable touch targets.
+- Spread the season-total and league-position content more evenly, enlarged their labels and reduced the season-points figure.
 
 ## [1.2.2] - 2026-09-01
 
