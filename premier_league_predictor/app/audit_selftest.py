@@ -1991,6 +1991,12 @@ assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template
 assert 'href="/side-events"' in dashboard_template
 assert dashboard_template.index('href="/leaderboard"') < dashboard_template.index('href="/side-events"') < dashboard_template.index('href="/stats"')
+assert 'id="dashboard-menu-toggle"' in dashboard_template
+assert 'id="dashboard-menu"' in dashboard_template
+assert 'class="corner-action" href="/account"' in dashboard_template
+assert 'class="corner-action" href="/tegrity"' in dashboard_template
+assert 'class="corner-action" href="/admin"' in dashboard_template
+assert 'class="nav"' not in dashboard_template
 assert 'fixture.home_logo' in dashboard_template
 assert 'fixture.away_logo' in dashboard_template
 

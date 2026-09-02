@@ -497,10 +497,6 @@ th,td{
   border:1px solid var(--line)
 }
 .theme-toggle-corner{
-  position:fixed;
-  top:max(12px, env(safe-area-inset-top));
-  right:max(12px, env(safe-area-inset-right));
-  z-index:80;
   display:grid;
   place-items:center;
   width:44px;
@@ -522,6 +518,36 @@ th,td{
 .theme-toggle-icon-sun{display:none}
 html[data-theme="dark"] .theme-toggle-icon-moon{display:none}
 html[data-theme="dark"] .theme-toggle-icon-sun{display:block}
+.corner-controls{
+  position:fixed;
+  top:max(12px, env(safe-area-inset-top));
+  right:max(12px, env(safe-area-inset-right));
+  z-index:80;
+  display:flex;
+  align-items:center;
+  gap:8px
+}
+.corner-action{
+  display:grid;
+  place-items:center;
+  width:44px;
+  height:44px;
+  border:1px solid var(--line);
+  border-radius:50%;
+  background:#fff;
+  color:#334155;
+  box-shadow:0 8px 22px rgba(15,23,42,.18)
+}
+.corner-action svg,
+.dashboard-menu-toggle svg{
+  width:23px;
+  height:23px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round
+}
 
 /* Compact supporting pages: retain the shared visual language while fitting
    more useful information into each desktop and mobile viewport. */
@@ -1022,6 +1048,83 @@ html[data-theme="dark"] .tv-logo-dark {
     align-items: center;
     gap: 18px;
 }
+.dashboard-menu-toggle{
+  position:fixed;
+  top:max(12px, env(safe-area-inset-top));
+  left:max(12px, env(safe-area-inset-left));
+  z-index:82;
+  display:grid;
+  place-items:center;
+  width:44px;
+  height:44px;
+  padding:0;
+  border:1px solid var(--line);
+  border-radius:50%;
+  background:#fff;
+  color:#334155;
+  box-shadow:0 8px 22px rgba(15,23,42,.18)
+}
+.dashboard-menu-backdrop{
+  position:fixed;
+  inset:0;
+  z-index:88;
+  background:rgba(15,23,42,.48);
+  backdrop-filter:blur(2px)
+}
+.dashboard-menu-drawer{
+  position:fixed;
+  inset:0 auto 0 0;
+  z-index:89;
+  width:min(330px,86vw);
+  padding:max(20px, env(safe-area-inset-top)) 18px 24px;
+  overflow-y:auto;
+  background:#fff;
+  color:#0f172a;
+  box-shadow:20px 0 50px rgba(15,23,42,.25);
+  transform:translateX(-105%);
+  transition:transform .22s ease
+}
+.dashboard-menu-drawer.is-open{transform:translateX(0)}
+.dashboard-menu-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:16px;
+  font-size:22px
+}
+.dashboard-menu-heading button{
+  width:40px;
+  height:40px;
+  padding:0;
+  border-radius:50%;
+  font-size:28px;
+  line-height:1
+}
+.dashboard-menu-drawer nav{display:grid;gap:8px}
+.dashboard-menu-drawer nav a{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-height:46px;
+  padding:11px 13px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#f8fafc;
+  color:#1e293b;
+  font-weight:700;
+  text-decoration:none
+}
+body.dashboard-menu-open{overflow:hidden}
+.dashboard-stats .stat{
+  padding:10px 8px;
+  border-radius:13px
+}
+.dashboard-stats .stat-number{font-size:27px;line-height:1.05}
+.dashboard-stats .small{font-size:10px}
+.dashboard-stats .muted{font-size:12px}
+.dashboard-signal-stat{padding:10px 8px;font-size:13px}
+.dashboard-signal-stat img{width:28px;height:28px}
 
 .dashboard-logo {
     width: 78px;
@@ -1811,6 +1914,8 @@ html[data-theme="dark"] body{
 }
 html[data-theme="dark"] .nav a,
 html[data-theme="dark"] .theme-toggle,
+html[data-theme="dark"] .corner-action,
+html[data-theme="dark"] .dashboard-menu-toggle,
 html[data-theme="dark"] .logout-button,
 html[data-theme="dark"] input,
 html[data-theme="dark"] select,
@@ -1891,6 +1996,8 @@ html[data-theme="dark"] .position-chart-grid{stroke:#334155}
 html[data-theme="dark"] .position-chart-axis-label,
 html[data-theme="dark"] .position-chart-cause-label{fill:#cbd5e1}
 html[data-theme="dark"] .footer{color:#94a3b8}
+html[data-theme="dark"] .dashboard-menu-drawer{background:#0f172a;color:var(--ink)}
+html[data-theme="dark"] .dashboard-menu-drawer nav a{background:#1e293b;color:var(--ink);border-color:#334155}
 
 
 /* v1.0.1 desktop-only Live Gameweek score alignment */
@@ -2068,6 +2175,12 @@ html[data-theme="dark"] .tegrity-failure-details .small {
   text-decoration: none;
   white-space: nowrap;
 }
+.news-ticker-headline,
+.news-ticker-headline * {
+  font: inherit !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
+}
 .news-ticker-group a::after {
   content: "\2022";
   display: inline-block;
@@ -2125,6 +2238,12 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
     width: 28px;
     height: 28px;
   }
+  .corner-controls{gap:5px;right:max(8px, env(safe-area-inset-right))}
+  .corner-action,.theme-toggle-corner{width:38px;height:38px}
+  .corner-action svg,.theme-toggle-icon{width:20px;height:20px}
+  .dashboard-menu-toggle{left:max(8px, env(safe-area-inset-left));width:40px;height:40px}
+  .dashboard-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .dashboard-stats .stat:last-child:nth-child(odd){grid-column:auto;width:auto;justify-self:stretch}
 }
 
 .account-preference {
@@ -2144,6 +2263,8 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
 <body>
 
 {% if is_logged_in %}
+<div class="corner-controls">
+{% block corner_actions %}{% endblock %}
 <button class="theme-toggle theme-toggle-corner" id="theme-toggle" type="button"
         aria-pressed="false" aria-label="Switch to dark mode" title="Switch to dark mode">
   <svg class="theme-toggle-icon theme-toggle-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
@@ -2154,6 +2275,7 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
     <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
   </svg>
 </button>
+</div>
 {% endif %}
 
 <div class="container">
