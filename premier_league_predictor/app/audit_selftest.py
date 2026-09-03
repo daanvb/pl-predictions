@@ -150,16 +150,21 @@ import app as predictor
 predictor.app.config["TESTING"] = True
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
+news_now = datetime(2026, 9, 1, 22, 0, tzinfo=timezone.utc)
 news_items = predictor._parse_premier_league_news("""<?xml version="1.0"?>
 <rss><channel>
 <item><title>  Manager &amp; club update  </title><link>https://www.bbc.co.uk/sport/football/articles/example</link><pubDate>Tue, 01 Sep 2026 20:35:00 GMT</pubDate></item>
+<item><title>Stale story</title><link>https://www.bbc.co.uk/sport/football/articles/stale</link><pubDate>Sun, 30 Aug 2026 08:00:00 GMT</pubDate></item>
+<item><title>Undated story</title><link>https://www.bbc.co.uk/sport/football/articles/undated</link></item>
 <item><title>Unsafe story</title><link>https://example.com/not-bbc</link></item>
-</channel></rss>""")
+</channel></rss>""", now=news_now)
 assert news_items == [{
     "title": "Manager & club update",
     "url": "https://www.bbc.co.uk/sport/football/articles/example",
     "published": "Tue 21:35",
+    "published_at": "2026-09-01T20:35:00+00:00",
 }]
+assert predictor._recent_news_headlines(news_items, now=news_now + timedelta(hours=37)) == []
 assert predictor.compact_record_name("Pendragon ⚔️") == "Pendragon"
 assert predictor.gameweek_progress_label([]) == ""
 assert predictor.gameweek_progress_label([
@@ -1830,6 +1835,7 @@ assert "?matchday={{ previous_matchday }}" in live_feed_test_template
 assert "Current GW{{ current_matchday }}" in live_feed_test_template
 assert "Viewing the stored Gameweek {{ matchday }} shadow comparison" in live_feed_test_template
 assert "shadow-update-lag" in live_feed_test_template
+assert '_news_ticker.html' not in live_feed_test_template
 
 assert '_match_stats.html' in predictions_template
 assert 'Live GW{{ matchday }}' not in predictions_template
