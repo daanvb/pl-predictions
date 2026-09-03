@@ -118,6 +118,7 @@ PREMIER_LEAGUE_NEWS_FEED = (
 )
 NEWS_CACHE_SECONDS = 15 * 60
 NEWS_MAX_HEADLINES = 10
+NEWS_MAX_AGE = timedelta(hours=36)
 news_cache = {"headlines": [], "fetched_at": 0.0, "error": None}
 news_cache_lock = threading.Lock()
 
@@ -177,7 +178,9 @@ init_db(seed_default_player=False)
 database_restore_lock = threading.Lock()
 
 
-def _parse_premier_league_news(xml_text):
+def _parse_premier_league_news(xml_text, now=None):
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    oldest_allowed = now - NEWS_MAX_AGE
     headlines = []
     seen_links = set()
     root = ET.fromstring(xml_text)
@@ -193,37 +196,58 @@ def _parse_premier_league_news(xml_text):
             or link in seen_links
         ):
             continue
-        published = ""
-        if published_text:
-            try:
-                published_dt = parsedate_to_datetime(published_text)
-                if published_dt.tzinfo is None:
-                    published_dt = published_dt.replace(tzinfo=timezone.utc)
-                published = published_dt.astimezone(UK).strftime("%a %H:%M")
-            except (TypeError, ValueError, OverflowError):
-                published = ""
+        try:
+            published_dt = parsedate_to_datetime(published_text)
+            if published_dt.tzinfo is None:
+                published_dt = published_dt.replace(tzinfo=timezone.utc)
+            published_dt = published_dt.astimezone(timezone.utc)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if published_dt < oldest_allowed or published_dt > now:
+            continue
         seen_links.add(link)
         headlines.append({
             "title": title,
             "url": link,
-            "published": published,
+            "published": published_dt.astimezone(UK).strftime("%a %H:%M"),
+            "published_at": published_dt.isoformat(),
         })
         if len(headlines) >= NEWS_MAX_HEADLINES:
             break
     return headlines
 
 
+def _recent_news_headlines(headlines, now=None):
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    oldest_allowed = now - NEWS_MAX_AGE
+    recent = []
+    for headline in headlines:
+        try:
+            published_dt = datetime.fromisoformat(headline["published_at"])
+            if published_dt.tzinfo is None:
+                published_dt = published_dt.replace(tzinfo=timezone.utc)
+            published_dt = published_dt.astimezone(timezone.utc)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if oldest_allowed <= published_dt <= now:
+            recent.append(headline)
+    return recent
+
+
 def premier_league_news():
     now = time.monotonic()
     with news_cache_lock:
         if now - news_cache["fetched_at"] < NEWS_CACHE_SECONDS:
-            return dict(news_cache)
+            cached = dict(news_cache)
+            cached["headlines"] = _recent_news_headlines(cached["headlines"])
+            return cached
         if app.config.get("TESTING"):
             return {
                 "headlines": [{
                     "title": "Premier League news ticker test headline",
                     "url": "https://www.bbc.co.uk/sport/football",
                     "published": "Tue 21:35",
+                    "published_at": datetime.now(timezone.utc).isoformat(),
                 }],
                 "fetched_at": now,
                 "error": None,
@@ -232,7 +256,7 @@ def premier_league_news():
             response = requests.get(
                 PREMIER_LEAGUE_NEWS_FEED,
                 timeout=8,
-                headers={"User-Agent": "Preddies/1.2 (+admin news ticker)"},
+                headers={"User-Agent": "Preddies/1.2 (+news ticker)"},
             )
             response.raise_for_status()
             if len(response.content) > 512 * 1024:
@@ -249,7 +273,9 @@ def premier_league_news():
             # Keep the last good headlines if a refresh fails. The diagnostic
             # page must never depend on the availability of an external feed.
             news_cache.update({"fetched_at": now, "error": str(exc)})
-        return dict(news_cache)
+        cached = dict(news_cache)
+        cached["headlines"] = _recent_news_headlines(cached["headlines"])
+        return cached
 
 
 def ensure_first_run_restore_token():
