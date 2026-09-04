@@ -1133,8 +1133,8 @@ body.dashboard-menu-open{overflow:hidden}
 .payment-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 2px;border-bottom:1px solid var(--line)}
 .payment-row label{display:flex;align-items:center;gap:8px;font-weight:700}
 .payment-row input{width:22px;height:22px;accent-color:#16a34a}
-.winner-tabs{display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:3px}
-.winner-tab{display:flex;align-items:center;gap:7px;white-space:nowrap;background:#e8edf5;color:#172033}
+.winner-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.winner-tab{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;padding:9px 5px;background:#e8edf5;color:#172033;font-size:11px;line-height:1.15;text-align:center}
 .winner-tab.is-active{background:var(--accent);color:#fff}
 .winner-panel{display:none}.winner-panel.is-active{display:block}
 html[data-theme="dark"] .competition-icon-h2h{background:#334155;color:#fff}
