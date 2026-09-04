@@ -9,8 +9,8 @@ All notable changes to Preddies are documented here.
 
 ### New
 - Added an admin-managed Treasurer role with payment-only permissions.
-- Added dedicated Champions League and Head-to-Head competition placeholders.
-- Added separate Premier League, Champions League and Head-to-Head sections to Past Winners.
+- Added dedicated Champions League and MCFG Cockfight Cup competition placeholders.
+- Added separate Premier League, Champions League and MCFG Cockfight Cup sections to Past Winners.
 
 ### Changes
 - Renamed League to Premier League and Side Events to Champions League, and added competition-specific menu icons.

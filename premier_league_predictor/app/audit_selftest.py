@@ -1278,7 +1278,7 @@ assert b"TROPiC" in seasons_response.data
 assert b"Strat" in seasons_response.data
 assert b"Percei" in seasons_response.data
 assert b"Champions League" in seasons_response.data
-assert b"Head-to-Head" in seasons_response.data
+assert b"MCFG Cockfight Cup" in seasons_response.data
 assert b"The first Champions League winner will appear here" in seasons_response.data
 old_season_response = client.get("/seasons/2024")
 assert b"league-table and player statistics were not retained" in old_season_response.data
