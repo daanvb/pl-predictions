@@ -5,7 +5,7 @@
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">SEASON ARCHIVE</div>
 <h1>🏆 {{ archive.label }}</h1>
-<p>Champion: <strong><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.svg" alt=""></span> {{ archive.winner_name }}</strong></p>
+<p>Champion: <strong><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> {{ archive.winner_name }}</strong></p>
 </div>
 
 <div class="nav">
@@ -15,7 +15,7 @@
 
 {% if not archive.stats_available %}
 <div class="card">
-<h2><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.svg" alt=""></span> {{ archive.winner_name }}</h2>
+<h2><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> {{ archive.winner_name }}</h2>
 <p>The winner is recorded, but league-table and player statistics were not retained for this season.</p>
 </div>
 {% else %}
