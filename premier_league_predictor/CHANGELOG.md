@@ -2,6 +2,25 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.2.4] - 2026-09-04
+
+### Important
+- Added a £30 entry-payment register. Payment status is visible to the league but can only be changed by the player assigned as Treasurer.
+
+### New
+- Added an admin-managed Treasurer role with payment-only permissions.
+- Added dedicated Champions League and MCFG Cockfight Cup competition placeholders.
+- Added separate Premier League, Champions League and MCFG Cockfight Cup sections to Past Winners.
+
+### Changes
+- Renamed League to Premier League and Side Events to Champions League, and added competition-specific menu icons.
+- Published the £120 prize allocation: £50 Premier League winner, £30 runner-up, and £20 winners for both side competitions.
+
+### Fixes
+
+#### Database
+- Added non-destructive player payment and Treasurer fields plus a future-ready side-competition winners table.
+
 ## [1.2.3] - 2026-09-02
 
 ### Important

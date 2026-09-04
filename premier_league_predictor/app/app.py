@@ -68,7 +68,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -237,7 +237,7 @@ def _recent_news_headlines(headlines, now=None):
 def premier_league_news():
     now = time.monotonic()
     with news_cache_lock:
-        if now - news_cache["fetched_at"] < NEWS_CACHE_SECONDS:
+        if news_cache["fetched_at"] > 0 and now - news_cache["fetched_at"] < NEWS_CACHE_SECONDS:
             cached = dict(news_cache)
             cached["headlines"] = _recent_news_headlines(cached["headlines"])
             return cached
@@ -343,6 +343,17 @@ def clear_failed_logins(key):
 
 def is_admin():
     return bool(session.get("admin"))
+
+
+def is_treasurer():
+    if not logged_in():
+        return False
+    conn = get_db()
+    row = conn.execute(
+        "SELECT treasurer FROM players WHERE id = ?", (session["player_id"],)
+    ).fetchone()
+    conn.close()
+    return bool(row and row["treasurer"])
 
 
 def changelog_seen_key(player_id):
@@ -5129,7 +5140,21 @@ def login():
 def side_events():
     if not logged_in():
         return redirect("/")
+    return redirect("/champions-league")
+
+
+@app.route("/champions-league")
+def champions_league():
+    if not logged_in():
+        return redirect("/")
     return render_template("side_events.html")
+
+
+@app.route("/head-to-head")
+def head_to_head():
+    if not logged_in():
+        return redirect("/")
+    return render_template("head_to_head.html")
 
 
 @app.route("/tegrity")
@@ -5676,9 +5701,33 @@ def prize_structure():
     if not logged_in():
         return redirect("/")
 
+    conn = get_db()
+    fee_players = conn.execute(
+        "SELECT id, name, entry_fee_paid FROM players ORDER BY name COLLATE NOCASE"
+    ).fetchall()
+    conn.close()
     return render_template(
-        "prize_structure.html"
+        "prize_structure.html",
+        fee_players=fee_players,
+        pot_total=len(fee_players) * 30,
+        paid_total=sum(30 for player in fee_players if player["entry_fee_paid"]),
+        can_manage_payments=is_treasurer(),
     )
+
+
+@app.route("/prize-structure/payment/<int:player_id>", methods=["POST"])
+def update_prize_payment(player_id):
+    if not is_treasurer():
+        return redirect("/")
+    paid = 1 if request.form.get("paid") == "1" else 0
+    conn = get_db()
+    player = conn.execute("SELECT name FROM players WHERE id = ?", (player_id,)).fetchone()
+    if player:
+        conn.execute("UPDATE players SET entry_fee_paid = ? WHERE id = ?", (paid, player_id))
+        conn.commit()
+        flash(f"{player['name']} marked as {'paid' if paid else 'not paid'}.", "success")
+    conn.close()
+    return redirect("/prize-structure")
 
 
 @app.route("/rules")
@@ -5704,6 +5753,11 @@ def historical_seasons():
         ORDER BY season DESC
         """
     ).fetchall()
+    side_winners = conn.execute(
+        """SELECT competition, season_label, winner_name
+           FROM competition_winners
+           ORDER BY id DESC"""
+    ).fetchall()
     title_rows = conn.execute(
         """
         SELECT winner_name, COUNT(*) AS titles
@@ -5724,6 +5778,8 @@ def historical_seasons():
         archives=archives,
         most_titles=most_titles,
         title_record=title_record,
+        champions_league_winners=[row for row in side_winners if row["competition"] == "champions_league"],
+        head_to_head_winners=[row for row in side_winners if row["competition"] == "head_to_head"],
     )
 
 
@@ -8153,7 +8209,9 @@ def players():
         SELECT
             id,
             name,
-            admin
+            email,
+            admin,
+            treasurer
         FROM players
         ORDER BY name
         """
@@ -8271,7 +8329,7 @@ def edit_player(player_id):
 
     player = conn.execute(
         """
-        SELECT id, name, email, admin
+        SELECT id, name, email, admin, treasurer
         FROM players
         WHERE id = ?
         """,
@@ -8305,6 +8363,7 @@ def edit_player(player_id):
             if request.form.get("admin") == "1"
             else 0
         )
+        treasurer_value = 1 if request.form.get("treasurer") == "1" else 0
 
         if len(name) < 2 or len(name) > 30:
             conn.close()
@@ -8370,6 +8429,9 @@ def edit_player(player_id):
                 f"/admin/players/edit/{player_id}"
             )
 
+        if treasurer_value:
+            conn.execute("UPDATE players SET treasurer = 0")
+
         if pin:
             conn.execute(
                 """
@@ -8378,7 +8440,8 @@ def edit_player(player_id):
                     name = ?,
                     email = ?,
                     pin_hash = ?,
-                    admin = ?
+                    admin = ?,
+                    treasurer = ?
                 WHERE id = ?
                 """,
                 (
@@ -8386,6 +8449,7 @@ def edit_player(player_id):
                     email,
                     hash_pin(pin),
                     admin_value,
+                    treasurer_value,
                     player_id
                 )
             )
@@ -8396,13 +8460,15 @@ def edit_player(player_id):
                 SET
                     name = ?,
                     email = ?,
-                    admin = ?
+                    admin = ?,
+                    treasurer = ?
                 WHERE id = ?
                 """,
                 (
                     name,
                     email,
                     admin_value,
+                    treasurer_value,
                     player_id
                 )
             )

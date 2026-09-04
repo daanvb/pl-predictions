@@ -44,6 +44,8 @@ assert "incidents_json" in {r["name"] for r in conn.execute("PRAGMA table_info(f
 assert "live_data_source" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "login_name" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
 assert "email" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
+assert "entry_fee_paid" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
+assert "treasurer" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' "
     "AND name='live_position_snapshots'"
@@ -57,6 +59,9 @@ assert conn.execute(
 ).fetchone() is not None
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='season_archive_players'"
+).fetchone() is not None
+assert conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='competition_winners'"
 ).fetchone() is not None
 seeded_champions = {
     row["label"]: row["winner_name"]
@@ -148,6 +153,7 @@ conn.close()
 # Import the real Flask app after redirecting its database module.
 import app as predictor
 predictor.app.config["TESTING"] = True
+assert predictor.news_cache["fetched_at"] == 0.0
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
 news_now = datetime(2026, 9, 1, 22, 0, tzinfo=timezone.utc)
@@ -1129,7 +1135,9 @@ conn.close()
 
 for route in [
     "/dashboard",
-    "/side-events",
+    "/champions-league",
+    "/head-to-head",
+    "/prize-structure",
     "/tegrity",
     "/rules",
     "/stats",
@@ -1142,6 +1150,34 @@ for route in [
 ]:
     response = client.get(route)
     assert response.status_code == 200, (route, response.status_code)
+
+assert client.get("/side-events").status_code == 302
+
+# Only the assigned treasurer can change the shared payment register. Admin
+# status by itself is deliberately insufficient.
+conn = database.get_db()
+payment_player = conn.execute("SELECT id FROM players ORDER BY id LIMIT 1").fetchone()
+conn.execute("UPDATE players SET treasurer = 0, entry_fee_paid = 0")
+conn.commit()
+conn.close()
+admin_payment_attempt = client.post(
+    f"/prize-structure/payment/{payment_player['id']}", data={"paid": "1"}
+)
+assert admin_payment_attempt.status_code == 302 and admin_payment_attempt.headers["Location"].endswith("/")
+conn = database.get_db()
+assert conn.execute("SELECT entry_fee_paid FROM players WHERE id = ?", (payment_player["id"],)).fetchone()[0] == 0
+conn.execute("UPDATE players SET treasurer = 1 WHERE id = ?", (admin["id"],))
+conn.commit()
+conn.close()
+treasurer_payment = client.post(
+    f"/prize-structure/payment/{payment_player['id']}", data={"paid": "1"}
+)
+assert treasurer_payment.status_code == 302 and treasurer_payment.headers["Location"].endswith("/prize-structure")
+conn = database.get_db()
+assert conn.execute("SELECT entry_fee_paid FROM players WHERE id = ?", (payment_player["id"],)).fetchone()[0] == 1
+conn.execute("UPDATE players SET treasurer = 0, entry_fee_paid = 0")
+conn.commit()
+conn.close()
 
 tegrity_response = client.get("/tegrity")
 assert b"Tegridy" in tegrity_response.data
@@ -1241,6 +1277,9 @@ assert b"Fontz" in seasons_response.data
 assert b"TROPiC" in seasons_response.data
 assert b"Strat" in seasons_response.data
 assert b"Percei" in seasons_response.data
+assert b"Champions League" in seasons_response.data
+assert b"MCFG Cockfight Cup" in seasons_response.data
+assert b"The first Champions League winner will appear here" in seasons_response.data
 old_season_response = client.get("/seasons/2024")
 assert b"league-table and player statistics were not retained" in old_season_response.data
 
@@ -1995,8 +2034,9 @@ assert 'html[data-theme="dark"]' in base_template
 assert "prefers-color-scheme: dark" in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template
-assert 'href="/side-events"' in dashboard_template
-assert dashboard_template.index('href="/leaderboard"') < dashboard_template.index('href="/side-events"') < dashboard_template.index('href="/stats"')
+assert 'href="/champions-league"' in dashboard_template
+assert 'href="/head-to-head"' in dashboard_template
+assert dashboard_template.index('href="/leaderboard"') < dashboard_template.index('href="/champions-league"') < dashboard_template.index('href="/head-to-head"') < dashboard_template.index('href="/stats"')
 assert 'id="dashboard-menu-toggle"' in dashboard_template
 assert 'id="dashboard-menu"' in dashboard_template
 assert 'class="corner-action" href="/account"' in dashboard_template

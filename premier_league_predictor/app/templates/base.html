@@ -1125,6 +1125,23 @@ html[data-theme="dark"] .tv-logo-dark {
   text-decoration:none
 }
 body.dashboard-menu-open{overflow:hidden}
+.competition-icon{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:900;line-height:1;vertical-align:middle;flex:0 0 24px}
+.competition-icon-pl,.competition-icon-cl,.competition-icon-h2h{background:transparent;color:inherit}
+.competition-icon img{display:block;width:24px;height:24px;object-fit:contain}
+.competition-icon-pl img{transform:scaleX(.9)}
+.competition-icon-cl img{transform:scale(1.12)}
+.competition-icon-h2h img{transform:scale(.9) scaleX(.66)}
+.payment-list{display:grid;margin-top:14px;border-top:1px solid var(--line)}
+.payment-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 2px;border-bottom:1px solid var(--line)}
+.payment-row label{display:flex;align-items:center;gap:8px;font-weight:700}
+.payment-row input{width:22px;height:22px;accent-color:#16a34a}
+.winner-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.winner-tab{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;padding:9px 5px;background:#e8edf5;color:#172033;font-size:11px;line-height:1.15;text-align:center}
+.winner-tab.is-active{background:var(--accent);color:#fff}
+.winner-panel{display:none}.winner-panel.is-active{display:block}
+html[data-theme="dark"] .competition-icon-h2h{background:transparent;color:#fff}
+html[data-theme="dark"] .winner-tab{background:#1e293b;color:#e5edf8}
+html[data-theme="dark"] .winner-tab.is-active{background:var(--accent);color:#fff}
 .dashboard-stats .stat{
   padding:10px 8px;
   border-radius:13px

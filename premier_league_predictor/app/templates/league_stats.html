@@ -3,7 +3,7 @@
 {% block content %}
 <div class="compact-page stats-page">
 <div class="hero"><h1>🏅 League Stats</h1><p>Overall records across the league.</p></div>
-<div class="nav"><a href="/leaderboard">← League</a><a href="/stats">📈 Your Stats</a></div>
+<div class="nav"><a href="/leaderboard">← Premier League</a><a href="/stats">📈 Your Stats</a></div>
 <div class="card"><div class="grid">
 {% set records = [('CURRENT LEADER', top_scorers, leader_value, ' pts'), ('MOST CORRECT DRAWS', most_exact_draws, exact_draw_value, ''), ('MOST CORRECT SCORES', most_exact_scores, exact_score_value, ''), ('MOST CORRECT WINNERS', most_correct_results, correct_result_value, ''), ('MOST CORRECT SCORES WITH DP', most_dp_exact_scores, dp_exact_score_value, '')] %}
 {% for label, players, value, suffix in records %}
