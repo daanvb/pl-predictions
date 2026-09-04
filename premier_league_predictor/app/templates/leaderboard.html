@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_player_badges.html" import display_player_name with context %}
 {% block title %}Season Leaderboard{% endblock %}
 {% block content %}
 
@@ -62,7 +63,7 @@
 </div>
 
 <div class="league-player" role="cell">
-<strong>{{ player.name }}</strong>
+<strong>{{ display_player_name(player.name) }}</strong>
 <div class="league-mobile-details">Correct Draws {{ player.exact_draws }} · Correct Scores {{ player.exact_scores }} · Correct Winners {{ player.correct_results }}</div>
 </div>
 

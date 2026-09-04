@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_player_badges.html" import display_player_name with context %}
 {% block title %}Players{% endblock %}
 {% block content %}
 
@@ -28,7 +29,7 @@
 <tr>
 
 <td>
-<strong>{{ player.name }}</strong>
+<strong>{{ display_player_name(player.name) }}</strong>
 {% if player.id == session.player_id %}
 <span class="small"> · You</span>
 {% endif %}

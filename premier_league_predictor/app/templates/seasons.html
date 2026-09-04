@@ -22,7 +22,7 @@
 <section class="winner-panel is-active" data-winner-panel="premier">
 
 <div class="card">
-<h2>🏆 Most League Wins</h2>
+<h2>Most League Wins</h2>
 <div class="past-winners-record">
 {% for player in most_titles %}
 <span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> {{ player.winner_name }}{% if not loop.last %}<br>{% endif %}

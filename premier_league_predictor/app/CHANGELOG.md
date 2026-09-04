@@ -2,6 +2,24 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.2.5] - 2026-09-04
+
+### Important
+- Added the agreed formats and rules for both upcoming side competitions.
+
+### New
+- Published the agreed MCFG Cockfight Cup format, schedule, match points, tie-breaks and Gameweek 38 final rules.
+- Published the Champions League prediction format and scoring rules for knockout-stage fixtures through to the final.
+
+### Changes
+- Added the reigning Premier League champion trophy beside the winner's name throughout ordinary player views, while keeping live graphs and statistics uncluttered.
+- Improved the size and proportions of competition trophies in page headings and removed the generic gold trophy from Most League Wins.
+
+### Fixes
+
+#### UI
+- Corrected the MCFG Cockfight Cup trophy proportions and made page-heading trophies easier to see.
+
 ## [1.2.4] - 2026-09-04
 
 ### Important
