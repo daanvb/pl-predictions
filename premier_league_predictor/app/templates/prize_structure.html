@@ -60,7 +60,7 @@ background:linear-gradient(90deg,rgba(15,23,42,1) 0%,rgba(15,23,42,.88) 58%,rgba
 PREDDIES
 </div>
 <h1>💷 Prize Structure</h1>
-<p>Prize details will be added here soon.</p>
+<p>£30 entry per player. Every pound goes back into the competitions.</p>
 </div>
 <img
 class="prize-hero-image"
@@ -71,9 +71,32 @@ aria-hidden="true"
 </div>
 
 <div class="card">
-<p class="muted" style="margin:0">
-Full prize structure to follow.
-</p>
+<h2>🏅 Prize fund</h2>
+<div class="grid prize-grid">
+<div class="stat"><div class="small">PREMIER LEAGUE WINNER</div><div class="stat-number">£50</div></div>
+<div class="stat"><div class="small">PREMIER LEAGUE RUNNER-UP</div><div class="stat-number">£30</div></div>
+<div class="stat"><div class="small">CHAMPIONS LEAGUE WINNER</div><div class="stat-number">£20</div></div>
+<div class="stat"><div class="small">HEAD-TO-HEAD WINNER</div><div class="stat-number">£20</div></div>
+</div>
+<p class="muted" style="margin-bottom:0">Current pot: <strong>£{{ pot_total }}</strong> · Prize allocation: <strong>£120</strong></p>
+</div>
+
+<div class="card">
+<div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap">
+<div><h2 style="margin-bottom:4px">💷 Entry payments</h2><p class="muted" style="margin:0">£{{ paid_total }} of £{{ pot_total }} collected</p></div>
+{% if can_manage_payments %}<span class="small">Tick a player when their £30 has been received.</span>{% endif %}
+</div>
+<div class="payment-list">
+{% for player in fee_players %}
+<form method="POST" action="/prize-structure/payment/{{ player.id }}" class="payment-row">
+<strong>{{ player.name }}</strong>
+<label>
+<input type="checkbox" name="paid" value="1"{% if player.entry_fee_paid %} checked{% endif %}{% if can_manage_payments %} onchange="this.form.submit()"{% else %} disabled{% endif %}>
+<span>{{ 'Paid' if player.entry_fee_paid else 'Not paid' }}</span>
+</label>
+</form>
+{% else %}<p class="muted">No players have joined yet.</p>{% endfor %}
+</div>
 </div>
 
 <div class="nav">

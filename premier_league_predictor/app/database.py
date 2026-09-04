@@ -84,6 +84,12 @@ def init_db(seed_default_player=True):
     _add_column_if_missing(
         conn, "players", "hide_news_ticker", "INTEGER NOT NULL DEFAULT 0"
     )
+    _add_column_if_missing(
+        conn, "players", "entry_fee_paid", "INTEGER NOT NULL DEFAULT 0"
+    )
+    _add_column_if_missing(
+        conn, "players", "treasurer", "INTEGER NOT NULL DEFAULT 0"
+    )
     conn.execute(
         "UPDATE players SET login_name = name WHERE login_name IS NULL OR TRIM(login_name) = ''"
     )
@@ -362,6 +368,16 @@ def init_db(seed_default_player=True):
             dp_exact_scores INTEGER DEFAULT 0,
             PRIMARY KEY (season, position),
             FOREIGN KEY(season) REFERENCES season_archives(season)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS competition_winners (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            competition TEXT NOT NULL,
+            season_label TEXT NOT NULL,
+            winner_name TEXT NOT NULL,
+            UNIQUE(competition, season_label)
         )
     """)
 

@@ -75,6 +75,14 @@ You cannot remove your own administrator access.
 
 </div>
 
+<div style="margin:18px 0">
+<label style="display:flex;gap:10px;align-items:center;font-weight:800">
+<input type="checkbox" name="treasurer" value="1" style="width:auto"{% if player.treasurer %} checked{% endif %}>
+Treasurer
+</label>
+<p class="small">The treasurer can update entry-payment status but receives no other administrator access. Assigning this role replaces the current treasurer.</p>
+</div>
+
 <button class="primary" type="submit">
 💾 Save Changes
 </button>

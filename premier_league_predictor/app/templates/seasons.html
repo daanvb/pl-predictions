@@ -13,11 +13,19 @@
 <a href="/dashboard">← Dashboard</a>
 </div>
 
+<div class="winner-tabs" role="tablist" aria-label="Past winners by competition">
+<button type="button" class="winner-tab is-active" data-winner-tab="premier"><span class="competition-icon competition-icon-pl">PL</span> Premier League</button>
+<button type="button" class="winner-tab" data-winner-tab="champions"><span class="competition-icon competition-icon-cl">✦</span> Champions League</button>
+<button type="button" class="winner-tab" data-winner-tab="head-to-head"><span class="competition-icon competition-icon-h2h">🏆</span> Head-to-Head</button>
+</div>
+
+<section class="winner-panel is-active" data-winner-panel="premier">
+
 <div class="card">
 <h2>🏆 Most League Wins</h2>
 <div class="past-winners-record">
 {% for player in most_titles %}
-{{ player.winner_name }}{% if not loop.last %}<br>{% endif %}
+<span class="competition-icon competition-icon-pl">PL</span> {{ player.winner_name }}{% if not loop.last %}<br>{% endif %}
 {% else %}—{% endfor %}
 </div>
 <div class="muted">{{ title_record }} title{% if title_record != 1 %}s{% endif %}{% if most_titles|length > 1 %} · tied{% endif %}</div>
@@ -27,7 +35,7 @@
 <div class="card season-winner-row">
 <div>
 <div class="small">{{ season.label }} CHAMPION</div>
-<div class="season-winner-name">👑 {{ season.winner_name }}</div>
+<div class="season-winner-name"><span class="competition-icon competition-icon-pl">PL</span> {{ season.winner_name }}</div>
 {% if not season.stats_available %}
 <div class="muted">Winner recorded · detailed statistics unavailable</div>
 {% endif %}
@@ -39,6 +47,27 @@
 {% else %}
 <div class="card"><p class="muted">No historical winners recorded yet.</p></div>
 {% endfor %}
+
+</section>
+
+<section class="winner-panel" data-winner-panel="champions">
+{% for winner in champions_league_winners %}
+<div class="card season-winner-row"><div><div class="small">{{ winner.season_label }} CHAMPION</div><div class="season-winner-name"><span class="competition-icon competition-icon-cl">✦</span> {{ winner.winner_name }}</div></div></div>
+{% else %}<div class="card"><p class="muted">The first Champions League winner will appear here.</p></div>{% endfor %}
+</section>
+
+<section class="winner-panel" data-winner-panel="head-to-head">
+{% for winner in head_to_head_winners %}
+<div class="card season-winner-row"><div><div class="small">{{ winner.season_label }} CHAMPION</div><div class="season-winner-name"><span class="competition-icon competition-icon-h2h">🏆</span> {{ winner.winner_name }}</div></div></div>
+{% else %}<div class="card"><p class="muted">The first Head-to-Head winner will appear here.</p></div>{% endfor %}
+</section>
+
+<script>
+document.querySelectorAll('[data-winner-tab]').forEach(button => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-winner-tab]').forEach(tab => tab.classList.toggle('is-active', tab === button));
+  document.querySelectorAll('[data-winner-panel]').forEach(panel => panel.classList.toggle('is-active', panel.dataset.winnerPanel === button.dataset.winnerTab));
+}));
+</script>
 
 </div>
 
