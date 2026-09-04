@@ -68,7 +68,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.2.4"
+APP_VERSION = "1.2.5"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -4991,6 +4991,22 @@ def signal_notification_worker():
 
 @app.context_processor
 def inject_globals():
+    reigning_premier_league_champion = None
+    conn = None
+    try:
+        conn = get_db()
+        row = conn.execute(
+            "SELECT winner_name FROM season_archives ORDER BY season DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            reigning_premier_league_champion = row["winner_name"]
+    except sqlite3.Error:
+        # First-run pages can render before the archive tables are available.
+        reigning_premier_league_champion = None
+    finally:
+        if conn is not None:
+            conn.close()
+
     return {
         "local_datetime": local_datetime,
         "kickoff_passed": kickoff_passed,
@@ -5005,6 +5021,7 @@ def inject_globals():
         "team_badge_url": team_badge_url,
         "compact_record_name": compact_record_name,
         "is_logged_in": logged_in(),
+        "reigning_premier_league_champion": reigning_premier_league_champion,
     }
 
 

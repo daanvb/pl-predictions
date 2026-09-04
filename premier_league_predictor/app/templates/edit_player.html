@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_player_badges.html" import display_player_name with context %}
 {% block title %}Edit Player{% endblock %}
 {% block content %}
 
@@ -6,7 +7,7 @@
 <div style="font-size:14px;font-weight:800;color:#94a3b8">
 PLAYER ADMIN
 </div>
-<h1>✏️ Edit {{ player.name }}</h1>
+<h1>✏️ Edit {{ display_player_name(player.name) }}</h1>
 <p>Change their email, display name, PIN or role.</p>
 </div>
 

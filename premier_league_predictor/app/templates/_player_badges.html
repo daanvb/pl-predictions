@@ -1,0 +1,3 @@
+{% macro display_player_name(player_name) -%}
+{% if reigning_premier_league_champion and player_name|string|lower == reigning_premier_league_champion|string|lower %}<span class="competition-icon competition-icon-pl player-title-icon" title="Reigning Premier League champion" aria-label="Reigning Premier League champion"><img src="/static/premier-league-trophy.png" alt=""></span> {% endif %}{{ player_name }}
+{%- endmacro %}

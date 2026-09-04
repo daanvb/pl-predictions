@@ -7,8 +7,49 @@
 </div>
 <div class="nav"><a href="/dashboard">← Dashboard</a></div>
 <div class="card" style="text-align:center;padding:34px 24px">
-<img src="/static/fa-cup-trophy.png" alt="MCFG Cockfight Cup trophy" style="width:64px;height:64px;object-fit:contain;transform:scale(.9) scaleX(.66);margin-bottom:12px">
-<h2>The MCFG Cockfight Cup is on the way</h2>
-<p class="muted" style="margin-bottom:0">Fixtures, matchups and league standings will appear here.</p>
+<img src="/static/fa-cup-trophy.png" alt="MCFG Cockfight Cup trophy" style="width:64px;height:64px;object-fit:contain;transform:scale(.9) scaleX(.76);margin-bottom:12px">
+<h2>The rules are set</h2>
+<p class="muted" style="margin-bottom:0">Fixtures, results and the league table will appear here when the competition launches.</p>
+</div>
+
+<div class="card">
+<h2>⚔️ Competition format</h2>
+<p>Every player faces every other player twice: once at home and once away. Home and away determine the fixture order only and do not provide a scoring advantage.</p>
+<p style="margin-bottom:0">Each fixture compares the players' complete Premier League prediction score for that gameweek, including Double Points.</p>
+</div>
+
+<div class="card">
+<h2>📅 Schedule</h2>
+<div class="grid">
+<div class="stat"><div class="small">LEAGUE STAGE</div><div class="stat-number" style="font-size:24px">GW32–37</div><div class="muted">With four players</div></div>
+<div class="stat"><div class="small">FINAL</div><div class="stat-number" style="font-size:24px">GW38</div><div class="muted">1st plays 2nd</div></div>
+</div>
+<p class="muted" style="margin-bottom:0">The final is fixed to the last gameweek. League matchups are scheduled backwards from GW38; the starting gameweek will adjust if the number of players changes.</p>
+</div>
+
+<div class="card">
+<h2>🏁 Match points</h2>
+<div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+<div class="stat"><div class="small">WIN</div><div class="stat-number">3</div><div class="muted">points</div></div>
+<div class="stat"><div class="small">DRAW</div><div class="stat-number">1</div><div class="muted">point</div></div>
+<div class="stat"><div class="small">DEFEAT</div><div class="stat-number">0</div><div class="muted">points</div></div>
+</div>
+</div>
+
+<div class="card">
+<h2>📊 League tie-breaks</h2>
+<ol style="margin-bottom:0;padding-left:24px">
+<li>Cockfight Cup league points</li>
+<li>Head-to-head points</li>
+<li>Head-to-head gameweek score difference</li>
+<li>Total gameweek points across the competition</li>
+<li>Current Premier League position</li>
+</ol>
+</div>
+
+<div class="card">
+<h2>🏆 The final</h2>
+<p>The top two players after the league stage meet in Gameweek 38. The higher Gameweek 38 prediction score wins the MCFG Cockfight Cup and the £20 prize.</p>
+<p class="muted" style="margin-bottom:0">If the final scores are level, the player who finished higher in the Cockfight Cup league wins.</p>
 </div>
 {% endblock %}

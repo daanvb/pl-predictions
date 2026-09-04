@@ -987,6 +987,19 @@ normalized_stored_shadow = bigballs_api.normalize_match({
 })
 assert normalized_stored_shadow["home"] == "Leeds United"
 assert normalized_stored_shadow["home_score"] == 1
+assert bigballs_api._match_list({"matches": [
+    {"id": "wrapped-match"}, "unexpected-string-row",
+]}) == [{"id": "wrapped-match"}]
+assert bigballs_api._meta({"meta": "official-league"}) == {
+    "source": "official-league"
+}
+field_result_events = bigballs_api._event_list({
+    "events": {
+        "value": [{"type": "goal", "player": {"name": "Wrapped Scorer"}}],
+        "source": "official-league",
+    }
+})
+assert field_result_events[0]["player"]["name"] == "Wrapped Scorer"
 original_bigballs_request = bigballs_api._request
 try:
     def stored_event_request(key, path, params=None, timeout=20):
@@ -999,6 +1012,25 @@ try:
     stored_events, stored_meta = bigballs_api.get_match_events("key", "match-id")
     assert stored_events[0]["player"]["name"] == "Stored Scorer"
     assert stored_meta["source"] == "stored"
+finally:
+    bigballs_api._request = original_bigballs_request
+
+try:
+    def field_result_event_request(key, path, params=None, timeout=20):
+        if path.endswith("/events"):
+            return {"data": [], "meta": "official-league"}
+        return {"data": {"events": {
+            "value": [{
+                "type": "goal", "player": {"name": "Fallback Scorer"},
+            }],
+            "source": "official-league", "via": "api",
+        }}, "meta": {"source": "official-league"}}
+    bigballs_api._request = field_result_event_request
+    fallback_events, fallback_meta = bigballs_api.get_match_events(
+        "key", "match-id"
+    )
+    assert fallback_events[0]["player"]["name"] == "Fallback Scorer"
+    assert fallback_meta["source"] == "official-league"
 finally:
     bigballs_api._request = original_bigballs_request
 
@@ -2034,8 +2066,33 @@ assert 'html[data-theme="dark"]' in base_template
 assert "prefers-color-scheme: dark" in base_template
 assert 'class="save-label-short">Save</span>' in predictions_template
 assert 'class="dashboard-logo"' in dashboard_template
+assert 'display_player_name(session.player_name)' in dashboard_template
+assert 'display_player_name(player.name)' in leaderboard_template
+assert 'reigning_premier_league_champion' in inspect.getsource(predictor.inject_globals)
+assert 'display_player_name' not in gameweek_template
+assert 'display_player_name' not in league_stats_template
 assert 'href="/champions-league"' in dashboard_template
 assert 'href="/head-to-head"' in dashboard_template
+with open(
+    os.path.join(templates_dir, "head_to_head.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    head_to_head_template = handle.read()
+assert "GW32–37" in head_to_head_template
+assert "Gameweek 38" in head_to_head_template
+assert "Head-to-head gameweek score difference" in head_to_head_template
+assert "player who finished higher in the Cockfight Cup league wins" in head_to_head_template
+with open(
+    os.path.join(templates_dir, "side_events.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    champions_league_template = handle.read()
+assert "same prediction-league format as the Premier League" in champions_league_template
+assert "begin with the Champions League knockout stage" in champions_league_template
+assert "one Double Points fixture" in champions_league_template
+assert "wins the competition and the £20 prize" in champions_league_template
 assert dashboard_template.index('href="/leaderboard"') < dashboard_template.index('href="/champions-league"') < dashboard_template.index('href="/head-to-head"') < dashboard_template.index('href="/stats"')
 assert 'id="dashboard-menu-toggle"' in dashboard_template
 assert 'id="dashboard-menu"' in dashboard_template

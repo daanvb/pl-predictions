@@ -35,7 +35,16 @@ def _request(api_key, path, params=None, timeout=20):
         raise BigBallsAPIError(
             f"Big Balls Sports Data returned HTTP {response.status_code}."
         )
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise BigBallsAPIError(
+            "Big Balls Sports Data returned an invalid JSON response."
+        ) from exc
+    if not isinstance(payload, dict):
+        raise BigBallsAPIError(
+            "Big Balls Sports Data returned an unexpected response format."
+        )
     if payload.get("error"):
         raise BigBallsAPIError(str(payload["error"]))
     return payload
@@ -51,7 +60,7 @@ def get_premier_league_matches(api_key, limit=200):
         "/matches",
         params={"sport": "football", "league": "epl", "limit": limit},
     )
-    return payload.get("data") or [], payload.get("meta") or {}
+    return _match_list(payload.get("data")), _meta(payload)
 
 
 def get_stored_premier_league_matches(api_key, dates, limit=200):
@@ -69,9 +78,7 @@ def get_stored_premier_league_matches(api_key, dates, limit=200):
                 "limit": limit,
             },
         )
-        data = payload.get("data") or []
-        if isinstance(data, dict):
-            data = data.get("matches") or data.get("items") or []
+        data = _match_list(payload.get("data"))
         for match in data if isinstance(data, list) else []:
             match_id = match.get("id") if isinstance(match, dict) else None
             if match_id and match_id in seen:
@@ -79,7 +86,7 @@ def get_stored_premier_league_matches(api_key, dates, limit=200):
             if match_id:
                 seen.add(match_id)
             matches.append(match)
-        meta = payload.get("meta") or meta
+        meta = _meta(payload) or meta
     return matches, meta
 
 
@@ -96,7 +103,7 @@ def get_match_events(api_key, match_id):
         payload = {}
     data = _event_list(payload.get("data"))
     if isinstance(data, list) and data:
-        return data, payload.get("meta") or {}
+        return data, _meta(payload)
 
     # During a live match the multi-field detail envelope can contain events
     # even when the dedicated event collection has not been populated yet.
@@ -108,7 +115,7 @@ def get_match_events(api_key, match_id):
         )
         live_events = _event_list(live_payload.get("data"))
         if live_events:
-            return live_events, live_payload.get("meta") or {}
+            return live_events, _meta(live_payload)
     except BigBallsAPIError:
         pass
 
@@ -122,20 +129,49 @@ def get_match_events(api_key, match_id):
             stored = stored["match"]
         stored_events = _event_list(stored)
         if isinstance(stored_events, list):
-            return stored_events, stored_payload.get("meta") or {}
+            return stored_events, _meta(stored_payload)
     except BigBallsAPIError:
         if event_error:
             raise event_error
-    return [], payload.get("meta") or {}
+    return [], _meta(payload)
+
+
+def _meta(payload):
+    """Keep provider metadata safe even if an upstream emits a bare source."""
+    meta = payload.get("meta") if isinstance(payload, dict) else None
+    if isinstance(meta, dict):
+        return meta
+    if isinstance(meta, str) and meta.strip():
+        return {"source": meta.strip()}
+    return {}
+
+
+def _match_list(value):
+    """Accept both the documented array and occasional list envelopes."""
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        for key in ("matches", "items", "results"):
+            nested = value.get(key)
+            if isinstance(nested, list):
+                return [item for item in nested if isinstance(item, dict)]
+    return []
 
 
 def _event_list(value):
     """Accept the live and archived event container shapes used by the API."""
     if isinstance(value, list):
-        return value
+        return [
+            item if isinstance(item, dict) else {"description": str(item)}
+            for item in value
+            if isinstance(item, (dict, str))
+        ]
     if not isinstance(value, dict):
         return []
-    for key in ("events", "incidents", "timeline", "match_events", "plays", "items"):
+    for key in (
+        "events", "incidents", "timeline", "match_events", "plays", "items",
+        "value", "data",
+    ):
         nested = value.get(key)
         if isinstance(nested, list):
             return nested
