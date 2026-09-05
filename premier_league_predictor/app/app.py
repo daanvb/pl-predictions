@@ -100,6 +100,7 @@ FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
 MIN_REFRESH_SLEEP_SECONDS = 60
+FOOTBALL_DATA_RATE_LIMIT_COOLDOWN_SECONDS = 5 * 60
 
 LOGIN_ATTEMPT_WINDOW_SECONDS = 10 * 60
 LOGIN_ATTEMPT_LIMIT = 5
@@ -4224,6 +4225,24 @@ def live_window_active():
 
 
 
+def football_data_rate_limit_active():
+    """Avoid retrying football-data.org while it is actively rate limiting."""
+    limited_at = parse_utc(get_setting("football_data_rate_limited_at"))
+    return bool(
+        limited_at
+        and (now_utc() - limited_at).total_seconds()
+        < FOOTBALL_DATA_RATE_LIMIT_COOLDOWN_SECONDS
+    )
+
+
+def record_football_data_error(error):
+    message = str(error)
+    set_setting("last_api_error", message)
+    set_setting("last_api_error_at", now_utc().isoformat())
+    if "rate limit" in message.casefold():
+        set_setting("football_data_rate_limited_at", now_utc().isoformat())
+
+
 def api_refresh_worker():
     time.sleep(20)
 
@@ -4253,8 +4272,9 @@ def api_refresh_worker():
 
     while True:
         try:
-            if get_setting(
-                "football_api_token"
+            if (
+                get_setting("football_api_token")
+                and not football_data_rate_limit_active()
             ):
                 imported = import_matches_from_api()
 
@@ -4293,15 +4313,7 @@ def api_refresh_worker():
                     )
 
         except Exception as e:
-            set_setting(
-                "last_api_error",
-                str(e)
-            )
-
-            set_setting(
-                "last_api_error_at",
-                now_utc().isoformat()
-            )
+            record_football_data_error(e)
 
             print(
                 f"[auto-refresh] {e}",
@@ -5788,6 +5800,9 @@ def champions_league():
 def import_champions_league_fixtures():
     if not is_admin():
         return redirect("/")
+    if football_data_rate_limit_active():
+        flash("football-data.org is temporarily rate limiting requests. Please try again shortly.", "error")
+        return redirect("/champions-league")
     try:
         imported = import_champions_league_matches()
         live_updated = import_champions_league_live_from_sportscore()
@@ -5796,6 +5811,8 @@ def import_champions_league_fixtures():
             f"{live_updated} checked for live data.", "success"
         )
     except (FootballAPIError, SportScoreError) as exc:
+        if isinstance(exc, FootballAPIError):
+            record_football_data_error(exc)
         flash(str(exc), "error")
     return redirect("/champions-league")
 
@@ -9358,6 +9375,7 @@ def test_api():
         )
 
     except FootballAPIError as e:
+        record_football_data_error(e)
         flash(
             str(e),
             "error"
@@ -9489,6 +9507,10 @@ def import_fixtures():
             "/admin/settings"
         )
 
+    if football_data_rate_limit_active():
+        flash("football-data.org is temporarily rate limiting requests. Please try again shortly.", "error")
+        return redirect("/admin/fixtures")
+
     try:
         imported = import_matches_from_api()
 
@@ -9499,6 +9521,7 @@ def import_fixtures():
         )
 
     except FootballAPIError as e:
+        record_football_data_error(e)
         flash(
             str(e),
             "error"
