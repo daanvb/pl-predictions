@@ -2425,6 +2425,27 @@ finally:
     predictor.set_setting("api_football_key", "")
 conn = database.get_db()
 assert conn.execute("SELECT minute FROM fixtures WHERE id = 99007").fetchone()[0] == 6
+conn.execute(
+    "UPDATE fixtures SET status = 'IN_PLAY', minute = 45 WHERE id = 99007"
+)
+conn.commit()
+conn.close()
+predictor.get_api_football_live_fixtures = lambda key: [{
+    "fixture": {"id": 456789, "date": api_fallback_kickoff,
+                "status": {"short": "HT", "elapsed": 45}},
+    "teams": {"home": {"name": "Fallback Home"},
+              "away": {"name": "Fallback Away"}},
+    "goals": {"home": 1, "away": 0},
+}]
+predictor.set_setting("api_football_key", "test-key")
+predictor.set_setting("last_api_football_request", "")
+try:
+    assert predictor.import_live_matches_from_api_football_fallback() == 1
+finally:
+    predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.set_setting("api_football_key", "")
+conn = database.get_db()
+assert conn.execute("SELECT status FROM fixtures WHERE id = 99007").fetchone()[0] == "PAUSED"
 conn.execute("DELETE FROM fixtures WHERE id = 99007")
 conn.commit()
 conn.close()

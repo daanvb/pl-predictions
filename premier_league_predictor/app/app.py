@@ -4064,7 +4064,11 @@ def import_live_matches_from_api_football_fallback():
                 )
             except (TypeError, ValueError):
                 clock_is_stale = False
-            if can_fill_score or event_gap or clock_is_stale:
+            phase_advanced = (
+                provider_status in ("PAUSED", "FINISHED")
+                and stored["status"] in ("LIVE", "IN_PLAY")
+            )
+            if can_fill_score or event_gap or clock_is_stale or phase_advanced:
                 conn.execute(
                     """UPDATE fixtures SET status = ?,
                            home_score = CASE WHEN home_score IS NULL THEN ? ELSE home_score END,
