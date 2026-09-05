@@ -2,7 +2,6 @@
 {% block title %}Champions League{% endblock %}
 {% block content %}
 <div class="hero">
-<div style="font-size:14px;font-weight:800;color:#94a3b8">COMING SOON</div>
 <h1><span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League</h1>
 </div>
 
@@ -10,8 +9,29 @@
 
 <div class="card" style="text-align:center;padding:34px 24px">
 <img src="/static/champions-league-trophy.png" alt="Champions League trophy" style="width:72px;height:72px;object-fit:contain;margin-bottom:12px">
-<p class="muted" style="margin-bottom:0">Fixtures, predictions and the competition table will appear here when the knockout stage begins.</p>
+{% if session.get('admin') %}
+<form method="POST" action="/admin/champions-league/import" style="margin:0 0 14px">
+<button class="primary">Refresh Champions League fixtures</button>
+</form>
+{% endif %}
+{% if fixtures %}
+<p class="muted">Fixtures are ready for the Champions League build-out. Predictions and the competition table will be enabled in the next stage.</p>
+{% for fixture in fixtures %}
+<div class="fixture fixture-set{% if fixture.status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
+<div class="fixture-row-grid"><div class="fixture-match">
+<div class="fixture-home"><span class="fixture-team-cluster fixture-team-cluster-home"><span class="team-badge-slot">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}</span><strong>{{ short_team_name(fixture.home_team) }}</strong></span></div>
+<div class="fixture-centre">{% if fixture.status in ('LIVE','IN_PLAY','PAUSED','FINISHED') and fixture.home_score is not none and fixture.away_score is not none %}<span class="fixture-scoreline"><span>{{ fixture.home_score }}</span><span class="fixture-score-dash">–</span><span>{{ fixture.away_score }}</span></span>{% else %}v{% endif %}</div>
+<div class="fixture-away"><span class="fixture-team-cluster fixture-team-cluster-away"><strong>{{ short_team_name(fixture.away_team) }}</strong><span class="team-badge-slot">{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</span></span></div>
+</div></div>
+{% if fixture.scorers.home or fixture.scorers.away or fixture.red_cards.home or fixture.red_cards.away %}<div class="fixture-scorers"><div class="fixture-scorers-home">{% for scorer in fixture.scorers.home %}<span>⚽ {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in fixture.red_cards.home %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div><div class="fixture-scorers-away">{% for scorer in fixture.scorers.away %}<span>⚽ {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in fixture.red_cards.away %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div></div>{% endif %}
+{% include "_fixture_card_meta.html" %}
 </div>
+{% endfor %}
+{% else %}
+<p class="muted" style="margin-bottom:0">Fixtures, predictions and the competition table will appear here when the knockout stage begins.</p>
+{% endif %}
+</div>
+{% if has_live_fixtures %}<script>window.setTimeout(function () { window.location.reload(); }, 60000);</script>{% endif %}
 
 <div class="card">
 <h2>⚽ Competition format</h2>

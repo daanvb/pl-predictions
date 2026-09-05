@@ -1840,6 +1840,9 @@ assert "team-badge-slot" in gameweek_template
 assert "team-badge-slot" in dashboard_template
 api_import_source = inspect.getsource(predictor.import_matches_from_api)
 assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_source
+assert "import_champions_league_matches" in inspect.getsource(predictor)
+assert "source_fixture_id" in inspect.getsource(database.init_db)
+assert "import_champions_league_live_from_sportscore" in inspect.getsource(predictor)
 gameweek_source = inspect.getsource(predictor.gameweek)
 assert "record_live_position_snapshot(conn, matchday)" in gameweek_source
 
@@ -2139,6 +2142,78 @@ conn.execute("DELETE FROM fixtures WHERE id IN (99003, 99004)")
 conn.commit()
 conn.close()
 
+# Champions League imports retain the provider ID separately and use a safe
+# local ID, leaving Premier League prediction foreign keys untouched.
+original_cl_loader = predictor.get_football_champions_league_matches
+predictor.get_football_champions_league_matches = lambda token, season: [{
+    "id": 880001,
+    "matchday": 1,
+    "utcDate": datetime.now(timezone.utc).isoformat(),
+    "status": "SCHEDULED",
+    "homeTeam": {"name": "CL Home"},
+    "awayTeam": {"name": "CL Away"},
+    "score": {"fullTime": {"home": None, "away": None}},
+}]
+predictor.set_setting("football_api_token", "test-token")
+try:
+    assert predictor.import_champions_league_matches() == 1
+finally:
+    predictor.get_football_champions_league_matches = original_cl_loader
+    predictor.set_setting("football_api_token", "")
+conn = database.get_db()
+champions_fixture = conn.execute(
+    """SELECT id, competition, source_provider, source_fixture_id
+       FROM fixtures WHERE source_fixture_id = '880001'"""
+).fetchone()
+assert tuple(champions_fixture) == (
+    -880001, "champions_league", "football-data.org", "880001"
+)
+conn.execute("DELETE FROM fixtures WHERE id = -880001")
+conn.commit()
+conn.close()
+
+# Champions League live enrichment is independent from the Premier League
+# current-gameweek query and carries the same score, clock and event fields.
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           competition, source_provider, source_fixture_id
+       ) VALUES (-880002, ?, 1, ?, 'SCHEDULED', 'CL Live Home', 'CL Live Away',
+                 'champions_league', 'football-data.org', '880002')""",
+    (season, datetime.now(timezone.utc).isoformat()),
+)
+conn.commit()
+conn.close()
+original_cl_details = predictor.get_sportscore_match_details
+original_cl_goals = predictor.sportscore_goal_events
+predictor.get_sportscore_match_details = lambda match: {
+    "home": "CL Live Home", "away": "CL Live Away",
+    "competition": "UEFA Champions League", "status": "live",
+    "home_score": 1, "away_score": 0, "incidents": [{"type": "goal"}],
+    "home_logo": "https://img.example/cl-home.png",
+    "away_logo": "https://img.example/cl-away.png",
+}
+predictor.sportscore_goal_events = lambda details: [{
+    "team": {"name": "CL Live Home"}, "scorer": {"name": "CL Scorer"},
+    "minute": 12,
+}]
+try:
+    assert predictor.import_champions_league_live_from_sportscore() == 1
+finally:
+    predictor.get_sportscore_match_details = original_cl_details
+    predictor.sportscore_goal_events = original_cl_goals
+conn = database.get_db()
+cl_live = conn.execute(
+    """SELECT status, home_score, away_score, live_data_source, goals_json
+       FROM fixtures WHERE id = -880002"""
+).fetchone()
+assert tuple(cl_live[:4]) == ("IN_PLAY", 1, 0, "SportScore")
+assert "CL Scorer" in cl_live["goals_json"]
+conn.execute("DELETE FROM fixtures WHERE id = -880002")
+conn.commit()
+conn.close()
+
 # Previously retained scorer events can repair rows already damaged by a
 # blank provider refresh, including genuine goalless draws.
 conn = database.get_db()
@@ -2311,6 +2386,21 @@ assert predictor.fixture_scorers(
     }]),
     "Home FC", "Away FC", 0, 0,
 ) == {"home": [], "away": []}
+assert predictor._fixture_goal_event_coverage_missing({
+    "goals_json": json.dumps([{
+        "team": {"name": "Away FC"}, "scorer": {"name": "Away scorer"},
+    }]),
+    "home_team": "Home FC", "away_team": "Away FC",
+    "home_score": 1, "away_score": 1,
+}) is True
+assert predictor._fixture_goal_event_coverage_missing({
+    "goals_json": json.dumps([
+        {"team": {"name": "Home FC"}, "scorer": {"name": "Home scorer"}},
+        {"team": {"name": "Away FC"}, "scorer": {"name": "Away scorer"}},
+    ]),
+    "home_team": "Home FC", "away_team": "Away FC",
+    "home_score": 1, "away_score": 1,
+}) is False
 conn.commit()
 conn.close()
 predictor.get_api_football_live_fixtures = lambda key: [{
@@ -2335,7 +2425,68 @@ finally:
     predictor.set_setting("api_football_key", "")
 conn = database.get_db()
 assert conn.execute("SELECT minute FROM fixtures WHERE id = 99007").fetchone()[0] == 6
+conn.execute(
+    "UPDATE fixtures SET status = 'IN_PLAY', minute = 45 WHERE id = 99007"
+)
+conn.commit()
+conn.close()
+predictor.get_api_football_live_fixtures = lambda key: [{
+    "fixture": {"id": 456789, "date": api_fallback_kickoff,
+                "status": {"short": "HT", "elapsed": 45}},
+    "teams": {"home": {"name": "Fallback Home"},
+              "away": {"name": "Fallback Away"}},
+    "goals": {"home": 1, "away": 0},
+}]
+predictor.get_api_football_fixture_events = lambda key, fixture_id: []
+predictor.set_setting("api_football_key", "test-key")
+predictor.set_setting("last_api_football_request", "")
+try:
+    assert predictor.import_live_matches_from_api_football_fallback() == 1
+finally:
+    predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.get_api_football_fixture_events = original_api_football_events
+    predictor.set_setting("api_football_key", "")
+conn = database.get_db()
+assert conn.execute("SELECT status FROM fixtures WHERE id = 99007").fetchone()[0] == "PAUSED"
 conn.execute("DELETE FROM fixtures WHERE id = 99007")
+conn.commit()
+conn.close()
+
+# The same guarded all-live request also covers stored Champions League rows.
+cl_fallback_kickoff = (datetime.now(timezone.utc) - timedelta(minutes=7)).isoformat()
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team, competition
+       ) VALUES (-99008, ?, 1, ?, 'SCHEDULED', 'CL Fallback Home',
+                 'CL Fallback Away', 'champions_league')""",
+    (season, cl_fallback_kickoff),
+)
+conn.commit()
+conn.close()
+predictor.get_api_football_live_fixtures = lambda key: [{
+    "fixture": {"id": 456790, "date": cl_fallback_kickoff,
+                "status": {"short": "1H", "elapsed": 7}},
+    "teams": {"home": {"name": "CL Fallback Home"},
+              "away": {"name": "CL Fallback Away"}},
+    "goals": {"home": 0, "away": 0},
+}]
+predictor.get_api_football_fixture_events = lambda key, fixture_id: []
+predictor.set_setting("api_football_key", "test-key")
+predictor.set_setting("last_api_football_request", "")
+try:
+    assert predictor.import_live_matches_from_api_football_fallback() == 1
+finally:
+    predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.get_api_football_fixture_events = original_api_football_events
+    predictor.set_setting("api_football_key", "")
+conn = database.get_db()
+cl_fallback = conn.execute(
+    """SELECT status, home_score, away_score, minute, live_data_source
+       FROM fixtures WHERE id = -99008"""
+).fetchone()
+assert tuple(cl_fallback) == ("IN_PLAY", 0, 0, 7, "API-Football")
+conn.execute("DELETE FROM fixtures WHERE id = -99008")
 conn.commit()
 conn.close()
 

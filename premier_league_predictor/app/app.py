@@ -65,7 +65,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -2982,6 +2982,77 @@ def import_historical_results(
 
 
 
+def _champions_league_fixture_id(conn, source_fixture_id):
+    """Allocate a stable local ID without conflicting with Premier League IDs."""
+    existing = conn.execute(
+        """SELECT id FROM fixtures
+           WHERE source_provider = 'football-data.org'
+             AND source_fixture_id = ?""",
+        (str(source_fixture_id),),
+    ).fetchone()
+    if existing:
+        return existing["id"]
+    candidate = -abs(int(source_fixture_id))
+    while conn.execute("SELECT 1 FROM fixtures WHERE id = ?", (candidate,)).fetchone():
+        candidate -= 1
+    return candidate
+
+
+def import_champions_league_matches():
+    """Import Champions League fixtures into their own competition namespace."""
+    token = get_setting("football_api_token")
+    if not token:
+        return 0
+    matches = get_football_champions_league_matches(token, season=SEASON)
+    conn = get_db()
+    imported = 0
+    try:
+        for match in matches:
+            source_id = str(match["id"])
+            fixture_id = _champions_league_fixture_id(conn, source_id)
+            home = match.get("homeTeam", {})
+            away = match.get("awayTeam", {})
+            full_time = match.get("score", {}).get("fullTime", {})
+            home_penalty_score, away_penalty_score = provider_penalty_scores(match)
+            conn.execute(
+                """INSERT INTO fixtures (
+                       id, season, matchday, utc_date, status, home_team, away_team,
+                       home_score, away_score, last_updated, minute, injury_time,
+                       match_phase, home_penalty_score, away_penalty_score, goals_json,
+                       live_data_source, competition, source_provider, source_fixture_id
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     matchday = excluded.matchday, utc_date = excluded.utc_date,
+                     status = excluded.status, home_team = excluded.home_team,
+                     away_team = excluded.away_team, home_score = excluded.home_score,
+                     away_score = excluded.away_score, last_updated = excluded.last_updated,
+                     minute = excluded.minute, injury_time = excluded.injury_time,
+                     match_phase = excluded.match_phase,
+                     home_penalty_score = excluded.home_penalty_score,
+                     away_penalty_score = excluded.away_penalty_score,
+                     goals_json = excluded.goals_json,
+                     live_data_source = excluded.live_data_source,
+                     competition = excluded.competition,
+                     source_provider = excluded.source_provider,
+                     source_fixture_id = excluded.source_fixture_id""",
+                (
+                    fixture_id, SEASON, match.get("matchday"), match["utcDate"],
+                    match.get("status"), home.get("name", ""), away.get("name", ""),
+                    full_time.get("home"), full_time.get("away"), match.get("lastUpdated"),
+                    match.get("minute"), match.get("injuryTime"), provider_match_phase(match),
+                    home_penalty_score, away_penalty_score,
+                    json.dumps(match.get("goals")) if match.get("goals") is not None else None,
+                    "football-data.org", "champions_league", "football-data.org", source_id,
+                ),
+            )
+            imported += 1
+        conn.commit()
+    finally:
+        conn.close()
+    set_setting("champions_league_last_refresh", now_utc().isoformat())
+    return imported
+
+
 def import_matches_from_api():
     token = get_setting(
         "football_api_token"
@@ -3442,16 +3513,20 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                    status, goals_json, utc_date, home_logo, away_logo
             FROM fixtures
             WHERE season = ?
+              AND competition = 'premier_league'
               AND matchday = COALESCE(
                   (
                       SELECT MIN(matchday) FROM fixtures
                       WHERE season = ?
+                        AND competition = 'premier_league'
                         AND matchday IS NOT NULL
                         AND status NOT IN ('FINISHED', 'CANCELLED')
                   ),
                   (
                       SELECT MAX(matchday) FROM fixtures
-                      WHERE season = ? AND matchday IS NOT NULL
+                      WHERE season = ?
+                        AND competition = 'premier_league'
+                        AND matchday IS NOT NULL
                   )
               )
               AND status != 'CANCELLED'
@@ -3604,6 +3679,78 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
         conn.close()
 
     set_setting("last_sportscore_refresh", now_utc().isoformat())
+    return updated
+
+
+def import_champions_league_live_from_sportscore():
+    """Enrich stored Champions League fixtures with SportScore live data."""
+    conn = get_db()
+    updated = 0
+    try:
+        candidates = conn.execute(
+            """SELECT id, home_team, away_team, status, utc_date
+               FROM fixtures
+               WHERE season = ? AND competition = 'champions_league'
+                 AND status != 'CANCELLED'""",
+            (SEASON,),
+        ).fetchall()
+        current_time = now_utc()
+        for stored in candidates:
+            kickoff = parse_utc(stored["utc_date"])
+            in_live_window = bool(
+                kickoff and kickoff - timedelta(seconds=LIVE_WINDOW_BEFORE_SECONDS)
+                <= current_time <= kickoff + timedelta(seconds=LIVE_WINDOW_AFTER_SECONDS)
+            )
+            if not (in_live_window or stored["status"] in ("LIVE", "IN_PLAY", "PAUSED")):
+                continue
+            home_slug = sportscore_team_slug(stored["home_team"])
+            away_slug = sportscore_team_slug(stored["away_team"])
+            expected = (normalized_team_name(stored["home_team"]), normalized_team_name(stored["away_team"]))
+            details = None
+            for slug in (f"{home_slug}-vs-{away_slug}", f"{away_slug}-vs-{home_slug}"):
+                try:
+                    candidate = get_sportscore_match_details({"url": f"/football/match/{slug}/"})
+                except SportScoreError as exc:
+                    if "HTTP 404" in str(exc):
+                        continue
+                    raise
+                actual = (normalized_team_name(candidate.get("home")), normalized_team_name(candidate.get("away")))
+                if actual == expected and "uefa champions league" in (candidate.get("competition") or "").casefold():
+                    details = candidate
+                    break
+            if details is None:
+                continue
+            raw_incidents = details.get("incidents")
+            incidents = raw_incidents if isinstance(raw_incidents, list) else []
+            minute_value, injury_time_value = sportscore_live_clock(details)
+            home_penalty_score, away_penalty_score = provider_penalty_scores(details)
+            conn.execute(
+                """UPDATE fixtures SET status = ?, home_score = COALESCE(?, home_score),
+                       away_score = COALESCE(?, away_score), minute = COALESCE(?, minute),
+                       injury_time = CASE WHEN ? IS NOT NULL THEN ? ELSE injury_time END,
+                       match_phase = COALESCE(?, match_phase),
+                       home_penalty_score = COALESCE(?, home_penalty_score),
+                       away_penalty_score = COALESCE(?, away_penalty_score),
+                       goals_json = COALESCE(?, goals_json),
+                       incidents_json = COALESCE(?, incidents_json),
+                       home_logo = COALESCE(?, home_logo), away_logo = COALESCE(?, away_logo),
+                       last_updated = ?, live_data_source = 'SportScore'
+                   WHERE id = ?""",
+                (
+                    sportscore_fixture_status(details, stored["status"]), details.get("home_score"),
+                    details.get("away_score"), minute_value, minute_value, injury_time_value,
+                    provider_match_phase(details), home_penalty_score, away_penalty_score,
+                    json.dumps(sportscore_goal_events(details)) if isinstance(raw_incidents, list) else None,
+                    json.dumps(incidents) if isinstance(raw_incidents, list) else None,
+                    safe_team_logo_url(details.get("home_logo")), safe_team_logo_url(details.get("away_logo")),
+                    now_utc().isoformat(), stored["id"],
+                ),
+            )
+            updated += 1
+        conn.commit()
+    finally:
+        conn.close()
+    set_setting("last_champions_league_sportscore_refresh", now_utc().isoformat())
     return updated
 
 
@@ -3766,6 +3913,40 @@ def _api_football_match_for_fixture(conn, stored, live_fixtures):
     return candidates[0]
 
 
+def _fixture_goal_event_coverage_missing(stored):
+    """Return true when stored goal events do not explain the scoreline."""
+    try:
+        events = json.loads(stored["goals_json"] or "[]")
+    except (TypeError, ValueError):
+        return True
+    if not isinstance(events, list):
+        return True
+    expected = {
+        "home": stored["home_score"],
+        "away": stored["away_score"],
+    }
+    counts = {"home": 0, "away": 0}
+    home = normalized_team_name(stored["home_team"])
+    away = normalized_team_name(stored["away_team"])
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        team = normalized_team_name((event.get("team") or {}).get("name"))
+        if team == home:
+            counts["home"] += 1
+        elif team == away:
+            counts["away"] += 1
+    for side, score in expected.items():
+        if score is None:
+            continue
+        try:
+            if counts[side] < int(score):
+                return True
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
 def _api_football_fallback_needed(stored, checked_at):
     kickoff = parse_utc(stored["utc_date"])
     if not kickoff:
@@ -3777,10 +3958,7 @@ def _api_football_fallback_needed(stored, checked_at):
         return False
     status = stored["status"] or ""
     score_missing = stored["home_score"] is None or stored["away_score"] is None
-    events_missing = (
-        stored["goals_json"] in (None, "", "[]")
-        and ((stored["home_score"] or 0) > 0 or (stored["away_score"] or 0) > 0)
-    )
+    events_missing = _fixture_goal_event_coverage_missing(stored)
     if kickoff + timedelta(minutes=5) <= checked_at and status in ("SCHEDULED", "TIMED"):
         return True
     if status in ("LIVE", "IN_PLAY") and score_missing:
@@ -3828,8 +4006,12 @@ def import_live_matches_from_api_football_fallback():
             goals = provider_match.get("goals") or {}
             provider_status = _api_football_status(fixture_data.get("status"))
             elapsed = (fixture_data.get("status") or {}).get("elapsed")
-            event_gap = stored["goals_json"] in (None, "", "[]") and (
-                (goals.get("home") or 0) > 0 or (goals.get("away") or 0) > 0
+            event_gap = (
+                _fixture_goal_event_coverage_missing(stored)
+                or (
+                    stored["goals_json"] in (None, "", "[]")
+                    and ((goals.get("home") or 0) > 0 or (goals.get("away") or 0) > 0)
+                )
             )
             event_rows = []
             if event_gap and fixture_data.get("id") and api_football_call_available(conn):
@@ -3888,7 +4070,11 @@ def import_live_matches_from_api_football_fallback():
                 )
             except (TypeError, ValueError):
                 clock_is_stale = False
-            if can_fill_score or event_gap or clock_is_stale:
+            phase_advanced = (
+                provider_status in ("PAUSED", "FINISHED")
+                and stored["status"] in ("LIVE", "IN_PLAY")
+            )
+            if can_fill_score or event_gap or clock_is_stale or phase_advanced:
                 conn.execute(
                     """UPDATE fixtures SET status = ?,
                            home_score = CASE WHEN home_score IS NULL THEN ? ELSE home_score END,
@@ -4140,9 +4326,11 @@ def api_refresh_worker():
                 live_updates = import_live_matches_from_sportscore(
                     force_current_gameweek=repair_results,
                 )
+                champions_live_updates = import_champions_league_live_from_sportscore()
                 set_setting("last_sportscore_error", "")
                 print(
-                    f"[SportScore] Updated {live_updates} live fixture(s)",
+                    f"[SportScore] Updated {live_updates} Premier League and "
+                    f"{champions_live_updates} Champions League live fixture(s)",
                     flush=True,
                 )
             except Exception as exc:
@@ -5569,7 +5757,47 @@ def side_events():
 def champions_league():
     if not logged_in():
         return redirect("/")
-    return render_template("side_events.html")
+    conn = get_db()
+    fixtures = conn.execute(
+        """SELECT * FROM fixtures
+           WHERE competition = 'champions_league' AND season = ?
+           ORDER BY utc_date""",
+        (SEASON,),
+    ).fetchall()
+    conn.close()
+    fixtures = [dict(row) for row in fixtures]
+    for fixture in fixtures:
+        fixture["scorers"] = fixture_scorers(
+            fixture.get("goals_json"), fixture["home_team"], fixture["away_team"],
+            fixture.get("home_score"), fixture.get("away_score"),
+        )
+        fixture["red_cards"] = fixture_red_cards(
+            fixture.get("incidents_json"), fixture["home_team"], fixture["away_team"],
+        )
+    return render_template(
+        "side_events.html", fixtures=fixtures,
+        has_live_fixtures=any(
+            fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
+            for fixture in fixtures
+        ),
+        last_refresh=get_setting("champions_league_last_refresh"),
+    )
+
+
+@app.route("/admin/champions-league/import", methods=["POST"])
+def import_champions_league_fixtures():
+    if not is_admin():
+        return redirect("/")
+    try:
+        imported = import_champions_league_matches()
+        live_updated = import_champions_league_live_from_sportscore()
+        flash(
+            f"Champions League fixtures refreshed: {imported} imported; "
+            f"{live_updated} checked for live data.", "success"
+        )
+    except (FootballAPIError, SportScoreError) as exc:
+        flash(str(exc), "error")
+    return redirect("/champions-league")
 
 
 @app.route("/head-to-head")
