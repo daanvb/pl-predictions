@@ -1842,6 +1842,7 @@ api_import_source = inspect.getsource(predictor.import_matches_from_api)
 assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_source
 assert "import_champions_league_matches" in inspect.getsource(predictor)
 assert "source_fixture_id" in inspect.getsource(database.init_db)
+assert "import_champions_league_live_from_sportscore" in inspect.getsource(predictor)
 gameweek_source = inspect.getsource(predictor.gameweek)
 assert "record_live_position_snapshot(conn, matchday)" in gameweek_source
 
@@ -2168,6 +2169,48 @@ assert tuple(champions_fixture) == (
     -880001, "champions_league", "football-data.org", "880001"
 )
 conn.execute("DELETE FROM fixtures WHERE id = -880001")
+conn.commit()
+conn.close()
+
+# Champions League live enrichment is independent from the Premier League
+# current-gameweek query and carries the same score, clock and event fields.
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           competition, source_provider, source_fixture_id
+       ) VALUES (-880002, ?, 1, ?, 'SCHEDULED', 'CL Live Home', 'CL Live Away',
+                 'champions_league', 'football-data.org', '880002')""",
+    (season, datetime.now(timezone.utc).isoformat()),
+)
+conn.commit()
+conn.close()
+original_cl_details = predictor.get_sportscore_match_details
+original_cl_goals = predictor.sportscore_goal_events
+predictor.get_sportscore_match_details = lambda match: {
+    "home": "CL Live Home", "away": "CL Live Away",
+    "competition": "UEFA Champions League", "status": "live",
+    "home_score": 1, "away_score": 0, "incidents": [{"type": "goal"}],
+    "home_logo": "https://img.example/cl-home.png",
+    "away_logo": "https://img.example/cl-away.png",
+}
+predictor.sportscore_goal_events = lambda details: [{
+    "team": {"name": "CL Live Home"}, "scorer": {"name": "CL Scorer"},
+    "minute": 12,
+}]
+try:
+    assert predictor.import_champions_league_live_from_sportscore() == 1
+finally:
+    predictor.get_sportscore_match_details = original_cl_details
+    predictor.sportscore_goal_events = original_cl_goals
+conn = database.get_db()
+cl_live = conn.execute(
+    """SELECT status, home_score, away_score, live_data_source, goals_json
+       FROM fixtures WHERE id = -880002"""
+).fetchone()
+assert tuple(cl_live[:4]) == ("LIVE", 1, 0, "SportScore")
+assert "CL Scorer" in cl_live["goals_json"]
+conn.execute("DELETE FROM fixtures WHERE id = -880002")
 conn.commit()
 conn.close()
 
