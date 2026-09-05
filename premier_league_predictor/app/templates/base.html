@@ -840,7 +840,7 @@ html[data-theme="dark"] .theme-toggle-icon-sun{display:block}
     padding:11px
   }
   .live-table-card .leader-row {
-    grid-template-columns:30px 14px minmax(0,1fr) auto;
+    grid-template-columns:30px 14px minmax(0,1fr) 104px;
     gap:2px;
     padding:8px 0
   }
@@ -1167,13 +1167,13 @@ body.dashboard-menu-open{overflow:hidden}
 .competition-icon-h2h img{transform:scale(.94) scaleX(.82)}
 .player-title-icon{width:1.3rem;height:1.3rem;flex-basis:1.3rem;margin-right:1px;vertical-align:-.32rem}
 .player-title-icon img{width:1.3rem;height:1.3rem}
-.live-table-card .leader-row{row-gap:0}
+.live-table-card .leader-row{grid-template-columns:44px 34px minmax(0,1fr) 120px;row-gap:0}
 .live-table-card .leader-row > .rank{grid-column:1;grid-row:1;align-self:center}
 .live-table-card .leader-row > div:nth-child(2){grid-column:2;grid-row:1;align-self:center}
 .live-table-card .live-player-name{grid-column:3;grid-row:1;align-self:center}
-.live-table-card .live-player-progress{grid-column:3;grid-row:2;margin-top:3px}
-.live-table-card .leader-points{grid-column:4;grid-row:1;align-self:center}
-.live-table-card .live-player-points{grid-column:4;grid-row:2;margin-top:3px;text-align:right}
+.live-table-card .live-player-progress{grid-column:3;grid-row:2;margin-top:3px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-table-card .leader-points{grid-column:4;grid-row:1;align-self:center;text-align:center}
+.live-table-card .live-player-points{grid-column:4;grid-row:2;margin-top:3px;text-align:center}
 .live-table-card .player-title-icon{margin-left:-5px}
 .live-table-card .player-title-icon,.league-player .player-title-icon{vertical-align:-.27rem}
 .fixture-predictions .player-title-icon{vertical-align:-.27rem}

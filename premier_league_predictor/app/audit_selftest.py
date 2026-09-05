@@ -2216,6 +2216,45 @@ assert listings == {-881001: "Amazon Prime Video"}
 assert predictor.broadcaster_logo_url("TNT Sports 1")
 assert predictor.broadcaster_dark_logo_url("TNT Sports 1")
 
+# The HRK Metric counts the score value lost when an added-time goal changes
+# a completed Premier League result, including Double Points awards.
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO players(name, pin_hash, login_name)
+       VALUES ('HRK Audit Player', 'audit', 'hrk-audit-player')"""
+)
+hrk_player_id = conn.execute(
+    "SELECT id FROM players WHERE login_name = 'hrk-audit-player'"
+).fetchone()["id"]
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           home_score, away_score, goals_json, competition
+       ) VALUES (99010, ?, 3, ?, 'FINISHED', 'HRK Home', 'HRK Away', 1, 1,
+                 ?, 'premier_league')""",
+    (season, datetime.now(timezone.utc).isoformat(), json.dumps([{
+        "minute": 90, "injuryTime": 1,
+        "team": {"name": "HRK Away"},
+    }])),
+)
+conn.execute(
+    """INSERT INTO predictions(player_id, fixture_id, home_score, away_score,
+           dp) VALUES (?, 99010, 1, 0, 1)""",
+    (hrk_player_id,),
+)
+conn.commit()
+hrk_rows = predictor.late_goal_points_lost(conn)
+assert next(row for row in hrk_rows if row["id"] == hrk_player_id) == {
+    "id": hrk_player_id,
+    "name": "HRK Audit Player",
+    "total": 10,
+}
+conn.execute("DELETE FROM predictions WHERE fixture_id = 99010")
+conn.execute("DELETE FROM fixtures WHERE id = 99010")
+conn.execute("DELETE FROM players WHERE id = ?", (hrk_player_id,))
+conn.commit()
+conn.close()
+
 # Champions League live enrichment is independent from the Premier League
 # current-gameweek query and carries the same score, clock and event fields.
 conn = database.get_db()
@@ -2492,6 +2531,50 @@ finally:
     predictor.set_setting("api_football_key", "")
 conn = database.get_db()
 assert conn.execute("SELECT status FROM fixtures WHERE id = 99007").fetchone()[0] == "PAUSED"
+stale_fallback_kickoff = (
+    datetime.now(timezone.utc) - timedelta(minutes=73)
+).isoformat()
+conn.execute(
+    """UPDATE fixtures SET status = 'IN_PLAY', home_score = 1, away_score = 0,
+           utc_date = ?, minute = 70, goals_json = ?, live_data_source = 'SportScore'
+       WHERE id = 99007""",
+    (stale_fallback_kickoff, json.dumps([{
+        "team": {"name": "Fallback Home"},
+        "scorer": {"name": "Existing Scorer"}, "minute": 6,
+    }])),
+)
+conn.commit()
+conn.close()
+predictor.get_api_football_live_fixtures = lambda key: [{
+    "fixture": {"id": 456789, "date": api_fallback_kickoff,
+                "status": {"short": "2H", "elapsed": 73}},
+    "teams": {"home": {"name": "Fallback Home"},
+              "away": {"name": "Fallback Away"}},
+    "goals": {"home": 1, "away": 1},
+}]
+predictor.get_api_football_fixture_events = lambda key, fixture_id: [{
+    "type": "Goal", "detail": "Normal Goal",
+    "time": {"elapsed": 6, "extra": None},
+    "team": {"name": "Fallback Home"}, "player": {"name": "Existing Scorer"},
+}, {
+    "type": "Goal", "detail": "Normal Goal",
+    "time": {"elapsed": 73, "extra": None},
+    "team": {"name": "Fallback Away"}, "player": {"name": "Replacement Scorer"},
+}]
+predictor.set_setting("api_football_key", "test-key")
+predictor.set_setting("last_api_football_request", "")
+try:
+    assert predictor.import_live_matches_from_api_football_fallback() == 1
+finally:
+    predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.get_api_football_fixture_events = original_api_football_events
+    predictor.set_setting("api_football_key", "")
+conn = database.get_db()
+score_replacement = conn.execute(
+    "SELECT home_score, away_score, minute, goals_json FROM fixtures WHERE id = 99007"
+).fetchone()
+assert tuple(score_replacement[:3]) == (1, 1, 73)
+assert "Replacement Scorer" in score_replacement["goals_json"]
 conn.execute("DELETE FROM fixtures WHERE id = 99007")
 conn.commit()
 conn.close()

@@ -65,7 +65,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -95,7 +95,7 @@ QUIET_REFRESH_SECONDS = 6 * 60 * 60
 LIVE_REFRESH_SECONDS = 60
 API_FOOTBALL_MINIMUM_INTERVAL_SECONDS = 120
 API_FOOTBALL_DAILY_CALL_CAP = 75
-API_FOOTBALL_STALE_MINUTES = 3
+API_FOOTBALL_STALE_MINUTES = 2
 FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
@@ -4127,8 +4127,16 @@ def import_live_matches_from_api_football_fallback():
             goals = provider_match.get("goals") or {}
             provider_status = _api_football_status(fixture_data.get("status"))
             elapsed = (fixture_data.get("status") or {}).get("elapsed")
+            provider_has_score = (
+                goals.get("home") is not None and goals.get("away") is not None
+            )
+            score_disagrees = provider_has_score and (
+                stored["home_score"] != goals.get("home")
+                or stored["away_score"] != goals.get("away")
+            )
             event_gap = (
                 _fixture_goal_event_coverage_missing(stored)
+                or score_disagrees
                 or (
                     stored["goals_json"] in (None, "", "[]")
                     and ((goals.get("home") or 0) > 0 or (goals.get("away") or 0) > 0)
@@ -4173,8 +4181,6 @@ def import_live_matches_from_api_football_fallback():
                     json.dumps(provider_match, sort_keys=True),
                 ),
             )
-            # Do not overwrite a complete primary score with a differing
-            # secondary score. The observation above retains that evidence.
             can_fill_score = (
                 stored["home_score"] is None or stored["away_score"] is None
                 or stored["status"] in ("SCHEDULED", "TIMED")
@@ -4195,19 +4201,27 @@ def import_live_matches_from_api_football_fallback():
                 provider_status in ("PAUSED", "FINISHED")
                 and stored["status"] in ("LIVE", "IN_PLAY")
             )
-            if can_fill_score or event_gap or clock_is_stale or phase_advanced:
+            # A stale primary clock plus a confirmed all-live API-Football
+            # score is sufficient evidence to correct a stale scoreline. Fetching
+            # events in the same pass keeps the score and scorer display together.
+            replace_score = provider_has_score and (
+                can_fill_score
+                or (score_disagrees and (clock_is_stale or phase_advanced))
+            )
+            if replace_score or event_gap or clock_is_stale or phase_advanced:
                 conn.execute(
                     """UPDATE fixtures SET status = ?,
-                           home_score = CASE WHEN home_score IS NULL THEN ? ELSE home_score END,
-                           away_score = CASE WHEN away_score IS NULL THEN ? ELSE away_score END,
+                           home_score = CASE WHEN ? THEN ? ELSE home_score END,
+                           away_score = CASE WHEN ? THEN ? ELSE away_score END,
                            minute = CASE WHEN minute IS NULL OR minute < ? THEN ? ELSE minute END,
                            goals_json = COALESCE(?, goals_json),
                            incidents_json = COALESCE(?, incidents_json),
                            last_updated = ?, live_data_source = 'API-Football'
                        WHERE id = ?""",
                     (
-                        provider_status, goals.get("home"), goals.get("away"), elapsed,
-                        elapsed, json.dumps(goal_events) if goal_events else None,
+                        provider_status, replace_score, goals.get("home"),
+                        replace_score, goals.get("away"), elapsed, elapsed,
+                        json.dumps(goal_events) if goal_events else None,
                         json.dumps(card_events) if card_events else None,
                         checked_at.isoformat(), stored["id"],
                     ),
