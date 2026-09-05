@@ -2,7 +2,6 @@
 {% block title %}Champions League{% endblock %}
 {% block content %}
 <div class="hero">
-<div style="font-size:14px;font-weight:800;color:#94a3b8">COMING SOON</div>
 <h1><span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League</h1>
 </div>
 
@@ -10,7 +9,24 @@
 
 <div class="card" style="text-align:center;padding:34px 24px">
 <img src="/static/champions-league-trophy.png" alt="Champions League trophy" style="width:72px;height:72px;object-fit:contain;margin-bottom:12px">
+{% if session.get('admin') %}
+<form method="POST" action="/admin/champions-league/import" style="margin:0 0 14px">
+<button class="primary">Refresh Champions League fixtures</button>
+</form>
+{% endif %}
+{% if fixtures %}
+<p class="muted">Fixtures are ready for the Champions League build-out. Predictions and the competition table will be enabled in the next stage.</p>
+{% for fixture in fixtures %}
+<div class="fixture fixture-set{% if fixture.status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
+<strong>{{ short_team_name(fixture.home_team) }}</strong>
+<span> {{ fixture.home_score if fixture.home_score is not none else '–' }} – {{ fixture.away_score if fixture.away_score is not none else '–' }} </span>
+<strong>{{ short_team_name(fixture.away_team) }}</strong>
+<div class="small muted">{{ local_datetime(fixture.utc_date) }} · {{ status_label(fixture) }}</div>
+</div>
+{% endfor %}
+{% else %}
 <p class="muted" style="margin-bottom:0">Fixtures, predictions and the competition table will appear here when the knockout stage begins.</p>
+{% endif %}
 </div>
 
 <div class="card">

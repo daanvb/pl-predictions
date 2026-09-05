@@ -131,6 +131,23 @@ def init_db(seed_default_player=True):
     _add_column_if_missing(conn, "fixtures", "live_data_source", "TEXT")
     _add_column_if_missing(conn, "fixtures", "home_logo", "TEXT")
     _add_column_if_missing(conn, "fixtures", "away_logo", "TEXT")
+    # Keep competitions separate while preserving existing football-data.org IDs
+    # and prediction foreign keys for the Premier League.
+    _add_column_if_missing(
+        conn, "fixtures", "competition",
+        "TEXT NOT NULL DEFAULT 'premier_league'"
+    )
+    _add_column_if_missing(conn, "fixtures", "source_provider", "TEXT")
+    _add_column_if_missing(conn, "fixtures", "source_fixture_id", "TEXT")
+    conn.execute(
+        "UPDATE fixtures SET competition = 'premier_league' "
+        "WHERE competition IS NULL OR TRIM(competition) = ''"
+    )
+    conn.execute(
+        "UPDATE fixtures SET source_provider = 'football-data.org', "
+        "source_fixture_id = CAST(id AS TEXT) "
+        "WHERE source_provider IS NULL"
+    )
 
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_fixtures_season_matchday_date
@@ -140,6 +157,15 @@ def init_db(seed_default_player=True):
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_fixtures_season_status_date
         ON fixtures(season, status, utc_date)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_fixtures_competition_season_date
+        ON fixtures(competition, season, utc_date)
+    """)
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_fixtures_provider_source
+        ON fixtures(source_provider, source_fixture_id)
+        WHERE source_provider IS NOT NULL AND source_fixture_id IS NOT NULL
     """)
 
     # Historical results are stored separately so they can power local

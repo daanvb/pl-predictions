@@ -1840,6 +1840,8 @@ assert "team-badge-slot" in gameweek_template
 assert "team-badge-slot" in dashboard_template
 api_import_source = inspect.getsource(predictor.import_matches_from_api)
 assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_source
+assert "import_champions_league_matches" in inspect.getsource(predictor)
+assert "source_fixture_id" in inspect.getsource(database.init_db)
 gameweek_source = inspect.getsource(predictor.gameweek)
 assert "record_live_position_snapshot(conn, matchday)" in gameweek_source
 
@@ -2136,6 +2138,36 @@ protected_live = conn.execute(
 assert tuple(protected_final) == ("FINISHED", 2, 1)
 assert tuple(protected_live) == ("IN_PLAY", 1, 0, "SportScore")
 conn.execute("DELETE FROM fixtures WHERE id IN (99003, 99004)")
+conn.commit()
+conn.close()
+
+# Champions League imports retain the provider ID separately and use a safe
+# local ID, leaving Premier League prediction foreign keys untouched.
+original_cl_loader = predictor.get_football_champions_league_matches
+predictor.get_football_champions_league_matches = lambda token, season: [{
+    "id": 880001,
+    "matchday": 1,
+    "utcDate": datetime.now(timezone.utc).isoformat(),
+    "status": "SCHEDULED",
+    "homeTeam": {"name": "CL Home"},
+    "awayTeam": {"name": "CL Away"},
+    "score": {"fullTime": {"home": None, "away": None}},
+}]
+predictor.set_setting("football_api_token", "test-token")
+try:
+    assert predictor.import_champions_league_matches() == 1
+finally:
+    predictor.get_football_champions_league_matches = original_cl_loader
+    predictor.set_setting("football_api_token", "")
+conn = database.get_db()
+champions_fixture = conn.execute(
+    """SELECT id, competition, source_provider, source_fixture_id
+       FROM fixtures WHERE source_fixture_id = '880001'"""
+).fetchone()
+assert tuple(champions_fixture) == (
+    -880001, "champions_league", "football-data.org", "880001"
+)
+conn.execute("DELETE FROM fixtures WHERE id = -880001")
 conn.commit()
 conn.close()
 

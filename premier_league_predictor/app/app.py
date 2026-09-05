@@ -2982,6 +2982,77 @@ def import_historical_results(
 
 
 
+def _champions_league_fixture_id(conn, source_fixture_id):
+    """Allocate a stable local ID without conflicting with Premier League IDs."""
+    existing = conn.execute(
+        """SELECT id FROM fixtures
+           WHERE source_provider = 'football-data.org'
+             AND source_fixture_id = ?""",
+        (str(source_fixture_id),),
+    ).fetchone()
+    if existing:
+        return existing["id"]
+    candidate = -abs(int(source_fixture_id))
+    while conn.execute("SELECT 1 FROM fixtures WHERE id = ?", (candidate,)).fetchone():
+        candidate -= 1
+    return candidate
+
+
+def import_champions_league_matches():
+    """Import Champions League fixtures into their own competition namespace."""
+    token = get_setting("football_api_token")
+    if not token:
+        return 0
+    matches = get_football_champions_league_matches(token, season=SEASON)
+    conn = get_db()
+    imported = 0
+    try:
+        for match in matches:
+            source_id = str(match["id"])
+            fixture_id = _champions_league_fixture_id(conn, source_id)
+            home = match.get("homeTeam", {})
+            away = match.get("awayTeam", {})
+            full_time = match.get("score", {}).get("fullTime", {})
+            home_penalty_score, away_penalty_score = provider_penalty_scores(match)
+            conn.execute(
+                """INSERT INTO fixtures (
+                       id, season, matchday, utc_date, status, home_team, away_team,
+                       home_score, away_score, last_updated, minute, injury_time,
+                       match_phase, home_penalty_score, away_penalty_score, goals_json,
+                       live_data_source, competition, source_provider, source_fixture_id
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     matchday = excluded.matchday, utc_date = excluded.utc_date,
+                     status = excluded.status, home_team = excluded.home_team,
+                     away_team = excluded.away_team, home_score = excluded.home_score,
+                     away_score = excluded.away_score, last_updated = excluded.last_updated,
+                     minute = excluded.minute, injury_time = excluded.injury_time,
+                     match_phase = excluded.match_phase,
+                     home_penalty_score = excluded.home_penalty_score,
+                     away_penalty_score = excluded.away_penalty_score,
+                     goals_json = excluded.goals_json,
+                     live_data_source = excluded.live_data_source,
+                     competition = excluded.competition,
+                     source_provider = excluded.source_provider,
+                     source_fixture_id = excluded.source_fixture_id""",
+                (
+                    fixture_id, SEASON, match.get("matchday"), match["utcDate"],
+                    match.get("status"), home.get("name", ""), away.get("name", ""),
+                    full_time.get("home"), full_time.get("away"), match.get("lastUpdated"),
+                    match.get("minute"), match.get("injuryTime"), provider_match_phase(match),
+                    home_penalty_score, away_penalty_score,
+                    json.dumps(match.get("goals")) if match.get("goals") is not None else None,
+                    "football-data.org", "champions_league", "football-data.org", source_id,
+                ),
+            )
+            imported += 1
+        conn.commit()
+    finally:
+        conn.close()
+    set_setting("champions_league_last_refresh", now_utc().isoformat())
+    return imported
+
+
 def import_matches_from_api():
     token = get_setting(
         "football_api_token"
@@ -5569,7 +5640,30 @@ def side_events():
 def champions_league():
     if not logged_in():
         return redirect("/")
-    return render_template("side_events.html")
+    conn = get_db()
+    fixtures = conn.execute(
+        """SELECT * FROM fixtures
+           WHERE competition = 'champions_league' AND season = ?
+           ORDER BY utc_date""",
+        (SEASON,),
+    ).fetchall()
+    conn.close()
+    return render_template(
+        "side_events.html", fixtures=fixtures,
+        last_refresh=get_setting("champions_league_last_refresh"),
+    )
+
+
+@app.route("/admin/champions-league/import", methods=["POST"])
+def import_champions_league_fixtures():
+    if not is_admin():
+        return redirect("/")
+    try:
+        imported = import_champions_league_matches()
+        flash(f"Champions League fixtures refreshed: {imported} imported.", "success")
+    except FootballAPIError as exc:
+        flash(str(exc), "error")
+    return redirect("/champions-league")
 
 
 @app.route("/head-to-head")
