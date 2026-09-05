@@ -941,6 +941,15 @@ assert predictor.sportscore_live_clock({
     "live_minute": "46",
     "status_text": "2nd half",
 }) == (46, None)
+assert predictor.sportscore_live_clock({
+    "minute": 90,
+    "injury_time": 5,
+    "status_text": "2nd half",
+}) == (90, 5)
+assert predictor.sportscore_live_clock({
+    "clock": {"display": "45", "added_time": "+3"},
+    "status_text": "1st half",
+}) == (45, 3)
 assert predictor.sportscore_fixture_status({
     "status": "live",
     "status_text": "HT",
@@ -949,12 +958,60 @@ assert predictor.sportscore_fixture_status({
     "status": "live",
     "status_text": "Half-time",
 }) == "PAUSED"
+assert predictor.sportscore_fixture_status({
+    "status": "live",
+    "status_text": "Extra time interval",
+}) == "PAUSED"
+assert predictor.provider_match_phase({
+    "status": "IN_PLAY",
+    "status_text": "Extra time",
+}) == "EXTRA_TIME"
+assert predictor.provider_match_phase({
+    "status": "FINISHED",
+    "score": {"duration": "PENALTY_SHOOTOUT"},
+}) == "PENALTIES"
+assert predictor.provider_penalty_scores({
+    "score": {"penalties": {"home": 5, "away": 4}},
+}) == (5, 4)
+assert predictor.provider_penalty_scores({
+    "home_penalties": "6", "away_penalties": "5",
+}) == (6, 5)
 assert predictor.status_label({
     "status": "IN_PLAY",
     "minute": 90,
     "injury_time": 4,
     "utc_date": datetime.now(timezone.utc).isoformat(),
 }) == "LIVE 90+4'"
+assert predictor.status_label({
+    "status": "IN_PLAY",
+    "minute": 105,
+    "injury_time": 2,
+    "match_phase": "EXTRA_TIME",
+    "utc_date": datetime.now(timezone.utc).isoformat(),
+}) == "ET 105+2'"
+assert predictor.status_label({
+    "status": "PAUSED",
+    "minute": 105,
+    "injury_time": None,
+    "match_phase": "EXTRA_TIME_HALF_TIME",
+    "utc_date": datetime.now(timezone.utc).isoformat(),
+}) == "ET HT"
+assert predictor.status_label({
+    "status": "IN_PLAY",
+    "minute": 120,
+    "injury_time": None,
+    "match_phase": "PENALTIES",
+    "home_penalty_score": 4,
+    "away_penalty_score": 3,
+    "utc_date": datetime.now(timezone.utc).isoformat(),
+}) == "PENS 4–3"
+assert predictor.status_label({
+    "status": "FINISHED",
+    "minute": 120,
+    "injury_time": None,
+    "match_phase": "EXTRA_TIME",
+    "utc_date": datetime.now(timezone.utc).isoformat(),
+}) == "AET"
 
 # The retired Champions League diagnostic is replaced by a read-only Premier
 # League shadow page. It must render without a key and clearly state isolation.
@@ -1000,6 +1057,15 @@ field_result_events = bigballs_api._event_list({
     }
 })
 assert field_result_events[0]["player"]["name"] == "Wrapped Scorer"
+embedded_events, embedded_meta = bigballs_api.get_match_events(
+    "unused-key", "embedded-match", {
+        "events": [{
+            "type": "goal", "description": "Goal — Embedded Scorer",
+        }],
+    }
+)
+assert embedded_events[0]["description"] == "Goal — Embedded Scorer"
+assert embedded_meta["source"] == "match-list"
 original_bigballs_request = bigballs_api._request
 try:
     def stored_event_request(key, path, params=None, timeout=20):
@@ -1056,18 +1122,18 @@ original_bigballs_events = predictor.get_bigballs_match_events
 predictor.set_setting("bigballs_api_key", "shadow-test-key")
 predictor.get_bigballs_premier_league_matches = lambda key: ([{
     "id": "shadow-home-away",
-    "home": {"name": "Home FC"},
-    "away": {"name": "Away FC"},
+    "home": {"id": "provider-home", "name": "Home FC"},
+    "away": {"id": "provider-away", "name": "Away FC"},
     "status": "live",
     "score": {"home": 2, "away": 1},
     "kickoff_utc": live_kickoff,
 }], {"source": "audit"})
-predictor.get_bigballs_match_events = lambda key, match_id: ([{
+predictor.get_bigballs_match_events = lambda key, match_id, raw=None: ([{
     "type": "goal", "description": "Goal — Shadow Scorer"
 }], {"source": "audit"})
 try:
     assert predictor.refresh_bigballs_shadow() == 1
-    predictor.get_bigballs_match_events = lambda key, match_id: ([
+    predictor.get_bigballs_match_events = lambda key, match_id, raw=None: ([
         {
             "type": "goal", "description": "Goal — Shadow Scorer",
             "team": {"name": "Home FC"}, "time": {"elapsed": 42},
@@ -1075,7 +1141,7 @@ try:
         },
         {
             "type": "goal", "description": "Goal — Shadow Own Goal",
-            "team_side": "away", "match_minute": "67", "own_goal": True,
+            "team_id": "provider-away", "match_minute": "67", "own_goal": True,
         },
         {
             "type": "red_card", "description": "Red card — Shadow Defender",
@@ -1089,7 +1155,7 @@ try:
     assert predictor.refresh_bigballs_shadow() == 1
     # A later finished observation may omit events. The admin comparison must
     # retain the richer scorer timeline captured while the match was live.
-    predictor.get_bigballs_match_events = lambda key, match_id: ([], {"source": "audit"})
+    predictor.get_bigballs_match_events = lambda key, match_id, raw=None: ([], {"source": "audit"})
     assert predictor.refresh_bigballs_shadow() == 1
 finally:
     predictor.get_bigballs_premier_league_matches = original_bigballs_matches
@@ -1130,8 +1196,23 @@ assert b"Inferred Home" in shadow_with_events.data
 assert b"Inferred Home 88" in shadow_with_events.data
 assert b"shadow-events-home" in shadow_with_events.data
 assert b"shadow-events-away" in shadow_with_events.data
+shadow_html = shadow_with_events.data.decode("utf-8")
+away_event_block = shadow_html.split(
+    '<div class="shadow-events-side shadow-events-away">', 1
+)[1].split("</div>", 1)[0]
+assert "Shadow Own Goal" in away_event_block
 assert b'class="badge live"' in shadow_with_events.data
 assert b"Timing starts with the next score change observed by both feeds" in shadow_with_events.data
+assert b'aria-label="Big Balls milestone timing"' in shadow_with_events.data
+assert b">KO<" in shadow_with_events.data
+assert b">HT<" in shadow_with_events.data
+assert b">FT<" in shadow_with_events.data
+assert predictor.shadow_feed_milestone("IN_PLAY") == "KO"
+assert predictor.shadow_feed_milestone("half-time") == "HT"
+assert predictor.shadow_feed_milestone("FINISHED") == "FT"
+assert predictor.shadow_timing_label(
+    "2030-01-01T12:00:00+00:00", "2030-01-01T12:00:05+00:00"
+) == "Big Balls 5s after Live"
 
 # Once both feeds have observed a genuine score change, the comparison reports
 # the measured delay rather than treating the first imported score as timing.
@@ -1312,6 +1393,25 @@ assert b"Percei" in seasons_response.data
 assert b"Champions League" in seasons_response.data
 assert b"MCFG Cockfight Cup" in seasons_response.data
 assert b"The first Champions League winner will appear here" in seasons_response.data
+conn = database.get_db()
+conn.executemany(
+    """INSERT OR REPLACE INTO competition_winners(
+           competition, season_label, winner_name
+       ) VALUES (?, '2026/27', ?)""",
+    (
+        ("champions_league", admin["name"]),
+        ("head_to_head", admin["name"]),
+    ),
+)
+conn.commit()
+conn.close()
+side_champion_badges = client.get("/leaderboard")
+assert b'aria-label="Reigning Champions League champion"' in side_champion_badges.data
+assert b'aria-label="Reigning MCFG Cockfight Cup champion"' in side_champion_badges.data
+conn = database.get_db()
+conn.execute("DELETE FROM competition_winners WHERE season_label = '2026/27'")
+conn.commit()
+conn.close()
 old_season_response = client.get("/seasons/2024")
 assert b"league-table and player statistics were not retained" in old_season_response.data
 
@@ -2069,6 +2169,9 @@ assert 'class="dashboard-logo"' in dashboard_template
 assert 'display_player_name(session.player_name)' in dashboard_template
 assert 'display_player_name(player.name)' in leaderboard_template
 assert 'reigning_premier_league_champion' in inspect.getsource(predictor.inject_globals)
+assert predictor.resolve_reigning_champion_name("TROPiC", [{
+    "name": "TROPiC Pendragon", "login_name": "TROPiC",
+}]) == "TROPiC Pendragon"
 assert 'display_player_name' not in gameweek_template
 assert 'display_player_name' not in league_stats_template
 assert 'href="/champions-league"' in dashboard_template

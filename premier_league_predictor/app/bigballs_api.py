@@ -90,7 +90,13 @@ def get_stored_premier_league_matches(api_key, dates, limit=200):
     return matches, meta
 
 
-def get_match_events(api_key, match_id):
+def get_match_events(api_key, match_id, match=None):
+    # Some live list adapters include events directly on the match row. Use
+    # them before spending another request, while retaining the dedicated
+    # endpoint as the canonical source.
+    embedded_events = _event_list(match)
+    if embedded_events:
+        return embedded_events, {"source": "match-list"}
     event_error = None
     try:
         payload = _request(
@@ -174,7 +180,7 @@ def _event_list(value):
     ):
         nested = value.get(key)
         if isinstance(nested, list):
-            return nested
+            return _event_list(nested)
         if isinstance(nested, dict):
             events = _event_list(nested)
             if events:

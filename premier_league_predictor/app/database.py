@@ -122,6 +122,9 @@ def init_db(seed_default_player=True):
 
     _add_column_if_missing(conn, "fixtures", "minute", "INTEGER")
     _add_column_if_missing(conn, "fixtures", "injury_time", "INTEGER")
+    _add_column_if_missing(conn, "fixtures", "match_phase", "TEXT")
+    _add_column_if_missing(conn, "fixtures", "home_penalty_score", "INTEGER")
+    _add_column_if_missing(conn, "fixtures", "away_penalty_score", "INTEGER")
     _add_column_if_missing(conn, "fixtures", "broadcaster", "TEXT")
     _add_column_if_missing(conn, "fixtures", "goals_json", "TEXT")
     _add_column_if_missing(conn, "fixtures", "incidents_json", "TEXT")

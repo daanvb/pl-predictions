@@ -68,7 +68,7 @@ from bigballs_api import (
     test_connection as test_bigballs_connection,
 )
 
-APP_VERSION = "1.2.5"
+APP_VERSION = "1.2.6"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -448,10 +448,37 @@ def parse_live_minute(value):
 
 def sportscore_live_clock(details):
     """Combine SportScore's base minute with richer added-time status text."""
-    minute, injury_time = parse_live_minute(details.get("live_minute"))
+    clock = details.get("clock") or {}
+    if not isinstance(clock, dict):
+        clock = {"display": clock}
+    minute, injury_time = (None, None)
+    for value in (
+        details.get("live_minute"), details.get("minute"),
+        details.get("elapsed"), clock.get("display"),
+        clock.get("label"), clock.get("minute"), clock.get("elapsed"),
+    ):
+        parsed_minute, parsed_injury_time = parse_live_minute(value)
+        if parsed_minute is not None:
+            minute, injury_time = parsed_minute, parsed_injury_time
+            break
     status_minute, status_injury_time = parse_live_minute(
         details.get("status_text")
     )
+    explicit_injury_time = None
+    for value in (
+        details.get("injury_time"), details.get("injuryTime"),
+        details.get("added_time"), details.get("addedTime"),
+        details.get("stoppage_time"), clock.get("injury_time"),
+        clock.get("injuryTime"), clock.get("added_time"),
+    ):
+        if value is None or isinstance(value, bool):
+            continue
+        match = re.search(r"\d{1,2}", str(value))
+        if match:
+            explicit_injury_time = int(match.group())
+            break
+    if minute is not None and explicit_injury_time is not None:
+        return minute, explicit_injury_time
     if (
         status_injury_time is not None
         and (minute is None or status_minute == minute)
@@ -473,11 +500,69 @@ def sportscore_fixture_status(details, fallback=None):
 
     if raw_status == "finished" or phase in ("ft", "full time", "finished"):
         return "FINISHED"
-    if phase in ("ht", "half time", "halftime", "interval"):
+    if phase in (
+        "ht", "half time", "halftime", "interval", "extra time half time",
+        "extra time halftime", "extra time interval", "et half time",
+    ):
         return "PAUSED"
     if raw_status == "live":
         return "IN_PLAY"
     return fallback
+
+
+def provider_match_phase(details):
+    """Return the knockout phase without changing the app's core status model."""
+    score = details.get("score") or {}
+    if not isinstance(score, dict):
+        score = {}
+    values = (
+        details.get("phase"), details.get("period"),
+        details.get("status_text"), details.get("status"),
+        score.get("duration"),
+    )
+    phase = " ".join(str(value) for value in values if value)
+    phase = re.sub(r"[^a-z0-9]+", " ", phase.casefold()).strip()
+    if "penalty shootout" in phase or "penalties" in phase or "shootout" in phase:
+        return "PENALTIES"
+    if "extra time" in phase or re.search(r"\bet\b", phase):
+        if any(marker in phase for marker in ("half time", "halftime", "interval", "break")):
+            return "EXTRA_TIME_HALF_TIME"
+        return "EXTRA_TIME"
+    return None
+
+
+def provider_penalty_scores(details):
+    """Read shootout scores from common provider response shapes."""
+    score = details.get("score") or {}
+    if not isinstance(score, dict):
+        score = {}
+    shootout = (
+        score.get("penalties") or score.get("penaltyShootout")
+        or details.get("penalties") or details.get("penalty_score") or {}
+    )
+    if not isinstance(shootout, dict):
+        shootout = {}
+
+    def parsed(*values):
+        for value in values:
+            if value is None or isinstance(value, bool):
+                continue
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    return (
+        parsed(
+            shootout.get("home"), shootout.get("home_score"),
+            details.get("home_penalties"), details.get("homePenaltyScore"),
+        ),
+        parsed(
+            shootout.get("away"), shootout.get("away_score"),
+            details.get("away_penalties"), details.get("awayPenaltyScore"),
+        ),
+    )
 
 
 def stored_fixture_for_teams(home_team, away_team):
@@ -1684,6 +1769,28 @@ def status_label(fixture):
     status = fixture_display_status(
         fixture
     )
+    fixture_keys = set(fixture.keys())
+    match_phase = (
+        fixture["match_phase"] if "match_phase" in fixture_keys else None
+    )
+    home_penalties = (
+        fixture["home_penalty_score"]
+        if "home_penalty_score" in fixture_keys else None
+    )
+    away_penalties = (
+        fixture["away_penalty_score"]
+        if "away_penalty_score" in fixture_keys else None
+    )
+
+    if match_phase == "PENALTIES":
+        shootout = (
+            f" {home_penalties}–{away_penalties}"
+            if home_penalties is not None and away_penalties is not None else ""
+        )
+        return (
+            f"FT (PENS{shootout})" if status == "FINISHED"
+            else f"PENS{shootout}"
+        )
 
     if status in ("LIVE", "IN_PLAY"):
         minute = fixture["minute"]
@@ -1694,16 +1801,21 @@ def status_label(fixture):
         )
 
         if minute:
+            prefix = "ET" if match_phase == "EXTRA_TIME" else "LIVE"
             if injury_time:
-                return f"LIVE {minute}+{injury_time}'"
-            return f"LIVE {minute}'"
+                return f"{prefix} {minute}+{injury_time}'"
+            return f"{prefix} {minute}'"
 
-        return "LIVE"
+        return "ET" if match_phase == "EXTRA_TIME" else "LIVE"
 
     if status == "PAUSED":
+        if match_phase in ("EXTRA_TIME", "EXTRA_TIME_HALF_TIME"):
+            return "ET HT"
         return "HT"
 
     if status == "FINISHED":
+        if match_phase in ("EXTRA_TIME", "EXTRA_TIME_HALF_TIME"):
+            return "AET"
         return "FT"
 
     if status == "POSTPONED":
@@ -2881,6 +2993,7 @@ def import_matches_from_api():
             "fullTime",
             {}
         )
+        home_penalty_score, away_penalty_score = provider_penalty_scores(match)
 
         existing = conn.execute(
             "SELECT goals_json FROM fixtures WHERE id = ?",
@@ -2934,10 +3047,13 @@ def import_matches_from_api():
                 last_updated,
                 minute,
                 injury_time,
+                match_phase,
+                home_penalty_score,
+                away_penalty_score,
                 goals_json,
                 live_data_source
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
             ON CONFLICT(id)
             DO UPDATE SET
@@ -2999,6 +3115,13 @@ def import_matches_from_api():
                     THEN fixtures.injury_time
                     ELSE COALESCE(excluded.injury_time, fixtures.injury_time)
                 END,
+                match_phase = COALESCE(excluded.match_phase, fixtures.match_phase),
+                home_penalty_score = COALESCE(
+                    excluded.home_penalty_score, fixtures.home_penalty_score
+                ),
+                away_penalty_score = COALESCE(
+                    excluded.away_penalty_score, fixtures.away_penalty_score
+                ),
                 goals_json = CASE
                     WHEN fixtures.status = 'FINISHED'
                       AND excluded.status != 'FINISHED'
@@ -3036,6 +3159,9 @@ def import_matches_from_api():
                 match.get("lastUpdated"),
                 match.get("minute"),
                 match.get("injuryTime"),
+                provider_match_phase(match),
+                home_penalty_score,
+                away_penalty_score,
                 json.dumps(goals) if goals is not None else None,
                 "football-data.org",
             ),
@@ -3386,6 +3512,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                 else None
             )
             minute_value, injury_time_value = sportscore_live_clock(details)
+            home_penalty_score, away_penalty_score = provider_penalty_scores(details)
 
             conn.execute(
                 """
@@ -3397,6 +3524,18 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                     injury_time = CASE
                         WHEN ? IS NOT NULL THEN ?
                         ELSE injury_time
+                    END,
+                    match_phase = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE match_phase
+                    END,
+                    home_penalty_score = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE home_penalty_score
+                    END,
+                    away_penalty_score = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE away_penalty_score
                     END,
                     goals_json = COALESCE(?, goals_json),
                     incidents_json = COALESCE(?, incidents_json),
@@ -3413,6 +3552,12 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                     minute_value,
                     minute_value,
                     injury_time_value,
+                    provider_match_phase(details),
+                    provider_match_phase(details),
+                    home_penalty_score,
+                    home_penalty_score,
+                    away_penalty_score,
+                    away_penalty_score,
                     goals_json,
                     incidents_json,
                     safe_team_logo_url(details.get("home_logo")),
@@ -3652,7 +3797,9 @@ def refresh_bigballs_shadow(force_events=False):
                 and any(value is not None for value in current_state[1:])
             ):
                 try:
-                    events, _ = get_bigballs_match_events(api_key, match["id"])
+                    events, _ = get_bigballs_match_events(
+                        api_key, match["id"], raw_match
+                    )
                     events_json = json.dumps(events, separators=(",", ":"))
                 except BigBallsAPIError as exc:
                     events_json = json.dumps({"error": str(exc)})
@@ -4989,9 +5136,36 @@ def signal_notification_worker():
         )
 
 
+def resolve_reigning_champion_name(winner_name, players):
+    """Map an archived display name to the champion's current player name."""
+    archived = " ".join(str(winner_name or "").casefold().split())
+    if not archived:
+        return None
+    exact = []
+    compatible = []
+    for player in players:
+        current_name = str(player["name"] or "").strip()
+        login_name = str(player["login_name"] or "").strip()
+        aliases = {
+            " ".join(current_name.casefold().split()),
+            " ".join(login_name.casefold().split()),
+        }
+        if archived in aliases:
+            exact.append(current_name)
+        elif any(
+            alias.startswith(f"{archived} ") or archived.startswith(f"{alias} ")
+            for alias in aliases if alias
+        ):
+            compatible.append(current_name)
+    matches = exact or compatible
+    return matches[0] if len(matches) == 1 else winner_name
+
+
 @app.context_processor
 def inject_globals():
     reigning_premier_league_champion = None
+    reigning_champions_league_champion = None
+    reigning_head_to_head_champion = None
     conn = None
     try:
         conn = get_db()
@@ -4999,7 +5173,25 @@ def inject_globals():
             "SELECT winner_name FROM season_archives ORDER BY season DESC LIMIT 1"
         ).fetchone()
         if row:
-            reigning_premier_league_champion = row["winner_name"]
+            players = conn.execute(
+                "SELECT name, login_name FROM players ORDER BY id"
+            ).fetchall()
+            reigning_premier_league_champion = resolve_reigning_champion_name(
+                row["winner_name"], players
+            )
+            side_champions = {}
+            for winner in conn.execute(
+                """SELECT competition, winner_name FROM competition_winners
+                   ORDER BY id DESC"""
+            ).fetchall():
+                side_champions.setdefault(
+                    winner["competition"],
+                    resolve_reigning_champion_name(winner["winner_name"], players),
+                )
+            reigning_champions_league_champion = side_champions.get(
+                "champions_league"
+            )
+            reigning_head_to_head_champion = side_champions.get("head_to_head")
     except sqlite3.Error:
         # First-run pages can render before the archive tables are available.
         reigning_premier_league_champion = None
@@ -5022,6 +5214,8 @@ def inject_globals():
         "compact_record_name": compact_record_name,
         "is_logged_in": logged_in(),
         "reigning_premier_league_champion": reigning_premier_league_champion,
+        "reigning_champions_league_champion": reigning_champions_league_champion,
+        "reigning_head_to_head_champion": reigning_head_to_head_champion,
     }
 
 
@@ -8756,6 +8950,36 @@ def admin_refresh_current_scorers():
     return redirect("/admin")
 
 
+def shadow_feed_milestone(status):
+    value = str(status or "").strip().casefold().replace("-", "_").replace(" ", "_")
+    if value in {"finished", "final", "ft", "full_time", "ended", "complete", "completed"}:
+        return "FT"
+    if value in {"ht", "half_time", "halftime", "interval", "paused"}:
+        return "HT"
+    if value in {"live", "in_play", "in_progress", "playing", "started"}:
+        return "KO"
+    return None
+
+
+def shadow_timing_label(live_value, shadow_value):
+    live_at = parse_utc(live_value)
+    shadow_at = parse_utc(shadow_value)
+    if live_at and shadow_at:
+        lag_seconds = round((shadow_at - live_at).total_seconds())
+        absolute_seconds = abs(lag_seconds)
+        if absolute_seconds < 2:
+            return "Same check"
+        minutes, seconds = divmod(absolute_seconds, 60)
+        duration = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+        relation = "after" if lag_seconds > 0 else "before"
+        return f"Big Balls {duration} {relation} Live"
+    if live_at:
+        return "Awaiting Big Balls"
+    if shadow_at:
+        return "Awaiting Live"
+    return "Not observed"
+
+
 @app.route("/admin/live-feed-test")
 def admin_bigballs_shadow_test():
     if not is_admin():
@@ -8829,6 +9053,23 @@ def admin_bigballs_shadow_test():
             normalized_team_name(row["away_team"]),
         )
         event_samples_by_key.setdefault(row_key, row)
+    shadow_milestones = {}
+    for row in shadow_score_samples:
+        milestone = shadow_feed_milestone(row["status"])
+        if not milestone:
+            continue
+        row_key = (
+            normalized_team_name(row["home_team"]),
+            normalized_team_name(row["away_team"]),
+        )
+        shadow_milestones.setdefault((row_key, milestone), row["captured_at"])
+    predictor_milestones = {}
+    for row in predictor_score_samples:
+        milestone = shadow_feed_milestone(row["status"])
+        if milestone:
+            predictor_milestones.setdefault(
+                (row["fixture_id"], milestone), row["captured_at"]
+            )
     shadow_changed_at = {}
     previous_shadow_score = {}
     for row in shadow_score_samples:
@@ -8865,6 +9106,19 @@ def admin_bigballs_shadow_test():
                 events = parsed if isinstance(parsed, list) else []
             except (TypeError, ValueError):
                 events = []
+        provider_home_id = None
+        provider_away_id = None
+        if event_sample and event_sample["raw_json"]:
+            try:
+                raw_sample = json.loads(event_sample["raw_json"])
+                raw_home = raw_sample.get("home") or raw_sample.get("home_team") or {}
+                raw_away = raw_sample.get("away") or raw_sample.get("away_team") or {}
+                if isinstance(raw_home, dict):
+                    provider_home_id = raw_home.get("id") or raw_home.get("team_id")
+                if isinstance(raw_away, dict):
+                    provider_away_id = raw_away.get("id") or raw_away.get("team_id")
+            except (AttributeError, TypeError, ValueError):
+                pass
         display_events = {"home": [], "away": [], "other": []}
         for event in events:
             if not isinstance(event, dict):
@@ -8936,7 +9190,7 @@ def admin_bigballs_shadow_test():
                 or event.get("participant_team") or {}
             )
             team_name = ""
-            team_id = None
+            team_id = event.get("team_id") or event.get("teamId")
             if isinstance(team, dict):
                 nested_team = team.get("team")
                 if isinstance(nested_team, dict):
@@ -8945,7 +9199,7 @@ def admin_bigballs_shadow_test():
                     team.get("name") or team.get("display_name")
                     or team.get("short_name") or ""
                 )
-                team_id = team.get("id") or team.get("team_id")
+                team_id = team.get("id") or team.get("team_id") or team_id
             elif team:
                 team_name = str(team)
             team_name = str(
@@ -8966,7 +9220,17 @@ def admin_bigballs_shadow_test():
             home_id = fixture["home_team_id"] if "home_team_id" in fixture_keys else None
             away_id = fixture["away_team_id"] if "away_team_id" in fixture_keys else None
             if side not in {"home", "away"}:
-                if team_id is not None and home_id is not None and str(team_id) == str(home_id):
+                if (
+                    team_id is not None and provider_home_id is not None
+                    and str(team_id) == str(provider_home_id)
+                ):
+                    side = "home"
+                elif (
+                    team_id is not None and provider_away_id is not None
+                    and str(team_id) == str(provider_away_id)
+                ):
+                    side = "away"
+                elif team_id is not None and home_id is not None and str(team_id) == str(home_id):
                     side = "home"
                 elif team_id is not None and away_id is not None and str(team_id) == str(away_id):
                     side = "away"
@@ -9070,11 +9334,22 @@ def admin_bigballs_shadow_test():
                     )
                     relation = "after" if lag_seconds > 0 else "before"
                     update_lag_label = f"Big Balls updated {duration} {relation} Live"
+        timing_rows = []
+        for milestone in ("KO", "HT", "FT"):
+            live_at = predictor_milestones.get((fixture["id"], milestone))
+            shadow_at = shadow_milestones.get((key, milestone))
+            timing_rows.append({
+                "milestone": milestone,
+                "live_at": local_timestamp(live_at) if live_at else None,
+                "shadow_at": local_timestamp(shadow_at) if shadow_at else None,
+                "label": shadow_timing_label(live_at, shadow_at),
+            })
         monitored.append({
             "fixture": dict(fixture),
             "sample": dict(sample) if sample else None,
             "score_matches": score_matches,
             "update_lag_label": update_lag_label,
+            "timing_rows": timing_rows,
             "events": display_events,
         })
     return render_template(
@@ -9265,17 +9540,31 @@ def _retired_champions_league_live_feed_test():
                 details,
                 stored_fixture.get("status") if stored_fixture else None,
             )
+            match_phase = provider_match_phase(details) or (
+                stored_fixture.get("match_phase") if stored_fixture else None
+            )
             if normalized_status == "PAUSED":
-                status_text = "HT"
+                status_text = (
+                    "ET HT" if match_phase in (
+                        "EXTRA_TIME", "EXTRA_TIME_HALF_TIME"
+                    ) else "HT"
+                )
             elif raw_status == "live":
-                status_text = "LIVE"
-                if minute is not None:
-                    status_text += f" {minute}"
-                    if injury_time is not None:
-                        status_text += f"+{injury_time}"
-                    status_text += "'"
+                if match_phase == "PENALTIES":
+                    status_text = "PENS"
+                else:
+                    status_text = "ET" if match_phase == "EXTRA_TIME" else "LIVE"
+                    if minute is not None:
+                        status_text += f" {minute}"
+                        if injury_time is not None:
+                            status_text += f"+{injury_time}"
+                        status_text += "'"
             elif raw_status == "finished":
-                status_text = "FT"
+                status_text = "FT (PENS)" if match_phase == "PENALTIES" else (
+                    "AET" if match_phase in (
+                        "EXTRA_TIME", "EXTRA_TIME_HALF_TIME"
+                    ) else "FT"
+                )
             else:
                 status_text = details.get("status_text") or raw_status.upper()
             goals = sportscore_goal_events(details)
