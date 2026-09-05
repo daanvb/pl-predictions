@@ -1182,6 +1182,38 @@ body.dashboard-menu-open{overflow:hidden}
 .fixture-predictions .player-title-icon{vertical-align:-.27rem}
 .hero h1 .competition-icon{width:1.18em;height:1.18em;flex-basis:1.18em;font-size:inherit;vertical-align:-.2em}
 .hero h1 .competition-icon img{width:1.18em;height:1.18em}
+/* The Champions League artwork is narrower than the Premier League trophy.
+   Give both title rows the same visible trophy weight and baseline. */
+.champions-title-trophy{
+  width:1.36em;
+  height:1.36em;
+  flex-basis:1.36em;
+  vertical-align:-.16em;
+}
+.champions-title-trophy img{
+  width:1.36em;
+  height:1.36em;
+  transform:scale(1.24) translateY(-.035em);
+}
+.champions-fixture-heading{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-bottom:6px;
+}
+.champions-fixture-heading .champions-title-trophy{
+  width:36px;
+  height:36px;
+  flex-basis:36px;
+}
+.champions-fixture-heading .champions-title-trophy img{
+  width:36px;
+  height:36px;
+}
+/* Keep date and status in the same shared fixture-card grid used by PL. */
+.champions-fixture-card .fixture-row-grid{
+  row-gap:0;
+}
 .payment-list{display:grid;margin-top:14px;border-top:1px solid var(--line)}
 .payment-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 2px;border-bottom:1px solid var(--line)}
 .payment-row label{display:flex;align-items:center;gap:8px;font-weight:700}

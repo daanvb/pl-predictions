@@ -11,6 +11,6 @@
 {% endfor %}
 <div class="stat"><div class="small">BEST SINGLE GW</div><div class="compact-record-name">{% for record in best_gameweeks_overall %}<div>{{ compact_record_name(record.name) }} <span class="muted" style="font-size:12px">GW{{ record.matchday }}</span></div>{% else %}—{% endfor %}</div><div class="muted">{% if best_gameweeks_overall %}{{ best_gameweek_value }} pts{% if best_gameweeks_overall|length > 1 %} · tied record{% endif %}{% else %}—{% endif %}</div></div>
 </div></div>
-<div class="card">After <strong>{{ completed_gameweeks }}</strong> completed Gameweek{% if completed_gameweeks != 1 %}s{% endif %}{% if current_gameweek_pending %}<span class="muted"> · Current GW updates after each settled fixture block</span>{% endif %}</div>
+<div class="card">After <strong>{{ completed_gameweeks }}</strong> completed Gameweek{% if completed_gameweeks != 1 %}s{% endif %}{% if current_gameweek_pending %}<span class="muted"> · Updated after every settled game block</span>{% endif %}</div>
 </div>
 {% endblock %}

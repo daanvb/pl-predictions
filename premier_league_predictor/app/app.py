@@ -1121,6 +1121,43 @@ def settled_premier_league_blocks(conn):
     ]
 
 
+def settled_premier_league_blocks_before_matchday(conn, matchday):
+    """Settled blocks from before a gameweek, for its movement baseline."""
+    return [
+        row["utc_date"]
+        for row in conn.execute(
+            """
+            SELECT utc_date
+            FROM fixtures
+            WHERE season = ?
+              AND competition = 'premier_league'
+              AND matchday < ?
+              AND utc_date IS NOT NULL
+            GROUP BY utc_date
+            HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
+                            THEN 1 ELSE 0 END) = 0
+               AND SUM(CASE WHEN status = 'FINISHED' THEN 1 ELSE 0 END) > 0
+            ORDER BY utc_date
+            """,
+            (SEASON, matchday),
+        ).fetchall()
+    ]
+
+
+def latest_settled_premier_league_matchday(conn, blocks):
+    if not blocks:
+        return None
+    placeholders = ", ".join("?" for _ in blocks)
+    row = conn.execute(
+        f"""SELECT MAX(matchday) AS matchday
+            FROM fixtures
+            WHERE season = ? AND competition = 'premier_league'
+              AND utc_date IN ({placeholders})""",
+        (SEASON, *blocks),
+    ).fetchone()
+    return row["matchday"] if row else None
+
+
 def prepare_settled_premier_fixtures(conn, blocks):
     """Make the settled fixture set reusable by the statistics queries."""
     conn.execute("DROP TABLE IF EXISTS settled_premier_fixture_ids")
@@ -8480,8 +8517,14 @@ def leaderboard():
     conn.commit()
     settled_blocks = settled_premier_league_blocks(conn)
     players = [dict(row) for row in overall_table_at_blocks(conn, settled_blocks)]
-    previous_table = overall_table_at_blocks(conn, settled_blocks[:-1])
-    previous_positions = ranking_positions(previous_table)
+    active_matchday = latest_settled_premier_league_matchday(conn, settled_blocks)
+    baseline_blocks = (
+        settled_premier_league_blocks_before_matchday(conn, active_matchday)
+        if active_matchday is not None else []
+    )
+    previous_positions = ranking_positions(
+        overall_table_at_blocks(conn, baseline_blocks)
+    )
 
     for position, player in enumerate(players, start=1):
         player["position"] = position
