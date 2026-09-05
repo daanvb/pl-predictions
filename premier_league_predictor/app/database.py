@@ -310,6 +310,51 @@ def init_db(seed_default_player=True):
     conn.execute("DROP TABLE IF EXISTS predictor_live_samples")
     conn.execute("DELETE FROM settings WHERE key LIKE 'bigballs_%'")
 
+    # API-Football IDs cannot replace football-data.org fixture IDs: predictions
+    # use the latter as foreign keys. Keep provider mappings and observations
+    # separate while API-Football acts as a targeted live-data fallback.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS provider_fixture_mappings (
+            fixture_id INTEGER NOT NULL,
+            provider TEXT NOT NULL,
+            provider_fixture_id TEXT NOT NULL,
+            match_method TEXT NOT NULL,
+            mapped_at TEXT NOT NULL,
+            PRIMARY KEY (fixture_id, provider),
+            UNIQUE (provider, provider_fixture_id),
+            FOREIGN KEY(fixture_id) REFERENCES fixtures(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS provider_event_observations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            fixture_id INTEGER NOT NULL,
+            event_key TEXT NOT NULL,
+            event_type TEXT,
+            event_minute TEXT,
+            first_seen_at TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            UNIQUE(provider, fixture_id, event_key),
+            FOREIGN KEY(fixture_id) REFERENCES fixtures(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_provider_event_fixture_time
+        ON provider_event_observations(provider, fixture_id, first_seen_at)
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS provider_live_states (
+            provider TEXT NOT NULL,
+            fixture_id INTEGER NOT NULL,
+            state_signature TEXT NOT NULL,
+            captured_at TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            PRIMARY KEY(provider, fixture_id),
+            FOREIGN KEY(fixture_id) REFERENCES fixtures(id) ON DELETE CASCADE
+        )
+    """)
+
     # Permanent end-of-season snapshots. Player names are copied rather than
     # linked so later account edits cannot rewrite historical tables.
     conn.execute("""

@@ -42,6 +42,18 @@ assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(predictions)"
 assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "incidents_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "live_data_source" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
+assert conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' "
+    "AND name='provider_fixture_mappings'"
+).fetchone() is not None
+assert conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' "
+    "AND name='provider_live_states'"
+).fetchone() is not None
+assert conn.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' "
+    "AND name='provider_event_observations'"
+).fetchone() is not None
 assert "login_name" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
 assert "email" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
 assert "entry_fee_paid" in {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
@@ -153,6 +165,9 @@ conn.close()
 # Import the real Flask app after redirecting its database module.
 import app as predictor
 predictor.app.config["TESTING"] = True
+with predictor.app.test_client() as client:
+    cached_page = client.get("/")
+    assert cached_page.headers["Cache-Control"] == "no-store, max-age=0"
 assert predictor.news_cache["fetched_at"] == 0.0
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
@@ -2227,6 +2242,100 @@ assert direct_fixture["goals_json"] == "[]"
 assert direct_fixture["home_logo"].endswith("fulham.png")
 assert direct_fixture["away_logo"].endswith("chelsea.png")
 conn.execute("DELETE FROM fixtures WHERE id = 99002")
+conn.commit()
+conn.close()
+
+# API-Football is a guarded fallback: it maps a matching live fixture, fills
+# absent score/event data, and records first-seen provider events.
+api_fallback_kickoff = (datetime.now(timezone.utc) - timedelta(minutes=6)).isoformat()
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team
+       ) VALUES (99007, ?, 0, ?, 'SCHEDULED', 'Fallback Home', 'Fallback Away')""",
+    (season, api_fallback_kickoff),
+)
+conn.commit()
+conn.close()
+original_api_football_live = predictor.get_api_football_live_fixtures
+original_api_football_events = predictor.get_api_football_fixture_events
+predictor.get_api_football_live_fixtures = lambda key: [{
+    "fixture": {
+        "id": 456789, "date": api_fallback_kickoff,
+        "status": {"short": "1H", "elapsed": 6},
+    },
+    "teams": {
+        "home": {"name": "Fallback Home"},
+        "away": {"name": "Fallback Away"},
+    },
+    "goals": {"home": 1, "away": 0},
+}]
+predictor.get_api_football_fixture_events = lambda key, fixture_id: [{
+    "type": "Goal", "detail": "Normal Goal",
+    "time": {"elapsed": 6, "extra": None},
+    "team": {"name": "Fallback Home"},
+    "player": {"name": "Fallback Scorer"},
+}]
+predictor.set_setting("api_football_key", "test-key")
+predictor.set_setting("api_football_call_day", "")
+predictor.set_setting("last_api_football_request", "")
+try:
+    assert predictor.import_live_matches_from_api_football_fallback() == 1
+finally:
+    predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.get_api_football_fixture_events = original_api_football_events
+    predictor.set_setting("api_football_key", "")
+conn = database.get_db()
+fallback_fixture = conn.execute(
+    """SELECT status, home_score, away_score, minute, goals_json, live_data_source
+       FROM fixtures WHERE id = 99007"""
+).fetchone()
+assert tuple(fallback_fixture[:4]) == ("IN_PLAY", 1, 0, 6)
+assert "Fallback Scorer" in fallback_fixture["goals_json"]
+assert fallback_fixture["live_data_source"] == "API-Football"
+assert conn.execute(
+    "SELECT 1 FROM provider_fixture_mappings WHERE fixture_id = 99007"
+).fetchone() is not None
+assert conn.execute(
+    "SELECT 1 FROM provider_event_observations WHERE fixture_id = 99007"
+).fetchone() is not None
+conn.execute(
+    """UPDATE fixtures SET status = 'IN_PLAY', home_score = 1, away_score = 0,
+           minute = 1, goals_json = '[{"scorer":{"name":"Known"}}]',
+           live_data_source = 'SportScore' WHERE id = 99007"""
+)
+assert predictor.fixture_scorers(
+    json.dumps([{
+        "team": {"name": "Home FC"}, "scorer": {"name": "VAR scorer"},
+        "minute": 15,
+    }]),
+    "Home FC", "Away FC", 0, 0,
+) == {"home": [], "away": []}
+conn.commit()
+conn.close()
+predictor.get_api_football_live_fixtures = lambda key: [{
+    "fixture": {
+        "id": 456789, "date": api_fallback_kickoff,
+        "status": {"short": "1H", "elapsed": 6},
+    },
+    "teams": {
+        "home": {"name": "Fallback Home"},
+        "away": {"name": "Fallback Away"},
+    },
+    "goals": {"home": 1, "away": 0},
+}]
+predictor.get_api_football_fixture_events = lambda key, fixture_id: []
+predictor.set_setting("api_football_key", "test-key")
+predictor.set_setting("last_api_football_request", "")
+try:
+    assert predictor.import_live_matches_from_api_football_fallback() == 1
+finally:
+    predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.get_api_football_fixture_events = original_api_football_events
+    predictor.set_setting("api_football_key", "")
+conn = database.get_db()
+assert conn.execute("SELECT minute FROM fixtures WHERE id = 99007").fetchone()[0] == 6
+conn.execute("DELETE FROM fixtures WHERE id = 99007")
 conn.commit()
 conn.close()
 
