@@ -61,10 +61,8 @@
 
 {% if gameweek_progress %}<div class="small live-player-progress">{{ gameweek_progress }}</div>{% endif %}
 
-<div class="leader-points">
-{{ player.season_points }}
-<div class="small" style="text-align:right">{{ player.points }} GW pts</div>
-</div>
+<strong class="leader-points">{{ player.season_points }}</strong>
+<div class="small live-player-points">{{ player.points }} GW pts</div>
 
 </div>
 
