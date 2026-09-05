@@ -8,6 +8,7 @@ import re
 import secrets
 import threading
 import time
+import unicodedata
 import sqlite3
 import requests
 import json
@@ -131,6 +132,7 @@ CHAMPIONS_LEAGUE_TV_SOURCE = (
     "https://www.live-footballontv.com/"
     "live-champions-league-football-on-tv.html"
 )
+UK_FOOTBALL_ON_TV_TEAM_SOURCE = "https://www.ukfootballontv.co.uk/team/{}"
 
 SKY_SPORTS_LOGO = (
     "https://upload.wikimedia.org/wikipedia/commons/9/9d/"
@@ -513,7 +515,11 @@ def sportscore_fixture_status(details, fallback=None):
         str(details.get("status_text") or "").strip().casefold(),
     ).strip()
 
-    if raw_status == "finished" or phase in ("ft", "full time", "finished"):
+    if (
+        raw_status in ("finished", "ended", "complete", "completed", "fulltime", "ft")
+        or phase in ("ft", "full time", "finished", "ended", "complete", "completed", "fulltime")
+        or phase.startswith(("ft ", "full time ", "finished ", "ended "))
+    ):
         return "FINISHED"
     if phase in (
         "ht", "half time", "halftime", "interval", "extra time half time",
@@ -3408,14 +3414,70 @@ def is_english_champions_league_fixture(fixture):
     return bool(teams & CHAMPIONS_LEAGUE_ENGLISH_TEAMS)
 
 
+def _champions_league_tv_team_name(name):
+    """Normalise broadcaster abbreviations without changing fixture names."""
+    ascii_name = unicodedata.normalize("NFKD", str(name or ""))
+    ascii_name = ascii_name.encode("ascii", "ignore").decode("ascii")
+    value = normalized_team_name(ascii_name)
+    aliases = {
+        "atl madrid": "atletico madrid",
+        "atletico de madrid": "atletico madrid",
+        "club atletico de madrid": "atletico madrid",
+        "ssc napoli": "napoli",
+        "paris saint germain": "psg",
+        "paris sg": "psg",
+    }
+    return aliases.get(value, value)
+
+
 def _champions_league_tv_teams_match(first, second):
     ignored_words = {
         "ac", "afc", "as", "cf", "club", "de", "fc", "ssc", "the",
         "us",
     }
-    first_words = set(normalized_team_name(first).split()) - ignored_words
-    second_words = set(normalized_team_name(second).split()) - ignored_words
+    first_words = set(_champions_league_tv_team_name(first).split()) - ignored_words
+    second_words = set(_champions_league_tv_team_name(second).split()) - ignored_words
     return bool(first_words and second_words and first_words == second_words)
+
+
+def _confirmed_uk_tv_channel(channels):
+    """Keep the specific UK channel rather than generic platform duplicates."""
+    confirmed = [
+        channel.strip() for channel in channels
+        if channel and channel.strip() not in ("HBO Max", "HBO MAX", "TBC", "To be confirmed")
+        and not channel.strip().endswith(" TBC")
+    ]
+    if not confirmed:
+        return None
+    specific = [channel for channel in confirmed if re.search(r"\d|Ultimate", channel)]
+    return specific[-1] if specific else confirmed[-1]
+
+
+def _uk_football_on_tv_team_listings(team_slug):
+    """Read confirmed UK channels from a team page when the round page is late."""
+    try:
+        response = requests.get(
+            UK_FOOTBALL_ON_TV_TEAM_SOURCE.format(team_slug), timeout=20,
+            headers={"User-Agent": "PremierLeaguePredictor/1.25"},
+        )
+        response.raise_for_status()
+    except Exception as exc:
+        print(f"[champions-league-tv] Team listing unavailable: {exc}", flush=True)
+        return []
+    listings = []
+    for row in re.findall(r"<tr\b[^>]*>(.*?)</tr>", response.text, re.I | re.S):
+        if "Champions League" not in unescape(row):
+            continue
+        home = re.search(r'<td[^>]*class="local"[^>]*>.*?title="([^"]+)"', row, re.I | re.S)
+        away = re.search(r'<td[^>]*class="visitante"[^>]*>.*?title="([^"]+)"', row, re.I | re.S)
+        channel_list = re.search(r'<ul[^>]*class="listaCanales"[^>]*>(.*?)</ul>', row, re.I | re.S)
+        if not home or not away or not channel_list:
+            continue
+        channels = re.findall(r'<li[^>]*title="([^"]+)"', channel_list.group(1), re.I)
+        channel = _confirmed_uk_tv_channel([unescape(value) for value in channels])
+        if channel:
+            listings.append((unescape(home.group(1)), unescape(away.group(1)), channel))
+    return listings
 
 
 def fetch_champions_league_uk_tv_listings(fixtures):
@@ -3426,21 +3488,22 @@ def fetch_champions_league_uk_tv_listings(fixtures):
     ]
     if not eligible:
         return {}
+    response_text = ""
     try:
         response = requests.get(
             CHAMPIONS_LEAGUE_TV_SOURCE,
             timeout=20,
-            headers={"User-Agent": "PremierLeaguePredictor/1.24"},
+            headers={"User-Agent": "PremierLeaguePredictor/1.25"},
         )
         response.raise_for_status()
+        response_text = response.text
     except Exception as exc:
         print(f"[champions-league-tv] Listing unavailable: {exc}", flush=True)
-        return {}
 
     listings = []
     for block in re.findall(
         r'<div class="fixture">(.*?)(?=<div class="fixture">|$)',
-        response.text,
+        response_text,
         flags=re.I | re.S,
     ):
         teams = re.search(
@@ -3458,13 +3521,33 @@ def fetch_champions_league_uk_tv_listings(fixtures):
                 re.I | re.S,
             )
         ]
-        confirmed = [
-            channel for channel in channels
-            if channel not in ("HBO Max", "TBC")
-            and not channel.endswith(" TBC")
-        ]
-        if confirmed:
-            listings.append((home.strip(), away.strip(), " · ".join(confirmed)))
+        channel = _confirmed_uk_tv_channel(channels)
+        if channel:
+            listings.append((home.strip(), away.strip(), channel))
+
+    # The competition-wide page is sometimes delayed or unavailable. Team pages
+    # publish the same UK channel assignment and are used only for unmatched
+    # English-club fixtures.
+    loaded_team_slugs = set()
+    for fixture in eligible:
+        if any(
+            _champions_league_tv_teams_match(fixture["home_team"], home)
+            and _champions_league_tv_teams_match(fixture["away_team"], away)
+            for home, away, _channel in listings
+        ):
+            continue
+        english_team = next(
+            (team for team in (fixture["home_team"], fixture["away_team"])
+             if normalized_team_name(team) in CHAMPIONS_LEAGUE_ENGLISH_TEAMS),
+            None,
+        )
+        if english_team:
+            team_slug = re.sub(
+                r"[^a-z0-9]+", "-", normalized_team_name(english_team)
+            ).strip("-")
+            if team_slug not in loaded_team_slugs:
+                listings.extend(_uk_football_on_tv_team_listings(team_slug))
+                loaded_team_slugs.add(team_slug)
 
     found = {}
     for fixture in eligible:
@@ -5763,6 +5846,7 @@ def inject_globals():
         "changelog_has_update": changelog_has_unread_update(),
         "broadcaster_logo_url": broadcaster_logo_url,
         "broadcaster_dark_logo_url": broadcaster_dark_logo_url,
+        "is_english_champions_league_fixture": is_english_champions_league_fixture,
         "team_badge_url": team_badge_url,
         "compact_record_name": compact_record_name,
         "is_logged_in": logged_in(),
