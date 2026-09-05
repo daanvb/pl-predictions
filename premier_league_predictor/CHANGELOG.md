@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.2.8] - 2026-09-05
+
+### Fixes
+- Fixed the Home Assistant update build failing when release notes contain only fixes.
+- Retained the champion trophy improvements from 1.2.7.
+
 ## [1.2.7] - 2026-09-05
 
 ### Fixes

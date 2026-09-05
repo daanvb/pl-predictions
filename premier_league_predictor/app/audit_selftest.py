@@ -2539,9 +2539,29 @@ conn.close()
 # Changelog parser must actually parse packaged release notes.
 releases = predictor.read_app_changelog()
 assert releases and releases[0]["version"] == predictor.APP_VERSION
-assert [section["title"] for section in releases[0]["sections"]] == [
-    "Important", "New", "Changes", "Fixes"
+release_sections = releases[0]["sections"]
+assert release_sections
+release_titles = [section["title"] for section in release_sections]
+assert release_titles == [
+    title for title in predictor.CHANGELOG_SECTION_ORDER if title in release_titles
 ]
+assert all(section["items"] for section in release_sections)
+
+# Patch releases may contain only fixes; exercise the actual Markdown parser
+# independently of whichever sections the current release happens to include.
+from unittest.mock import mock_open, patch
+with patch.object(predictor.os.path, "exists", return_value=True), patch(
+    "builtins.open",
+    mock_open(read_data="## [test-patch] - 2026-09-05\n\n### Fixes\n- Corrected mobile card alignment.\n"),
+):
+    patch_releases = predictor.read_app_changelog()
+assert len(patch_releases) == 1
+assert patch_releases[0]["version"] == "test-patch"
+assert patch_releases[0]["sections"] == [{
+    "title": "Fixes",
+    "items": ["Corrected mobile card alignment."],
+    "groups": [{"title": "UI", "items": ["Corrected mobile card alignment."]}],
+}]
 sample_sections = predictor.normalise_changelog_sections([
     {"title": "Fixed", "items": [
         "Corrected mobile card alignment.",
