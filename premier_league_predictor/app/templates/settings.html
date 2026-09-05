@@ -84,26 +84,6 @@ Save token
 
 </div>
 
-<div class="card">
-
-<h2>Big Balls Premier League shadow feed</h2>
-
-<p>{% if bigballs_configured %}✅ API key stored persistently.{% else %}⚠️ No API key configured.{% endif %}</p>
-<p class="small">Read-only testing only. It checks the complete Premier League feed once per minute during live windows and cannot alter Predictor scores or points.</p>
-
-<form method="POST">
-<input type="hidden" name="action" value="bigballs_api">
-<input type="password" name="bigballs_api_key" placeholder="bbs_live_…" style="width:100%;margin-bottom:10px" required>
-<button>Save shadow-feed key</button>
-</form>
-
-{% if bigballs_configured %}
-<form method="POST" action="/admin/settings/bigballs-test" style="margin-top:10px">
-<button class="primary">Test Big Balls connection</button>
-</form>
-{% endif %}
-
-</div>
 
 <div class="card">
 
