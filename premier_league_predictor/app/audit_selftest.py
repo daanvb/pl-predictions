@@ -2173,8 +2173,8 @@ predictor.get_football_champions_league_matches = lambda token, season, matchday
     "matchday": 1,
     "utcDate": datetime.now(timezone.utc).isoformat(),
     "status": "SCHEDULED",
-    "homeTeam": {"name": "CL Home"},
-    "awayTeam": {"name": "CL Away"},
+    "homeTeam": {"name": "CL Home", "crest": "https://example.test/cl-home.png"},
+    "awayTeam": {"name": "CL Away", "crest": "https://example.test/cl-away.png"},
     "score": {"fullTime": {"home": None, "away": None}},
 }]
 predictor.set_setting("football_api_token", "test-token")
@@ -2187,15 +2187,24 @@ finally:
     predictor.set_setting("football_api_token", "")
 conn = database.get_db()
 champions_fixture = conn.execute(
-    """SELECT id, competition, source_provider, source_fixture_id
+    """SELECT id, competition, source_provider, source_fixture_id, home_logo, away_logo
        FROM fixtures WHERE source_fixture_id = '880001'"""
 ).fetchone()
 assert tuple(champions_fixture) == (
-    -880001, "champions_league", "football-data.org", "880001"
+    -880001, "champions_league", "football-data.org", "880001",
+    "https://example.test/cl-home.png", "https://example.test/cl-away.png",
 )
 conn.execute("DELETE FROM fixtures WHERE id = -880001")
 conn.commit()
 conn.close()
+
+# CL providers keep their formal names in storage, but the fixture UI uses
+# familiar labels and accepts accented names when finding the right badge.
+assert predictor.short_team_name("FC Internazionale Milano") == "Inter"
+assert predictor.short_team_name("Real Betis Balompié") == "Real Betis"
+assert predictor.short_team_name("Feyenoord Rotterdam") == "Feyenoord"
+assert predictor.short_team_name("Club Atlético de Madrid") == "Atlético Madrid"
+assert predictor.sportscore_team_slug("Sporting Clube de Portugal") == "sporting-cp"
 
 # Champions League TV data is exact when the listing confirms a channel. It
 # must be limited to English clubs and leave unconfirmed/TBC listings blank.
@@ -2255,6 +2264,7 @@ finally:
 assert listings == {-881003: "TNT Sports 1"}
 assert predictor.broadcaster_logo_url("TNT Sports 1")
 assert predictor.broadcaster_dark_logo_url("TNT Sports 1")
+assert predictor.broadcaster_logo_url("Amazon Prime Video")
 assert 'is_english_champions_league_fixture' in inspect.getsource(predictor.inject_globals)
 with open(
     os.path.join(templates_dir, "_fixture_card_meta.html"),
@@ -2662,6 +2672,67 @@ cl_fallback = conn.execute(
 ).fetchone()
 assert tuple(cl_fallback) == ("IN_PLAY", 0, 0, 7, "API-Football")
 conn.execute("DELETE FROM fixtures WHERE id = -99008")
+conn.commit()
+conn.close()
+
+# Live Football API is a separate Champions League-only trial. It maps provider
+# IDs by teams/date, preserves the Premier League feed, and records scorer and
+# second-yellow evidence when detailed events are returned.
+cl_trial_kickoff = (datetime.now(timezone.utc) - timedelta(minutes=12)).isoformat()
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team, competition
+       ) VALUES (-99009, ?, 1, ?, 'SCHEDULED', 'Trial Home', 'Trial Away',
+                 'champions_league')""",
+    (season, cl_trial_kickoff),
+)
+conn.commit()
+conn.close()
+original_live_football_matches = predictor.get_live_football_matches
+original_live_football_details = predictor.get_live_football_match_details
+predictor.get_live_football_matches = lambda key, match_date: [{
+    "id": "lf-99009", "home_team": {"name": "Trial Home"},
+    "away_team": {"name": "Trial Away"}, "home_score": 1, "away_score": 0,
+    "state": "inPlay", "minute": "12'",
+}]
+predictor.get_live_football_match_details = lambda key, match_id: {
+    "home_score": 1, "away_score": 0, "state": "inPlay", "minute": "12+3'",
+    "phase": "penalties", "penalties": {"home": 4, "away": 3},
+    "events": [{
+        "type": "Goal", "time": "12'", "side": "home",
+        "detail": {"player": {"name": "Trial Scorer"}},
+    }, {
+        "type": "Yellow Card", "time": "13'", "side": "away",
+        "detail": {"player": {"name": "Trial Dismissal"}, "is_second_yellow": True},
+    }],
+}
+predictor.set_setting("live_football_api_key", "test-key")
+try:
+    assert predictor.import_champions_league_live_from_live_football_api() == 1
+finally:
+    predictor.get_live_football_matches = original_live_football_matches
+    predictor.get_live_football_match_details = original_live_football_details
+    predictor.set_setting("live_football_api_key", "")
+conn = database.get_db()
+cl_trial = conn.execute(
+    """SELECT status, home_score, away_score, minute, injury_time, match_phase,
+              home_penalty_score, away_penalty_score, goals_json, incidents_json,
+              live_data_source FROM fixtures WHERE id = -99009"""
+).fetchone()
+assert tuple(cl_trial[:8]) == ("IN_PLAY", 1, 0, 12, 3, "PENALTIES", 4, 3)
+assert "Trial Scorer" in cl_trial["goals_json"]
+assert "Second yellow red" in cl_trial["incidents_json"]
+assert cl_trial["live_data_source"] == "Live Football API"
+assert conn.execute(
+    """SELECT provider_fixture_id FROM provider_fixture_mappings
+       WHERE fixture_id = -99009 AND provider = 'Live Football API'"""
+).fetchone()["provider_fixture_id"] == "lf-99009"
+assert conn.execute(
+    """SELECT COUNT(*) AS total FROM provider_event_observations
+       WHERE fixture_id = -99009 AND provider = 'Live Football API'"""
+).fetchone()["total"] == 2
+conn.execute("DELETE FROM fixtures WHERE id = -99009")
 conn.commit()
 conn.close()
 

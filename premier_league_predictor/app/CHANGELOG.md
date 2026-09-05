@@ -2,6 +2,16 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.6.0] - 2026-09-05
+
+### New
+- Added an optional Live Football API trial that is limited to live Champions League fixtures, with separate provider IDs and first-seen event evidence.
+- The trial supports scores, live and added-time clocks, match states, scorers, red cards, second-yellow dismissals and penalty-shootout scores.
+
+### Fixes
+- Champions League imports now retain official fixture crests, use familiar club names and provide a compact Prime Video broadcaster logo.
+- Renamed the HRK Metric to The HRK Paradox.
+
 ## [1.5.0] - 2026-09-05
 
 ### New

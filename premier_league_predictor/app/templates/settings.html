@@ -14,6 +14,47 @@
 
 <div class="card">
 
+<h2>Live Football API — Champions League trial</h2>
+
+<p>
+{% if live_football_api_configured %}
+✅ Key stored persistently. It is used only for Champions League live fixtures.
+{% else %}
+Optional: no key configured.
+{% endif %}
+</p>
+
+<p class="small">This isolated trial checks the day’s Champions League match
+list every 60 seconds during a live window. Detailed event checks run on a
+score or status change, then at most every five minutes per live match. It
+does not read or update Premier League fixtures.</p>
+
+<form method="POST">
+
+<input type="hidden" name="action" value="live_football_api">
+
+<input
+    type="password"
+    name="live_football_api_key"
+    placeholder="Live Football API key"
+    style="width:100%;margin-bottom:10px"
+    required
+>
+
+<button>Save key</button>
+
+</form>
+
+{% if live_football_api_configured %}
+<form method="POST" action="/admin/settings/live-football-api/test" style="margin-top:10px">
+<button class="primary">Test Live Football API connection</button>
+</form>
+{% endif %}
+
+</div>
+
+<div class="card">
+
 <h2>Player registration</h2>
 
 <form method="POST">

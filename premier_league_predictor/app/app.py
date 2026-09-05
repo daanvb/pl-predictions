@@ -58,6 +58,12 @@ from api_football import (
     get_live_fixtures as get_api_football_live_fixtures,
     test_connection as test_api_football_connection,
 )
+from live_football_api import (
+    LiveFootballAPIError,
+    get_live_match_details as get_live_football_match_details,
+    get_matches as get_live_football_matches,
+    test_connection as test_live_football_connection,
+)
 from sportscore import (
     SportScoreError,
     get_champions_league_matches as get_sportscore_champions_league_matches,
@@ -66,7 +72,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -97,6 +103,7 @@ LIVE_REFRESH_SECONDS = 60
 API_FOOTBALL_MINIMUM_INTERVAL_SECONDS = 120
 API_FOOTBALL_DAILY_CALL_CAP = 75
 API_FOOTBALL_STALE_MINUTES = 2
+LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS = 5 * 60
 FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
@@ -147,6 +154,11 @@ TNT_SPORTS_LOGO = (
 TNT_SPORTS_DARK_LOGO = (
     "https://upload.wikimedia.org/wikipedia/commons/a/a2/"
     "TNT_Sports_%282023%29_alt.svg"
+)
+
+PRIME_VIDEO_LOGO = (
+    "https://upload.wikimedia.org/wikipedia/commons/4/43/"
+    "Amazon_Prime_Video_logo_%282022%29.svg"
 )
 
 app = Flask(__name__, template_folder="templates")
@@ -2084,6 +2096,9 @@ def broadcaster_logo_url(broadcaster):
     if (broadcaster or "").startswith("TNT Sports"):
         return TNT_SPORTS_LOGO
 
+    if (broadcaster or "").casefold() in ("amazon prime video", "prime video"):
+        return PRIME_VIDEO_LOGO
+
     return None
 
 
@@ -2141,7 +2156,9 @@ def refresh_points(conn):
 
 def canonical_team_name(name):
     value = (
-        (name or "")
+        unicodedata.normalize("NFKD", name or "")
+        .encode("ascii", "ignore")
+        .decode("ascii")
         .strip()
         .lower()
         .replace("&", "and")
@@ -2224,6 +2241,25 @@ def canonical_team_name(name):
         "coventry city": "coventry city",
         "hull": "hull city",
         "hull city": "hull city",
+        # Champions League display and badge aliases. These leave the stored
+        # provider names untouched while giving each club one stable identity.
+        "club atletico de madrid": "atletico madrid",
+        "atletico de madrid": "atletico madrid",
+        "atletico madrid": "atletico madrid",
+        "fc internazionale milano": "inter",
+        "internazionale": "inter",
+        "inter milan": "inter",
+        "real betis balompie": "real betis",
+        "real betis": "real betis",
+        "feyenoord rotterdam": "feyenoord",
+        "feyenoord": "feyenoord",
+        "sporting clube de portugal": "sporting",
+        "sporting cp": "sporting",
+        "ssc napoli": "napoli",
+        "paris saint germain": "psg",
+        "psv eindhoven": "psv",
+        "fc shakhtar donetsk": "shakhtar donetsk",
+        "galatasaray sk": "galatasaray",
     }
 
     if value in aliases:
@@ -2283,6 +2319,16 @@ def short_team_name(name):
         "west brom": "West Bromwich Albion",
         "norwich": "Norwich City",
         "watford": "Watford",
+        "atletico madrid": "Atlético Madrid",
+        "inter": "Inter",
+        "real betis": "Real Betis",
+        "feyenoord": "Feyenoord",
+        "sporting": "Sporting",
+        "galatasaray": "Galatasaray",
+        "napoli": "Napoli",
+        "psg": "PSG",
+        "psv": "PSV",
+        "shakhtar donetsk": "Shakhtar Donetsk",
     }
 
     if key in names:
@@ -3032,8 +3078,9 @@ def import_champions_league_matches(matchday):
                        id, season, matchday, utc_date, status, home_team, away_team,
                        home_score, away_score, last_updated, minute, injury_time,
                        match_phase, home_penalty_score, away_penalty_score, goals_json,
-                       live_data_source, competition, source_provider, source_fixture_id
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       live_data_source, competition, source_provider, source_fixture_id,
+                       home_logo, away_logo
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                      matchday = excluded.matchday, utc_date = excluded.utc_date,
                      status = excluded.status, home_team = excluded.home_team,
@@ -3047,7 +3094,9 @@ def import_champions_league_matches(matchday):
                      live_data_source = excluded.live_data_source,
                      competition = excluded.competition,
                      source_provider = excluded.source_provider,
-                     source_fixture_id = excluded.source_fixture_id""",
+                     source_fixture_id = excluded.source_fixture_id,
+                     home_logo = COALESCE(excluded.home_logo, fixtures.home_logo),
+                     away_logo = COALESCE(excluded.away_logo, fixtures.away_logo)""",
                 (
                     fixture_id, SEASON, match.get("matchday"), match["utcDate"],
                     match.get("status"), home.get("name", ""), away.get("name", ""),
@@ -3056,6 +3105,7 @@ def import_champions_league_matches(matchday):
                     home_penalty_score, away_penalty_score,
                     json.dumps(match.get("goals")) if match.get("goals") is not None else None,
                     "football-data.org", "champions_league", "football-data.org", source_id,
+                    safe_team_logo_url(home.get("crest")), safe_team_logo_url(away.get("crest")),
                 ),
             )
             imported += 1
@@ -3594,6 +3644,17 @@ def sportscore_team_slug(name):
         "tottenham": "tottenham-hotspur",
         "west ham": "west-ham-united",
         "wolves": "wolverhampton-wanderers",
+        "atletico madrid": "atletico-madrid",
+        "inter": "inter-milan",
+        "real betis": "real-betis",
+        "feyenoord": "feyenoord",
+        "sporting": "sporting-cp",
+        "sporting clube de portugal": "sporting-cp",
+        "galatasaray": "galatasaray",
+        "napoli": "napoli",
+        "psg": "paris-saint-germain",
+        "psv": "psv-eindhoven",
+        "shakhtar donetsk": "shakhtar-donetsk",
     }
     return aliases.get(normalized, normalized.replace(" ", "-"))
 
@@ -3955,6 +4016,292 @@ def import_champions_league_live_from_sportscore():
     finally:
         conn.close()
     set_setting("last_champions_league_sportscore_refresh", now_utc().isoformat())
+    return updated
+
+
+def _live_football_value(record, *names):
+    """Read a field from the slightly different list/detail response shapes."""
+    for name in names:
+        value = record.get(name) if isinstance(record, dict) else None
+        if value is not None:
+            return value
+    return None
+
+
+def _live_football_team_name(record, side):
+    value = _live_football_value(record, f"{side}_team", side)
+    if isinstance(value, dict):
+        return value.get("name") or value.get("team_name")
+    return value
+
+
+def _live_football_match_id(record):
+    return _live_football_value(record, "id", "match_id", "fixture_id")
+
+
+def _live_football_scores(record):
+    score = _live_football_value(record, "score", "scores")
+    if not isinstance(score, dict):
+        score = {}
+    home = _live_football_value(record, "home_score")
+    away = _live_football_value(record, "away_score")
+    def score_value(value):
+        try:
+            return int(value) if value is not None and not isinstance(value, bool) else None
+        except (TypeError, ValueError):
+            return None
+    return (
+        score_value(home if home is not None else score.get("home")),
+        score_value(away if away is not None else score.get("away")),
+    )
+
+
+def _live_football_status(record, fallback="SCHEDULED"):
+    status = _live_football_value(record, "state", "status", "match_status")
+    if isinstance(status, dict):
+        status = status.get("state") or status.get("name") or status.get("status")
+    value = re.sub(r"[^a-z]+", "", str(status or "").casefold())
+    if value in ("inplay", "live", "firsthalf", "secondhalf", "extratime", "penalties"):
+        return "IN_PLAY"
+    if value in ("halftime", "half", "break", "interval", "extratimehalftime"):
+        return "PAUSED"
+    if value in ("finished", "fulltime", "ft", "afterextratime", "penaltyshootout"):
+        return "FINISHED"
+    return fallback
+
+
+def _live_football_minute(record):
+    value = _live_football_value(record, "minute", "elapsed", "display")
+    minute, injury_time = parse_live_minute(value)
+    return minute, injury_time
+
+
+def _live_football_match_phase(record):
+    values = []
+    for name in ("state", "status", "match_status", "phase", "period"):
+        status = record.get(name) if isinstance(record, dict) else None
+        if isinstance(status, dict):
+            status = status.get("state") or status.get("name") or status.get("status")
+        if status is not None:
+            values.append(str(status).casefold())
+    value = " ".join(values)
+    if "penalt" in value or "shootout" in value:
+        return "PENALTIES"
+    if "extra" in value or value in ("et", "aet"):
+        return "EXTRA_TIME_HALF_TIME" if "half" in value else "EXTRA_TIME"
+    return None
+
+
+def _live_football_penalty_scores(record):
+    penalties = _live_football_value(record, "penalties", "penalty_score", "penalty_scores")
+    if not isinstance(penalties, dict):
+        penalties = {}
+    def value_for(side):
+        value = _live_football_value(record, f"{side}_penalty_score", f"{side}_penalties")
+        if value is None:
+            value = penalties.get(side) or penalties.get(f"{side}_score")
+        try:
+            return int(value) if value is not None and not isinstance(value, bool) else None
+        except (TypeError, ValueError):
+            return None
+    return value_for("home"), value_for("away")
+
+
+def _live_football_events(record):
+    events = _live_football_value(record, "events", "incidents")
+    if isinstance(events, list):
+        return events
+    nested = record.get("match") if isinstance(record, dict) else None
+    return _live_football_events(nested) if isinstance(nested, dict) else []
+
+
+def _live_football_event_key(event):
+    detail = event.get("detail") or {}
+    player = detail.get("player") if isinstance(detail, dict) else None
+    if isinstance(player, dict):
+        player = player.get("name")
+    return "|".join(str(value or "") for value in (
+        event.get("type"), event.get("time") or event.get("minute"), event.get("side"), player,
+    ))
+
+
+def _live_football_goal_event(event, stored):
+    if "goal" not in str(event.get("type") or "").casefold():
+        return None
+    detail = event.get("detail") or {}
+    player = detail.get("player") if isinstance(detail, dict) else None
+    scorer = player.get("name") if isinstance(player, dict) else player
+    side = str(event.get("side") or "").casefold()
+    team_name = stored["home_team"] if side == "home" else stored["away_team"] if side == "away" else None
+    if not team_name:
+        return None
+    minute, injury_time = parse_live_minute(event.get("time") or event.get("minute"))
+    detail_text = json.dumps(detail).casefold() if isinstance(detail, dict) else str(detail).casefold()
+    return {
+        "minute": minute,
+        "injuryTime": injury_time,
+        "type": "OWN_GOAL" if "own" in detail_text else "PENALTY" if "penalty" in detail_text else "REGULAR",
+        "team": {"name": team_name},
+        "scorer": {"name": scorer},
+    }
+
+
+def _live_football_card_event(event, stored):
+    event_type = str(event.get("type") or "").casefold()
+    detail = event.get("detail") or {}
+    detail_text = json.dumps(detail).casefold() if isinstance(detail, dict) else str(detail).casefold()
+    if "red" not in event_type and "red" not in detail_text and "second_yellow" not in detail_text:
+        return None
+    side = str(event.get("side") or "").casefold()
+    if side not in ("home", "away"):
+        return None
+    player = detail.get("player") if isinstance(detail, dict) else None
+    return {
+        "type": "Second yellow red" if "second" in detail_text or "yellow" in detail_text else "Red card",
+        "time": parse_live_minute(event.get("time") or event.get("minute"))[0],
+        "side": side,
+        "player": player.get("name") if isinstance(player, dict) else player,
+    }
+
+
+def _live_football_match_for_fixture(conn, stored, provider_matches):
+    mapping = conn.execute(
+        """SELECT provider_fixture_id FROM provider_fixture_mappings
+           WHERE fixture_id = ? AND provider = 'Live Football API'""",
+        (stored["id"],),
+    ).fetchone()
+    if mapping:
+        return next((match for match in provider_matches
+                     if str(_live_football_match_id(match)) == mapping["provider_fixture_id"]), None)
+    expected = (normalized_team_name(stored["home_team"]), normalized_team_name(stored["away_team"]))
+    matches = [
+        match for match in provider_matches
+        if (normalized_team_name(_live_football_team_name(match, "home")),
+            normalized_team_name(_live_football_team_name(match, "away"))) == expected
+    ]
+    if len(matches) != 1:
+        return None
+    provider_id = _live_football_match_id(matches[0])
+    if provider_id is not None:
+        conn.execute(
+            """INSERT OR REPLACE INTO provider_fixture_mappings(
+                   fixture_id, provider, provider_fixture_id, match_method, mapped_at
+               ) VALUES (?, 'Live Football API', ?, 'teams-and-date', ?)""",
+            (stored["id"], str(provider_id), now_utc().isoformat()),
+        )
+    return matches[0]
+
+
+def _live_football_details_due(conn, fixture_id, state_changed, score_changed):
+    if state_changed or score_changed:
+        return True
+    row = conn.execute(
+        """SELECT captured_at FROM provider_live_states
+           WHERE provider = 'Live Football API' AND fixture_id = ?""", (fixture_id,)
+    ).fetchone()
+    captured_at = parse_utc(row["captured_at"]) if row else None
+    return not captured_at or (now_utc() - captured_at).total_seconds() >= LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS
+
+
+def import_champions_league_live_from_live_football_api():
+    """Run the optional CL-only provider trial without touching Premier League rows."""
+    api_key = get_setting("live_football_api_key")
+    if not api_key:
+        return 0
+    conn = get_db()
+    updated = 0
+    try:
+        checked_at = now_utc()
+        fixtures = conn.execute(
+            """SELECT * FROM fixtures WHERE season = ? AND competition = 'champions_league'
+               AND status NOT IN ('FINISHED', 'CANCELLED')""", (SEASON,)
+        ).fetchall()
+        active = []
+        for fixture in fixtures:
+            kickoff = parse_utc(fixture["utc_date"])
+            if kickoff and (fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED") or
+                            kickoff - timedelta(seconds=LIVE_WINDOW_BEFORE_SECONDS) <= checked_at <= kickoff + timedelta(seconds=LIVE_WINDOW_AFTER_SECONDS)):
+                active.append(fixture)
+        if not active:
+            return 0
+        matches_by_date = {}
+        for fixture in active:
+            match_date = parse_utc(fixture["utc_date"]).date().isoformat()
+            if match_date not in matches_by_date:
+                matches_by_date[match_date] = get_live_football_matches(api_key, match_date)
+        for stored in active:
+            provider_match = _live_football_match_for_fixture(
+                conn, stored, matches_by_date[parse_utc(stored["utc_date"]).date().isoformat()]
+            )
+            if not provider_match:
+                continue
+            home_score, away_score = _live_football_scores(provider_match)
+            status = _live_football_status(provider_match, stored["status"])
+            minute, injury_time = _live_football_minute(provider_match)
+            match_phase = _live_football_match_phase(provider_match)
+            home_penalty_score, away_penalty_score = _live_football_penalty_scores(provider_match)
+            state_changed = status != stored["status"]
+            score_changed = home_score is not None and away_score is not None and (
+                home_score != stored["home_score"] or away_score != stored["away_score"]
+            )
+            events = []
+            details_checked = False
+            provider_id = _live_football_match_id(provider_match)
+            if provider_id is not None and _live_football_details_due(conn, stored["id"], state_changed, score_changed):
+                details = get_live_football_match_details(api_key, provider_id)
+                details_checked = True
+                if isinstance(details, dict):
+                    detail_match = details.get("match")
+                    if not isinstance(detail_match, dict):
+                        detail_match = details
+                    provider_match = {**provider_match, **detail_match}
+                    if "events" in details:
+                        provider_match["events"] = details["events"]
+                    home_score, away_score = _live_football_scores(provider_match)
+                    status = _live_football_status(provider_match, status)
+                    minute, injury_time = _live_football_minute(provider_match)
+                    match_phase = _live_football_match_phase(provider_match)
+                    home_penalty_score, away_penalty_score = _live_football_penalty_scores(provider_match)
+                    events = _live_football_events(provider_match)
+            goals = [goal for goal in (_live_football_goal_event(event, stored) for event in events) if goal]
+            cards = [card for card in (_live_football_card_event(event, stored) for event in events) if card]
+            for event in events:
+                conn.execute(
+                    """INSERT OR IGNORE INTO provider_event_observations(
+                           provider, fixture_id, event_key, event_type, event_minute, first_seen_at, payload_json
+                       ) VALUES ('Live Football API', ?, ?, ?, ?, ?, ?)""",
+                    (stored["id"], _live_football_event_key(event), event.get("type"),
+                     str(event.get("time") or event.get("minute") or ""), checked_at.isoformat(),
+                     json.dumps(event, sort_keys=True)),
+                )
+            if events or state_changed or score_changed:
+                conn.execute(
+                    """UPDATE fixtures SET status = ?, home_score = COALESCE(?, home_score),
+                           away_score = COALESCE(?, away_score), minute = COALESCE(?, minute),
+                           injury_time = CASE WHEN ? IS NOT NULL THEN ? ELSE injury_time END,
+                           match_phase = COALESCE(?, match_phase),
+                           home_penalty_score = COALESCE(?, home_penalty_score),
+                           away_penalty_score = COALESCE(?, away_penalty_score),
+                           goals_json = COALESCE(?, goals_json), incidents_json = COALESCE(?, incidents_json),
+                           last_updated = ?, live_data_source = 'Live Football API' WHERE id = ?""",
+                    (status, home_score, away_score, minute, injury_time, injury_time,
+                     match_phase, home_penalty_score, away_penalty_score,
+                     json.dumps(goals) if events else None, json.dumps(cards) if events else None,
+                     checked_at.isoformat(), stored["id"]),
+                )
+                updated += 1
+            if details_checked:
+                conn.execute(
+                    """INSERT OR REPLACE INTO provider_live_states(
+                           provider, fixture_id, state_signature, captured_at, payload_json
+                       ) VALUES ('Live Football API', ?, ?, ?, ?)""",
+                    (stored["id"], json.dumps({"status": status, "home": home_score, "away": away_score, "minute": minute}, sort_keys=True),
+                     checked_at.isoformat(), json.dumps(provider_match, sort_keys=True)),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+    set_setting("last_live_football_api_refresh", now_utc().isoformat())
     return updated
 
 
@@ -4566,6 +4913,19 @@ def api_refresh_worker():
                 set_setting("last_sportscore_error", str(exc))
                 set_setting("last_sportscore_error_at", now_utc().isoformat())
                 print(f"[SportScore] {exc}", flush=True)
+
+            try:
+                live_football_updates = import_champions_league_live_from_live_football_api()
+                if live_football_updates:
+                    print(
+                        f"[Live Football API] Updated {live_football_updates} Champions League live fixture(s)",
+                        flush=True,
+                    )
+                set_setting("last_live_football_api_error", "")
+            except LiveFootballAPIError as exc:
+                set_setting("last_live_football_api_error", str(exc))
+                set_setting("last_live_football_api_error_at", now_utc().isoformat())
+                print(f"[Live Football API] {exc}", flush=True)
 
             try:
                 fallback_updates = import_live_matches_from_api_football_fallback()
@@ -9605,6 +9965,18 @@ def settings():
                 flash("Please enter an API-Football key.", "error")
             return redirect("/admin/settings")
 
+        if action == "live_football_api":
+            live_football_api_key = request.form.get("live_football_api_key", "").strip()
+            if live_football_api_key:
+                set_setting("live_football_api_key", live_football_api_key)
+                flash(
+                    "Live Football API key saved for the Champions League trial only.",
+                    "success",
+                )
+            else:
+                flash("Please enter a Live Football API key.", "error")
+            return redirect("/admin/settings")
+
 
         token = request.form.get(
             "api_token",
@@ -9642,6 +10014,7 @@ def settings():
             )
         ),
         api_football_configured=bool(get_setting("api_football_key")),
+        live_football_api_configured=bool(get_setting("live_football_api_key")),
         last_sportscore_refresh=(
             local_timestamp(get_setting("last_sportscore_refresh"))
             if get_setting("last_sportscore_refresh")
@@ -9674,6 +10047,18 @@ def test_api_football():
         test_api_football_connection(get_setting("api_football_key"))
         flash("API-Football connection is working.", "success")
     except APIFootballError as exc:
+        flash(str(exc), "error")
+    return redirect("/admin/settings")
+
+
+@app.route("/admin/settings/live-football-api/test", methods=["POST"])
+def test_live_football_api():
+    if not is_admin():
+        return redirect("/")
+    try:
+        test_live_football_connection(get_setting("live_football_api_key"))
+        flash("Live Football API connection is working for the Champions League trial.", "success")
+    except LiveFootballAPIError as exc:
         flash(str(exc), "error")
     return redirect("/admin/settings")
 
