@@ -1151,7 +1151,7 @@ body.dashboard-menu-open{overflow:hidden}
 .competition-icon-pl img{transform:scaleX(.9)}
 .competition-icon-cl img{transform:scale(1.12)}
 .competition-icon-h2h img{transform:scale(.94) scaleX(.82)}
-.player-title-icon{width:1.3rem;height:1.3rem;flex-basis:1.3rem;margin-right:2px;vertical-align:-.32rem}
+.player-title-icon{width:1.3rem;height:1.3rem;flex-basis:1.3rem;margin-right:1px;vertical-align:-.32rem}
 .player-title-icon img{width:1.3rem;height:1.3rem}
 .live-table-card .leader-row{row-gap:0}
 .live-table-card .leader-row > .rank{grid-column:1;grid-row:1;align-self:center}
@@ -1160,7 +1160,7 @@ body.dashboard-menu-open{overflow:hidden}
 .live-table-card .live-player-progress{grid-column:3;grid-row:2;margin-top:3px}
 .live-table-card .leader-points{grid-column:4;grid-row:1;align-self:center}
 .live-table-card .live-player-points{grid-column:4;grid-row:2;margin-top:3px;text-align:right}
-.live-table-card .player-title-icon{margin-left:-3px}
+.live-table-card .player-title-icon{margin-left:-5px}
 .live-table-card .player-title-icon,.league-player .player-title-icon{vertical-align:-.27rem}
 .hero h1 .competition-icon{width:1.18em;height:1.18em;flex-basis:1.18em;font-size:inherit;vertical-align:-.2em}
 .hero h1 .competition-icon img{width:1.18em;height:1.18em}
@@ -1693,6 +1693,11 @@ html[data-theme="dark"] .winner-tab.is-active{background:var(--accent);color:#ff
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     text-align: center;
+}
+
+.match-stat-title {
+    min-height: 2.6em;
+    line-height: 1.3;
 }
 
 .match-record {
