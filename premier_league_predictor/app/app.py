@@ -4751,6 +4751,8 @@ def signal_reminder_message(
 
     if reminder_label == "2-hour final":
         title = "Lads. Footy"
+    elif reminder_label == "24-hour":
+        title = f"GW{matchday} - Preddies Reminder"
     else:
         title = f"⏰ GW{matchday} Prediction Reminder"
 

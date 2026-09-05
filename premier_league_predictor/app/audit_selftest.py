@@ -1434,6 +1434,11 @@ msg = predictor.signal_reminder_message(
 )
 assert "Fontz" in msg and "no DP selected" in msg
 assert "Deludo" in msg and "8/10 submitted" in msg
+msg_24 = predictor.signal_reminder_message(
+    1, fixtures, statuses,
+    reminder_label="24-hour",
+)
+assert msg_24.startswith("GW1 - Preddies Reminder")
 
 manual_24_fixture = [{
     "status": "SCHEDULED",
