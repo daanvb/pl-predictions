@@ -72,7 +72,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.0"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -1096,6 +1096,84 @@ def overall_table_at_matchday(
             matchday,
             SEASON
         ),
+    ).fetchall()
+
+
+def settled_premier_league_blocks(conn):
+    """Return kick-off blocks only once every non-cancelled fixture is final."""
+    return [
+        row["utc_date"]
+        for row in conn.execute(
+            """
+            SELECT utc_date
+            FROM fixtures
+            WHERE season = ?
+              AND competition = 'premier_league'
+              AND utc_date IS NOT NULL
+            GROUP BY utc_date
+            HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
+                            THEN 1 ELSE 0 END) = 0
+               AND SUM(CASE WHEN status = 'FINISHED' THEN 1 ELSE 0 END) > 0
+            ORDER BY utc_date
+            """,
+            (SEASON,),
+        ).fetchall()
+    ]
+
+
+def prepare_settled_premier_fixtures(conn, blocks):
+    """Make the settled fixture set reusable by the statistics queries."""
+    conn.execute("DROP TABLE IF EXISTS settled_premier_fixture_ids")
+    conn.execute(
+        "CREATE TEMP TABLE settled_premier_fixture_ids (id INTEGER PRIMARY KEY)"
+    )
+    if not blocks:
+        return
+    conn.executemany(
+        """INSERT INTO settled_premier_fixture_ids (id)
+           SELECT id FROM fixtures
+           WHERE season = ? AND competition = 'premier_league'
+             AND status = 'FINISHED' AND utc_date = ?""",
+        [(SEASON, block) for block in blocks],
+    )
+
+
+def overall_table_at_blocks(conn, blocks):
+    """Reconstruct the season table from fully settled kick-off blocks."""
+    if not blocks:
+        return overall_table_at_matchday(conn, 0)
+
+    placeholders = ", ".join("?" for _ in blocks)
+    eligible = f"""f.season = ?
+         AND f.competition = 'premier_league'
+         AND f.status = 'FINISHED'
+         AND f.utc_date IN ({placeholders})"""
+    return conn.execute(
+        f"""
+        SELECT
+            pl.id,
+            pl.name,
+            COALESCE(SUM(CASE WHEN f.id IS NOT NULL THEN p.points ELSE 0 END), 0) AS points,
+            COALESCE(SUM(CASE WHEN f.id IS NOT NULL
+                AND p.home_score = f.home_score AND p.away_score = f.away_score
+                AND f.home_score = f.away_score THEN 1 ELSE 0 END), 0) AS exact_draws,
+            COALESCE(SUM(CASE WHEN f.id IS NOT NULL
+                AND p.home_score = f.home_score AND p.away_score = f.away_score
+                AND f.home_score != f.away_score THEN 1 ELSE 0 END), 0) AS exact_scores,
+            COALESCE(SUM(CASE WHEN f.id IS NOT NULL
+                AND NOT (p.home_score = f.home_score AND p.away_score = f.away_score)
+                AND ((f.home_score = f.away_score AND p.home_score = p.away_score)
+                  OR (f.home_score > f.away_score AND p.home_score > p.away_score)
+                  OR (f.home_score < f.away_score AND p.home_score < p.away_score))
+                THEN 1 ELSE 0 END), 0) AS correct_results
+        FROM players pl
+        LEFT JOIN predictions p ON p.player_id = pl.id
+        LEFT JOIN fixtures f ON f.id = p.fixture_id AND {eligible}
+        GROUP BY pl.id
+        ORDER BY points DESC, exact_draws DESC, exact_scores DESC,
+                 correct_results DESC, pl.name COLLATE NOCASE
+        """,
+        (SEASON, *blocks),
     ).fetchall()
 
 
@@ -7110,15 +7188,24 @@ def historical_season(season):
     )
 
 
-def late_goal_points_lost(conn):
+def late_goal_points_lost(conn, fixture_ids=None):
     """Total points lost when added-time goals changed a final scoreline."""
     losses = {}
+    fixture_filter = ""
+    parameters = [SEASON]
+    if fixture_ids is not None:
+        if fixture_ids:
+            fixture_filter = "AND id IN (" + ", ".join("?" for _ in fixture_ids) + ")"
+            parameters.extend(fixture_ids)
+        else:
+            fixture_filter = "AND 1 = 0"
     fixtures = conn.execute(
-        """SELECT id, home_team, away_team, home_score, away_score, goals_json
+        f"""SELECT id, home_team, away_team, home_score, away_score, goals_json
            FROM fixtures
            WHERE season = ? AND competition = 'premier_league'
-             AND status = 'FINISHED' AND goals_json IS NOT NULL""",
-        (SEASON,),
+             AND status = 'FINISHED' AND goals_json IS NOT NULL
+             {fixture_filter}""",
+        parameters,
     ).fetchall()
     for fixture in fixtures:
         try:
@@ -7179,6 +7266,8 @@ def stats():
     refresh_points(conn)
     archive_completed_season(conn, SEASON)
     conn.commit()
+    settled_blocks = settled_premier_league_blocks(conn)
+    prepare_settled_premier_fixtures(conn, settled_blocks)
 
     personal = conn.execute(
         """
@@ -7261,6 +7350,7 @@ def stats():
 
         WHERE p.player_id = ?
           AND f.status = 'FINISHED'
+          AND f.id IN (SELECT id FROM settled_premier_fixture_ids)
         """,
         (
             session["player_id"],
@@ -7283,6 +7373,7 @@ def stats():
 
         WHERE p.player_id = ?
           AND f.status = 'FINISHED'
+          AND f.id IN (SELECT id FROM settled_premier_fixture_ids)
 
         GROUP BY f.matchday
 
@@ -7315,24 +7406,7 @@ def stats():
     # Tie-aware league records
     # --------------------------------------------------------
 
-    leader_rows = conn.execute(
-        """
-        SELECT
-            pl.id,
-            pl.name,
-            COALESCE(
-                SUM(p.points),
-                0
-            ) AS points
-        FROM players pl
-        LEFT JOIN predictions p
-          ON p.player_id = pl.id
-        GROUP BY pl.id
-        ORDER BY
-            points DESC,
-            pl.name COLLATE NOCASE
-        """
-    ).fetchall()
+    leader_rows = overall_table_at_blocks(conn, settled_blocks)
 
     leader_value = (
         leader_rows[0]["points"]
@@ -7358,6 +7432,7 @@ def stats():
         JOIN fixtures f
           ON f.id = p.fixture_id
         WHERE f.status = 'FINISHED'
+          AND f.id IN (SELECT id FROM settled_premier_fixture_ids)
           AND p.home_score = f.home_score
           AND p.away_score = f.away_score
           AND f.home_score = f.away_score
@@ -7392,6 +7467,7 @@ def stats():
         JOIN fixtures f
           ON f.id = p.fixture_id
         WHERE f.status = 'FINISHED'
+          AND f.id IN (SELECT id FROM settled_premier_fixture_ids)
           AND p.home_score = f.home_score
           AND p.away_score = f.away_score
           AND f.home_score != f.away_score
@@ -7426,6 +7502,7 @@ def stats():
         JOIN fixtures f
           ON f.id = p.fixture_id
         WHERE f.status = 'FINISHED'
+          AND f.id IN (SELECT id FROM settled_premier_fixture_ids)
           AND NOT (
               p.home_score = f.home_score
               AND p.away_score = f.away_score
@@ -7465,6 +7542,7 @@ def stats():
         JOIN fixtures f
           ON f.id = p.fixture_id
         WHERE f.status = 'FINISHED'
+          AND f.id IN (SELECT id FROM settled_premier_fixture_ids)
           AND COALESCE(p.dp, 0) = 1
           AND p.home_score = f.home_score
           AND p.away_score = f.away_score
@@ -7486,7 +7564,12 @@ def stats():
         if row["total"] == dp_exact_score_value
     ]
 
-    late_goal_loss_rows = late_goal_points_lost(conn)
+    late_goal_loss_rows = late_goal_points_lost(
+        conn,
+        [row["id"] for row in conn.execute(
+            "SELECT id FROM settled_premier_fixture_ids"
+        ).fetchall()],
+    )
     late_goal_loss_value = late_goal_loss_rows[0]["total"] if late_goal_loss_rows else 0
     most_late_goal_points_lost = [
         row for row in late_goal_loss_rows
@@ -7506,6 +7589,7 @@ def stats():
         JOIN fixtures f
           ON f.id = p.fixture_id
         WHERE f.status = 'FINISHED'
+          AND f.id IN (SELECT id FROM settled_premier_fixture_ids)
         GROUP BY
             pl.id,
             f.matchday
@@ -7534,7 +7618,10 @@ def stats():
         FROM (
             SELECT matchday
             FROM fixtures
-            WHERE season = ? AND status != 'CANCELLED'
+            WHERE season = ?
+              AND competition = 'premier_league'
+              AND matchday IS NOT NULL
+              AND status != 'CANCELLED'
             GROUP BY matchday
             HAVING SUM(CASE WHEN status = 'FINISHED' THEN 0 ELSE 1 END) = 0
                AND SUM(CASE WHEN status = 'FINISHED' THEN 1 ELSE 0 END) > 0
@@ -7542,6 +7629,7 @@ def stats():
         """,
         (SEASON,),
     ).fetchone()
+    current_gameweek_pending = next_unfinished_gameweek(conn) is not None
 
     conn.close()
 
@@ -7571,6 +7659,7 @@ def stats():
         best_gameweeks_overall=best_gameweeks_overall,
         best_gameweek_value=best_gameweek_value,
         completed_gameweeks=completed_gameweeks["total"],
+        current_gameweek_pending=current_gameweek_pending,
     )
 
 
@@ -8389,202 +8478,29 @@ def leaderboard():
     refresh_points(conn)
     archive_completed_season(conn, SEASON)
     conn.commit()
+    settled_blocks = settled_premier_league_blocks(conn)
+    players = [dict(row) for row in overall_table_at_blocks(conn, settled_blocks)]
+    previous_table = overall_table_at_blocks(conn, settled_blocks[:-1])
+    previous_positions = ranking_positions(previous_table)
 
-    players = conn.execute(
-        """
-        SELECT
-            pl.id,
-            pl.name,
-
-            COALESCE(
-                SUM(p.points),
-                0
-            ) AS points,
-
-            COALESCE(
-                SUM(
-                    CASE
-                    WHEN
-                        f.status = 'FINISHED'
-                        AND p.home_score = f.home_score
-                        AND p.away_score = f.away_score
-                        AND f.home_score = f.away_score
-                    THEN 1 ELSE 0
-                    END
-                ),
-                0
-            ) AS exact_draws,
-
-            COALESCE(
-                SUM(
-                    CASE
-                    WHEN
-                        f.status = 'FINISHED'
-                        AND p.home_score = f.home_score
-                        AND p.away_score = f.away_score
-                        AND f.home_score != f.away_score
-                    THEN 1 ELSE 0
-                    END
-                ),
-                0
-            ) AS exact_scores,
-
-            COALESCE(
-                SUM(
-                    CASE
-                    WHEN
-                        f.status = 'FINISHED'
-                        AND NOT (
-                            p.home_score = f.home_score
-                            AND p.away_score = f.away_score
-                        )
-                        AND (
-                            (
-                                f.home_score = f.away_score
-                                AND p.home_score = p.away_score
-                            )
-                            OR (
-                                f.home_score > f.away_score
-                                AND p.home_score > p.away_score
-                            )
-                            OR (
-                                f.home_score < f.away_score
-                                AND p.home_score < p.away_score
-                            )
-                        )
-                    THEN 1 ELSE 0
-                    END
-                ),
-                0
-            ) AS correct_results
-
-        FROM players pl
-        LEFT JOIN predictions p
-          ON p.player_id = pl.id
-        LEFT JOIN fixtures f
-          ON f.id = p.fixture_id
-
-        GROUP BY pl.id
-
-        ORDER BY
-            points DESC,
-            exact_draws DESC,
-            exact_scores DESC,
-            correct_results DESC,
-            pl.name COLLATE NOCASE
-        """
-    ).fetchall()
-
-    # Establish the season-table baseline.
-    # During a live/partial GW this is the table at the end of the
-    # previous GW. Between GWs it is the table one completed GW back.
-    unfinished_row = conn.execute(
-        """
-        SELECT MIN(matchday) AS matchday
-        FROM fixtures
-        WHERE season = ?
-          AND status NOT IN (
-              'FINISHED',
-              'CANCELLED'
-          )
-        """,
-        (SEASON,),
-    ).fetchone()
-
-    unfinished_matchday = (
-        unfinished_row["matchday"]
-        if unfinished_row
-        and unfinished_row["matchday"]
-        is not None
-        else None
-    )
-
-    if unfinished_matchday is not None:
-        baseline_matchday = max(
-            0,
-            unfinished_matchday - 1
-        )
-    else:
-        completed_row = conn.execute(
-            """
-            SELECT MAX(matchday) AS matchday
-            FROM fixtures
-            WHERE season = ?
-              AND matchday IN (
-                  SELECT matchday
-                  FROM fixtures
-                  WHERE season = ?
-                  GROUP BY matchday
-                  HAVING SUM(
-                      CASE
-                      WHEN status NOT IN (
-                          'FINISHED',
-                          'CANCELLED'
-                      )
-                      THEN 1 ELSE 0
-                      END
-                  ) = 0
-              )
-            """,
-            (
-                SEASON,
-                SEASON
-            ),
-        ).fetchone()
-
-        latest_completed = (
-            completed_row["matchday"]
-            if completed_row
-            and completed_row["matchday"]
-            is not None
-            else 0
-        )
-
-        baseline_matchday = max(
-            0,
-            latest_completed - 1
-        )
-
-    previous_table = overall_table_at_matchday(
-        conn,
-        baseline_matchday
-    )
-
-    previous_positions = ranking_positions(
-        previous_table
-    )
-
-    players = [
-        dict(player)
-        for player in players
-    ]
-
-    for position, player in enumerate(
-        players,
-        start=1
-    ):
+    for position, player in enumerate(players, start=1):
         player["position"] = position
-        player["position_change"] = (
-            table_position_change(
-                position,
-                previous_positions.get(
-                    player["id"]
-                )
-            )
+        player["position_change"] = table_position_change(
+            position, previous_positions.get(player["id"])
         )
 
+    # The graph deliberately remains a completed-gameweek history, rather
+    # than reflecting every fixture block used by the live season table.
     completed_matchdays = [
         row["matchday"]
         for row in conn.execute(
             """
             SELECT matchday
             FROM fixtures
-            WHERE season = ? AND matchday IS NOT NULL
+            WHERE season = ? AND competition = 'premier_league' AND matchday IS NOT NULL
             GROUP BY matchday
-            HAVING SUM(
-                CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
-                     THEN 1 ELSE 0 END
-            ) = 0
+            HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
+                            THEN 1 ELSE 0 END) = 0
             ORDER BY matchday
             """,
             (SEASON,),

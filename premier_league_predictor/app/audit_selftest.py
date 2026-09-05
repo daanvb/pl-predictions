@@ -200,6 +200,36 @@ assert predictor.gameweek_progress_label([
 assert predictor.gameweek_progress_label([
     {"status": "IN_PLAY"},
 ]) == "1 game in progress"
+# A season-table checkpoint is not released until every fixture sharing its
+# scheduled kick-off time is final. This keeps split gameweeks coherent.
+checkpoint_time = "2036-08-10T15:00:00+00:00"
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(id, season, competition, matchday, utc_date, status,
+           home_team, away_team, home_score, away_score)
+       VALUES (99101, ?, 'premier_league', 99, ?, 'FINISHED',
+               'Checkpoint Home A', 'Checkpoint Away A', 1, 0)""",
+    (predictor.SEASON, checkpoint_time),
+)
+conn.execute(
+    """INSERT INTO fixtures(id, season, competition, matchday, utc_date, status,
+           home_team, away_team)
+       VALUES (99102, ?, 'premier_league', 99, ?, 'SCHEDULED',
+               'Checkpoint Home B', 'Checkpoint Away B')""",
+    (predictor.SEASON, checkpoint_time),
+)
+conn.commit()
+assert checkpoint_time not in predictor.settled_premier_league_blocks(conn)
+conn.execute("UPDATE fixtures SET status = 'FINISHED', home_score = 2, away_score = 1 WHERE id = 99102")
+conn.commit()
+checkpoint_blocks = predictor.settled_premier_league_blocks(conn)
+assert checkpoint_time in checkpoint_blocks
+predictor.prepare_settled_premier_fixtures(conn, [checkpoint_time])
+assert {row["id"] for row in conn.execute("SELECT id FROM settled_premier_fixture_ids")} == {99101, 99102}
+conn.execute("DELETE FROM fixtures WHERE id IN (99101, 99102)")
+conn.commit()
+conn.close()
+
 original_now_utc = predictor.now_utc
 try:
     predictor.now_utc = lambda: datetime(2026, 8, 29, 11, 29, tzinfo=timezone.utc)

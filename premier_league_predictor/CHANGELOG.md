@@ -2,6 +2,16 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.0] - 2026-09-06
+
+### New
+- Season standings and League Stats now update together after each fully settled kick-off block, while the Live Gameweek table remains live.
+
+### Fixes
+- Kept the season-position graph at completed-gameweek checkpoints and corrected movement arrows to compare with the preceding settled block.
+- League Stats now identifies when the current gameweek will update next.
+- Replaced the Champions League fixture heading emoji with the Champions League trophy asset.
+
 ## [1.6.0] - 2026-09-05
 
 ### New
