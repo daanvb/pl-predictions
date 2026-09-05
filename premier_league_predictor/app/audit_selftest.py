@@ -1262,9 +1262,21 @@ conn.execute(
            VALUES (9010, ?, 2, ?, 'SCHEDULED', 'Next Home', 'Next Away')""",
     (season, (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()),
 )
+# Champions League matchdays share the same number range as Premier League
+# gameweeks. They must never change the Premier League dashboard's selection.
+conn.execute(
+    """INSERT INTO fixtures(id, season, competition, matchday, utc_date,
+           status, home_team, away_team)
+           VALUES (9020, ?, 'champions_league', 1, ?, 'SCHEDULED',
+                   'CL Home', 'CL Away')""",
+    (season, (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()),
+)
 conn.commit()
 gw2_opens_at = predictor.gameweek_open_at(conn, 2)
 assert gw2_opens_at.hour == 9
+assert [fixture["id"] for fixture in predictor.signal_gameweek_fixtures(
+    conn, 1
+)] == [9001, 9002]
 conn.close()
 
 # The completed GW stays on the dashboard until 09:00 UK time the next day;

@@ -4919,6 +4919,7 @@ def next_unfinished_gameweek(conn):
         SELECT MIN(matchday) AS matchday
         FROM fixtures
         WHERE season = ?
+          AND competition = 'premier_league'
           AND matchday IS NOT NULL
           AND status NOT IN ('FINISHED', 'CANCELLED')
         """,
@@ -4939,6 +4940,7 @@ def gameweek_open_at(conn, matchday):
         SELECT matchday, MAX(utc_date) AS final_kickoff
         FROM fixtures
         WHERE season = ?
+          AND competition = 'premier_league'
           AND matchday < ?
           AND matchday IS NOT NULL
         GROUP BY matchday
@@ -4979,7 +4981,9 @@ def dashboard_current_gameweek(conn):
             """
             SELECT MAX(matchday) AS matchday
             FROM fixtures
-            WHERE season = ? AND matchday IS NOT NULL
+            WHERE season = ?
+              AND competition = 'premier_league'
+              AND matchday IS NOT NULL
             """,
             (SEASON,),
         ).fetchone()
@@ -4993,7 +4997,9 @@ def dashboard_current_gameweek(conn):
         """
         SELECT MAX(matchday) AS matchday
         FROM fixtures
-        WHERE season = ? AND matchday < ?
+        WHERE season = ?
+          AND competition = 'premier_league'
+          AND matchday < ?
         """,
         (SEASON, matchday),
     ).fetchone()
@@ -5007,6 +5013,7 @@ def signal_latest_completed_gameweek(conn):
         SELECT matchday
         FROM fixtures
         WHERE season = ?
+          AND competition = 'premier_league'
           AND matchday IS NOT NULL
         GROUP BY matchday
         HAVING SUM(
@@ -5030,6 +5037,7 @@ def signal_gameweek_fixtures(conn, matchday):
         SELECT *
         FROM fixtures
         WHERE season = ?
+          AND competition = 'premier_league'
           AND matchday = ?
         ORDER BY utc_date
         """,
@@ -6907,7 +6915,9 @@ def dashboard():
             """
             SELECT DISTINCT matchday
             FROM fixtures
-            WHERE season = ? AND matchday IS NOT NULL
+            WHERE season = ?
+              AND competition = 'premier_league'
+              AND matchday IS NOT NULL
             ORDER BY matchday
             """,
             (SEASON,),
@@ -6931,6 +6941,7 @@ def dashboard():
             SELECT *
             FROM fixtures
             WHERE season = ?
+              AND competition = 'premier_league'
               AND matchday = ?
             ORDER BY utc_date
             """,
@@ -6985,7 +6996,9 @@ def dashboard():
                       COALESCE(p.dp, 0) AS dp
                FROM predictions p
                JOIN fixtures f ON f.id = p.fixture_id
-               WHERE f.season = ? AND f.matchday = ?""",
+               WHERE f.season = ?
+                 AND f.competition = 'premier_league'
+                 AND f.matchday = ?""",
             (SEASON, current_matchday),
         ).fetchall()
         previous_league = overall_table_at_matchday(
