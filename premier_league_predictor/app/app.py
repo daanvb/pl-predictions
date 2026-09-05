@@ -96,6 +96,9 @@ QUIET_REFRESH_SECONDS = 6 * 60 * 60
 # SportScore caches its live feed for 60 seconds, so polling more often would
 # add load without producing fresher data.
 LIVE_REFRESH_SECONDS = 60
+BIGBALLS_SHADOW_REFRESH_SECONDS = 60
+BIGBALLS_SHADOW_WINDOW_AFTER_SECONDS = 48 * 60 * 60
+BIGBALLS_STORED_REFRESH_SECONDS = 5 * 60
 FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
@@ -3703,6 +3706,38 @@ def live_window_active():
     )
 
 
+def bigballs_shadow_test_active():
+    """Keep the diagnostic feed polling through the active game's aftermath.
+
+    The shadow comparison must not depend on SportScore having already marked
+    a fixture live. Big Balls can move a completed fixture into its stored
+    catalogue shortly after full time, so retain the test window for 48 hours.
+    """
+    conn = get_db()
+    try:
+        matchday = dashboard_current_gameweek(conn)
+        fixtures = conn.execute(
+            """SELECT utc_date FROM fixtures
+               WHERE season = ? AND matchday = ? AND status != 'CANCELLED'""",
+            (SEASON, matchday),
+        ).fetchall() if matchday is not None else []
+    finally:
+        conn.close()
+
+    now = now_utc()
+    for fixture in fixtures:
+        kickoff = parse_utc(fixture["utc_date"])
+        if not kickoff:
+            continue
+        if (
+            kickoff - timedelta(seconds=LIVE_WINDOW_BEFORE_SECONDS)
+            <= now
+            <= kickoff + timedelta(seconds=BIGBALLS_SHADOW_WINDOW_AFTER_SECONDS)
+        ):
+            return True
+    return False
+
+
 def refresh_bigballs_shadow(force_events=False):
     """Record changed EPL provider states without touching live app data."""
     api_key = get_setting("bigballs_api_key")
@@ -3743,7 +3778,27 @@ def refresh_bigballs_shadow(force_events=False):
                 )
         conn.commit()
         matches, meta = get_bigballs_premier_league_matches(api_key)
-        if force_events and fixtures:
+        checked_at = now_utc()
+        last_shadow_refresh = parse_utc(
+            get_setting("last_bigballs_shadow_refresh")
+        )
+        last_stored_refresh = parse_utc(
+            get_setting("last_bigballs_shadow_stored_refresh")
+        )
+        stored_refresh_due = bool(
+            force_events
+            or (
+                last_shadow_refresh
+                and (checked_at - last_shadow_refresh).total_seconds()
+                >= BIGBALLS_SHADOW_REFRESH_SECONDS
+                and (
+                    not last_stored_refresh
+                    or (checked_at - last_stored_refresh).total_seconds()
+                    >= BIGBALLS_STORED_REFRESH_SECONDS
+                )
+            )
+        )
+        if stored_refresh_due and fixtures:
             archived, archived_meta = get_bigballs_stored_premier_league_matches(
                 api_key,
                 [str(row["utc_date"])[:10] for row in fixtures],
@@ -3759,6 +3814,9 @@ def refresh_bigballs_shadow(force_events=False):
             matches = list(matches_by_id.values())
             if archived_meta:
                 meta = archived_meta
+            set_setting(
+                "last_bigballs_shadow_stored_refresh", checked_at.isoformat()
+            )
         fixture_keys = {
             (
                 normalized_team_name(row["home_team"]),
@@ -3924,6 +3982,10 @@ def api_refresh_worker():
             print(f"[result-repair] {exc}", flush=True)
 
         delay = next_api_refresh_delay()
+        shadow_test_active = bool(
+            get_setting("bigballs_api_key")
+            and bigballs_shadow_test_active()
+        )
 
         repair_results = current_gameweek_needs_result_repair()
 
@@ -3942,7 +4004,7 @@ def api_refresh_worker():
                 set_setting("last_sportscore_error_at", now_utc().isoformat())
                 print(f"[SportScore] {exc}", flush=True)
 
-        if delay == LIVE_REFRESH_SECONDS and get_setting("bigballs_api_key"):
+        if shadow_test_active:
             try:
                 shadow_updates = refresh_bigballs_shadow()
                 print(
@@ -3953,6 +4015,9 @@ def api_refresh_worker():
                 set_setting("last_bigballs_shadow_error", str(exc))
                 set_setting("last_bigballs_shadow_error_at", now_utc().isoformat())
                 print(f"[BigBalls shadow] {exc}", flush=True)
+
+        if shadow_test_active:
+            delay = min(delay, BIGBALLS_SHADOW_REFRESH_SECONDS)
 
         print(
             f"[auto-refresh] "
