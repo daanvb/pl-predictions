@@ -3738,6 +3738,17 @@ def bigballs_shadow_test_active():
     return False
 
 
+def bigballs_event_window_active(fixture, checked_at):
+    """Return whether a fixture should receive a one-minute event check."""
+    kickoff = parse_utc(fixture["utc_date"])
+    return bool(
+        kickoff
+        and kickoff - timedelta(seconds=LIVE_WINDOW_BEFORE_SECONDS)
+        <= checked_at
+        <= kickoff + timedelta(seconds=LIVE_WINDOW_AFTER_SECONDS)
+    )
+
+
 def refresh_bigballs_shadow(force_events=False):
     """Record changed EPL provider states without touching live app data."""
     api_key = get_setting("bigballs_api_key")
@@ -3850,7 +3861,10 @@ def refresh_bigballs_shadow(force_events=False):
             is_live = match["status"] in (
                 "live", "in_progress", "in_play", "paused"
             )
-            if force_events or is_live or (
+            event_window_active = bigballs_event_window_active(
+                fixture_keys[key], checked_at
+            )
+            if force_events or event_window_active or is_live or (
                 score_changed
                 and any(value is not None for value in current_state[1:])
             ):
@@ -3862,7 +3876,13 @@ def refresh_bigballs_shadow(force_events=False):
                 except BigBallsAPIError as exc:
                     events_json = json.dumps({"error": str(exc)})
             previous_events = previous["events_json"] if previous else None
-            if current_state == previous_state and events_json == previous_events:
+            # Keep every scheduled event check. A quiet response is evidence
+            # for the provider comparison, rather than an invisible no-op.
+            if (
+                not event_window_active
+                and current_state == previous_state
+                and events_json == previous_events
+            ):
                 continue
             conn.execute(
                 """INSERT INTO bigballs_shadow_samples(
