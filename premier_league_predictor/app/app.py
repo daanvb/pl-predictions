@@ -51,6 +51,12 @@ from football_api import (
     get_matches,
     test_connection,
 )
+from api_football import (
+    APIFootballError,
+    get_fixture_events as get_api_football_fixture_events,
+    get_live_fixtures as get_api_football_live_fixtures,
+    test_connection as test_api_football_connection,
+)
 from sportscore import (
     SportScoreError,
     get_champions_league_matches as get_sportscore_champions_league_matches,
@@ -87,6 +93,9 @@ QUIET_REFRESH_SECONDS = 6 * 60 * 60
 # SportScore caches its live feed for 60 seconds, so polling more often would
 # add load without producing fresher data.
 LIVE_REFRESH_SECONDS = 60
+API_FOOTBALL_MINIMUM_INTERVAL_SECONDS = 120
+API_FOOTBALL_DAILY_CALL_CAP = 75
+API_FOOTBALL_STALE_MINUTES = 4
 FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
@@ -3054,7 +3063,7 @@ def import_matches_from_api():
                     WHEN fixtures.status = 'FINISHED'
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.status
-                    WHEN fixtures.live_data_source = 'SportScore'
+                    WHEN fixtures.live_data_source IN ('SportScore', 'API-Football')
                       AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.status
@@ -3066,7 +3075,7 @@ def import_matches_from_api():
                     WHEN fixtures.status = 'FINISHED'
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.home_score
-                    WHEN fixtures.live_data_source = 'SportScore'
+                    WHEN fixtures.live_data_source IN ('SportScore', 'API-Football')
                       AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.home_score
@@ -3076,7 +3085,7 @@ def import_matches_from_api():
                     WHEN fixtures.status = 'FINISHED'
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.away_score
-                    WHEN fixtures.live_data_source = 'SportScore'
+                    WHEN fixtures.live_data_source IN ('SportScore', 'API-Football')
                       AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.away_score
@@ -3086,21 +3095,21 @@ def import_matches_from_api():
                     WHEN fixtures.status = 'FINISHED'
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.last_updated
-                    WHEN fixtures.live_data_source = 'SportScore'
+                    WHEN fixtures.live_data_source IN ('SportScore', 'API-Football')
                       AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.last_updated
                     ELSE COALESCE(excluded.last_updated, fixtures.last_updated)
                 END,
                 minute = CASE
-                    WHEN fixtures.live_data_source = 'SportScore'
+                    WHEN fixtures.live_data_source IN ('SportScore', 'API-Football')
                       AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.minute
                     ELSE COALESCE(excluded.minute, fixtures.minute)
                 END,
                 injury_time = CASE
-                    WHEN fixtures.live_data_source = 'SportScore'
+                    WHEN fixtures.live_data_source IN ('SportScore', 'API-Football')
                       AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.injury_time
@@ -3117,7 +3126,7 @@ def import_matches_from_api():
                     WHEN fixtures.status = 'FINISHED'
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.goals_json
-                    WHEN fixtures.live_data_source = 'SportScore'
+                    WHEN fixtures.live_data_source IN ('SportScore', 'API-Football')
                       AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.goals_json
@@ -3130,7 +3139,7 @@ def import_matches_from_api():
                     WHEN fixtures.status = 'FINISHED'
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.live_data_source
-                    WHEN fixtures.live_data_source = 'SportScore'
+                    WHEN fixtures.live_data_source IN ('SportScore', 'API-Football')
                       AND fixtures.status IN ('LIVE', 'IN_PLAY', 'PAUSED')
                       AND excluded.status != 'FINISHED'
                     THEN fixtures.live_data_source
@@ -3574,6 +3583,286 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
     return updated
 
 
+def _api_football_day():
+    return now_utc().date().isoformat()
+
+
+def api_football_call_available():
+    """Enforce a conservative daily budget before any fallback request."""
+    today = _api_football_day()
+    if get_setting("api_football_call_day") != today:
+        set_setting("api_football_call_day", today)
+        set_setting("api_football_call_count", "0")
+    try:
+        return int(get_setting("api_football_call_count") or 0) < (
+            API_FOOTBALL_DAILY_CALL_CAP
+        )
+    except ValueError:
+        return True
+
+
+def record_api_football_call():
+    today = _api_football_day()
+    if get_setting("api_football_call_day") != today:
+        set_setting("api_football_call_day", today)
+        count = 0
+    else:
+        try:
+            count = int(get_setting("api_football_call_count") or 0)
+        except ValueError:
+            count = 0
+    set_setting("api_football_call_count", str(count + 1))
+    set_setting("last_api_football_request", now_utc().isoformat())
+
+
+def api_football_fallback_due():
+    """Avoid spending multiple fallback calls for the same primary outage."""
+    if not get_setting("api_football_key") or not api_football_call_available():
+        return False
+    last_request = parse_utc(get_setting("last_api_football_request"))
+    return not last_request or (
+        now_utc() - last_request
+    ).total_seconds() >= API_FOOTBALL_MINIMUM_INTERVAL_SECONDS
+
+
+def _api_football_status(raw_status):
+    short = ((raw_status or {}).get("short") or "").upper()
+    if short in ("1H", "2H", "ET", "BT", "P", "INT"):
+        return "IN_PLAY"
+    if short in ("HT", "BREAK"):
+        return "PAUSED"
+    if short in ("FT", "AET", "PEN"):
+        return "FINISHED"
+    return "SCHEDULED"
+
+
+def _api_football_event_key(event):
+    fixture_event = event.get("time") or {}
+    player = event.get("player") or {}
+    team = event.get("team") or {}
+    return "|".join(str(value or "") for value in (
+        event.get("type"), event.get("detail"), fixture_event.get("elapsed"),
+        fixture_event.get("extra"), team.get("name"), player.get("name"),
+    ))
+
+
+def _api_football_goal_event(event):
+    detail = (event.get("detail") or "").casefold()
+    event_time = event.get("time") or {}
+    return {
+        "minute": event_time.get("elapsed"),
+        "injuryTime": event_time.get("extra"),
+        "type": "OWN_GOAL" if "own" in detail else (
+            "PENALTY" if "penalty" in detail else "REGULAR"
+        ),
+        "team": {"name": (event.get("team") or {}).get("name")},
+        "scorer": {"name": (event.get("player") or {}).get("name")},
+    }
+
+
+def _api_football_card_event(event, stored):
+    detail = (event.get("detail") or "").casefold()
+    if "red" not in detail:
+        return None
+    team = normalized_team_name((event.get("team") or {}).get("name"))
+    side = (
+        "home" if team == normalized_team_name(stored["home_team"]) else
+        "away" if team == normalized_team_name(stored["away_team"]) else None
+    )
+    if not side:
+        return None
+    return {
+        "type": "Second yellow red" if "yellow" in detail else "Red card",
+        "time": (event.get("time") or {}).get("elapsed"),
+        "side": side,
+        "player": (event.get("player") or {}).get("name"),
+    }
+
+
+def _api_football_match_for_fixture(conn, stored, live_fixtures):
+    mapped = conn.execute(
+        """SELECT provider_fixture_id FROM provider_fixture_mappings
+           WHERE fixture_id = ? AND provider = 'API-Football'""",
+        (stored["id"],),
+    ).fetchone()
+    if mapped:
+        mapped_id = str(mapped["provider_fixture_id"])
+        return next(
+            (item for item in live_fixtures
+             if str((item.get("fixture") or {}).get("id")) == mapped_id),
+            None,
+        )
+
+    kickoff = parse_utc(stored["utc_date"])
+    expected = (
+        normalized_team_name(stored["home_team"]),
+        normalized_team_name(stored["away_team"]),
+    )
+    candidates = []
+    for item in live_fixtures:
+        teams = item.get("teams") or {}
+        candidate = (
+            normalized_team_name((teams.get("home") or {}).get("name")),
+            normalized_team_name((teams.get("away") or {}).get("name")),
+        )
+        provider_kickoff = parse_utc((item.get("fixture") or {}).get("date"))
+        if candidate != expected or not kickoff or not provider_kickoff:
+            continue
+        if abs((provider_kickoff - kickoff).total_seconds()) <= 3 * 60 * 60:
+            candidates.append(item)
+    if len(candidates) != 1:
+        return None
+
+    provider_id = (candidates[0].get("fixture") or {}).get("id")
+    if provider_id is not None:
+        conn.execute(
+            """INSERT OR REPLACE INTO provider_fixture_mappings(
+                   fixture_id, provider, provider_fixture_id, match_method, mapped_at
+               ) VALUES (?, 'API-Football', ?, 'teams-and-kickoff', ?)""",
+            (stored["id"], str(provider_id), now_utc().isoformat()),
+        )
+    return candidates[0]
+
+
+def _api_football_fallback_needed(stored, checked_at):
+    kickoff = parse_utc(stored["utc_date"])
+    if not kickoff:
+        return False
+    if (
+        checked_at < kickoff - timedelta(seconds=LIVE_WINDOW_BEFORE_SECONDS)
+        or checked_at > kickoff + timedelta(seconds=LIVE_WINDOW_AFTER_SECONDS)
+    ):
+        return False
+    status = stored["status"] or ""
+    score_missing = stored["home_score"] is None or stored["away_score"] is None
+    events_missing = (
+        not stored["goals_json"]
+        and ((stored["home_score"] or 0) > 0 or (stored["away_score"] or 0) > 0)
+    )
+    if kickoff + timedelta(minutes=5) <= checked_at and status in ("SCHEDULED", "TIMED"):
+        return True
+    if status in ("LIVE", "IN_PLAY") and score_missing:
+        return True
+    if events_missing:
+        return True
+    if status in ("LIVE", "IN_PLAY") and stored["minute"] is not None:
+        try:
+            expected_minute = int((checked_at - kickoff).total_seconds() // 60)
+            return expected_minute - int(stored["minute"]) >= API_FOOTBALL_STALE_MINUTES
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
+def import_live_matches_from_api_football_fallback():
+    """Fill confirmed gaps without replacing a healthy SportScore live row."""
+    if not api_football_fallback_due():
+        return 0
+    conn = get_db()
+    updated = 0
+    try:
+        checked_at = now_utc()
+        fixtures = conn.execute(
+            """SELECT * FROM fixtures WHERE season = ?
+               AND status NOT IN ('FINISHED', 'CANCELLED')""",
+            (SEASON,),
+        ).fetchall()
+        needing_fallback = [
+            fixture for fixture in fixtures
+            if _api_football_fallback_needed(fixture, checked_at)
+        ]
+        if not needing_fallback:
+            return 0
+
+        record_api_football_call()
+        live_fixtures = get_api_football_live_fixtures(get_setting("api_football_key"))
+        for stored in needing_fallback:
+            provider_match = _api_football_match_for_fixture(
+                conn, stored, live_fixtures
+            )
+            if not provider_match:
+                continue
+            fixture_data = provider_match.get("fixture") or {}
+            goals = provider_match.get("goals") or {}
+            provider_status = _api_football_status(fixture_data.get("status"))
+            elapsed = (fixture_data.get("status") or {}).get("elapsed")
+            event_gap = not stored["goals_json"] and (
+                (goals.get("home") or 0) > 0 or (goals.get("away") or 0) > 0
+            )
+            event_rows = []
+            if event_gap and fixture_data.get("id") and api_football_call_available():
+                record_api_football_call()
+                event_rows = get_api_football_fixture_events(
+                    get_setting("api_football_key"), fixture_data.get("id")
+                )
+            goal_events = [
+                _api_football_goal_event(event) for event in event_rows
+                if (event.get("type") or "").casefold() == "goal"
+            ]
+            card_events = [
+                card for card in (
+                    _api_football_card_event(event, stored) for event in event_rows
+                ) if card
+            ]
+            for event in event_rows:
+                conn.execute(
+                    """INSERT OR IGNORE INTO provider_event_observations(
+                           provider, fixture_id, event_key, event_type, event_minute,
+                           first_seen_at, payload_json
+                       ) VALUES ('API-Football', ?, ?, ?, ?, ?, ?)""",
+                    (
+                        stored["id"], _api_football_event_key(event), event.get("type"),
+                        str((event.get("time") or {}).get("elapsed") or ""),
+                        checked_at.isoformat(), json.dumps(event, sort_keys=True),
+                    ),
+                )
+            conn.execute(
+                """INSERT OR REPLACE INTO provider_live_states(
+                       provider, fixture_id, state_signature, captured_at, payload_json
+                   ) VALUES ('API-Football', ?, ?, ?, ?)""",
+                (
+                    stored["id"], json.dumps({
+                        "status": provider_status, "home": goals.get("home"),
+                        "away": goals.get("away"), "minute": elapsed,
+                    }, sort_keys=True), checked_at.isoformat(),
+                    json.dumps(provider_match, sort_keys=True),
+                ),
+            )
+            # Do not overwrite a complete primary score with a differing
+            # secondary score. The observation above retains that evidence.
+            can_fill_score = (
+                stored["home_score"] is None or stored["away_score"] is None
+                or stored["status"] in ("SCHEDULED", "TIMED")
+            )
+            if can_fill_score or event_gap:
+                conn.execute(
+                    """UPDATE fixtures SET status = ?,
+                           home_score = CASE WHEN home_score IS NULL THEN ? ELSE home_score END,
+                           away_score = CASE WHEN away_score IS NULL THEN ? ELSE away_score END,
+                           minute = CASE WHEN minute IS NULL OR minute < ? THEN ? ELSE minute END,
+                           goals_json = COALESCE(?, goals_json),
+                           incidents_json = COALESCE(?, incidents_json),
+                           last_updated = ?, live_data_source = 'API-Football'
+                       WHERE id = ?""",
+                    (
+                        provider_status, goals.get("home"), goals.get("away"), elapsed,
+                        elapsed, json.dumps(goal_events) if goal_events else None,
+                        json.dumps(card_events) if card_events else None,
+                        checked_at.isoformat(), stored["id"],
+                    ),
+                )
+                updated += 1
+        if updated:
+            refresh_points(conn)
+            matchday = dashboard_current_gameweek(conn)
+            if matchday is not None:
+                record_live_position_snapshot(conn, matchday)
+        conn.commit()
+    finally:
+        conn.close()
+    return updated
+
+
 def next_api_refresh_delay():
     """
     Choose the next API refresh without ever sleeping through kickoff.
@@ -3806,6 +4095,19 @@ def api_refresh_worker():
                 set_setting("last_sportscore_error", str(exc))
                 set_setting("last_sportscore_error_at", now_utc().isoformat())
                 print(f"[SportScore] {exc}", flush=True)
+
+            try:
+                fallback_updates = import_live_matches_from_api_football_fallback()
+                if fallback_updates:
+                    print(
+                        f"[API-Football] Filled {fallback_updates} live data gap(s)",
+                        flush=True,
+                    )
+                set_setting("last_api_football_error", "")
+            except APIFootballError as exc:
+                set_setting("last_api_football_error", str(exc))
+                set_setting("last_api_football_error_at", now_utc().isoformat())
+                print(f"[API-Football] {exc}", flush=True)
 
         print(
             f"[auto-refresh] "
@@ -6360,11 +6662,16 @@ def dashboard():
         if get_setting("football_api_token"):
             dashboard_sources.append("football-data.org")
         if any(
-            fixture.get("live_data_source") == "SportScore"
+            fixture.get("live_data_source") in ("SportScore", "API-Football")
             or fixture.get("status") in ("LIVE", "IN_PLAY", "PAUSED")
             for fixture in current_fixtures
         ):
             dashboard_sources.insert(0, "SportScore")
+        if any(
+            fixture.get("live_data_source") == "API-Football"
+            for fixture in current_fixtures
+        ):
+            dashboard_sources.insert(0, "API-Football")
 
         refresh_points(conn)
         record_live_position_snapshot(conn, current_matchday)
@@ -8656,6 +8963,19 @@ def settings():
                 "/admin/settings"
             )
 
+        if action == "api_football":
+            api_football_key = request.form.get("api_football_key", "").strip()
+            if api_football_key:
+                set_setting("api_football_key", api_football_key)
+                flash(
+                    "API-Football key saved. It will only be used by the "
+                    "targeted live-data fallback once that is enabled.",
+                    "success",
+                )
+            else:
+                flash("Please enter an API-Football key.", "error")
+            return redirect("/admin/settings")
+
 
         token = request.form.get(
             "api_token",
@@ -8692,6 +9012,7 @@ def settings():
                 "football_api_token"
             )
         ),
+        api_football_configured=bool(get_setting("api_football_key")),
         last_sportscore_refresh=(
             local_timestamp(get_setting("last_sportscore_refresh"))
             if get_setting("last_sportscore_refresh")
@@ -8714,6 +9035,18 @@ def settings():
             else None
         ),
     )
+
+
+@app.route("/admin/settings/api-football/test", methods=["POST"])
+def test_api_football():
+    if not is_admin():
+        return redirect("/")
+    try:
+        test_api_football_connection(get_setting("api_football_key"))
+        flash("API-Football connection is working.", "success")
+    except APIFootballError as exc:
+        flash(str(exc), "error")
+    return redirect("/admin/settings")
 
 
 @app.route(

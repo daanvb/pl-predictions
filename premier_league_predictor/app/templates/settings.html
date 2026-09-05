@@ -87,6 +87,47 @@ Save token
 
 <div class="card">
 
+<h2>API-Football live fallback</h2>
+
+<p>
+{% if api_football_configured %}
+✅ Key stored persistently.
+{% else %}
+Optional: no key configured.
+{% endif %}
+</p>
+
+<p class="small">This is a targeted fallback for missing or delayed live
+scores, scorers and cards. SportScore remains the normal live feed. Calls are
+limited to one every two minutes, only when a gap is detected, with a daily
+cap of 75.</p>
+
+<form method="POST">
+
+<input type="hidden" name="action" value="api_football">
+
+<input
+    type="password"
+    name="api_football_key"
+    placeholder="API-Football key"
+    style="width:100%;margin-bottom:10px"
+    required
+>
+
+<button>Save key</button>
+
+</form>
+
+{% if api_football_configured %}
+<form method="POST" action="/admin/settings/api-football/test" style="margin-top:10px">
+<button class="primary">Test API-Football connection</button>
+</form>
+{% endif %}
+
+</div>
+
+<div class="card">
+
 <h2>Automatic API refresh</h2>
 
 <p>
