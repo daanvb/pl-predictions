@@ -2,6 +2,17 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.5.0] - 2026-09-05
+
+### New
+- Champions League fixtures can now be refreshed and viewed one matchday at a time, with UK dates and kick-off times.
+- Added confirmed UK TV channels for fixtures involving English clubs, including TNT Sports and Prime Video listings when published.
+- Added the HRK Metric to League Stats, showing the player and points lost when added-time goals changed a final scoreline.
+
+### Fixes
+- Corrected stale live scorelines from API-Football together with their scorer events when the primary feed falls behind.
+- Kept Champions League matchdays separate from the Premier League dashboard, live table and prediction views.
+
 ## [1.4.0] - 2026-09-05
 
 ### New

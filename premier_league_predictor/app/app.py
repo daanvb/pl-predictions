@@ -65,7 +65,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -95,7 +95,7 @@ QUIET_REFRESH_SECONDS = 6 * 60 * 60
 LIVE_REFRESH_SECONDS = 60
 API_FOOTBALL_MINIMUM_INTERVAL_SECONDS = 120
 API_FOOTBALL_DAILY_CALL_CAP = 75
-API_FOOTBALL_STALE_MINUTES = 3
+API_FOOTBALL_STALE_MINUTES = 2
 FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
@@ -126,6 +126,10 @@ news_cache_lock = threading.Lock()
 PREMIER_LEAGUE_FIXTURE_SOURCE = (
     "https://www.premierleague.com/en/news/4675097/"
     "all-380-fixtures-for-202627-premier-league-season"
+)
+CHAMPIONS_LEAGUE_TV_SOURCE = (
+    "https://www.live-footballontv.com/"
+    "live-champions-league-football-on-tv.html"
 )
 
 SKY_SPORTS_LOGO = (
@@ -2071,14 +2075,14 @@ def broadcaster_logo_url(broadcaster):
     if broadcaster == "Sky Sports":
         return SKY_SPORTS_LOGO
 
-    if broadcaster == "TNT Sports":
+    if (broadcaster or "").startswith("TNT Sports"):
         return TNT_SPORTS_LOGO
 
     return None
 
 
 def broadcaster_dark_logo_url(broadcaster):
-    if broadcaster == "TNT Sports":
+    if (broadcaster or "").startswith("TNT Sports"):
         return TNT_SPORTS_DARK_LOGO
 
     return None
@@ -2999,12 +3003,14 @@ def _champions_league_fixture_id(conn, source_fixture_id):
     return candidate
 
 
-def import_champions_league_matches():
-    """Import Champions League fixtures into their own competition namespace."""
+def import_champions_league_matches(matchday):
+    """Import one Champions League matchday into its own namespace."""
     token = get_setting("football_api_token")
     if not token:
         return 0
-    matches = get_football_champions_league_matches(token, season=SEASON)
+    matches = get_football_champions_league_matches(
+        token, season=SEASON, matchday=matchday
+    )
     conn = get_db()
     imported = 0
     try:
@@ -3047,10 +3053,16 @@ def import_champions_league_matches():
                 ),
             )
             imported += 1
+        tv_updated = refresh_champions_league_tv_broadcasters(conn, matchday)
+        print(
+            f"[champions-league-tv] Updated {tv_updated} broadcaster(s)",
+            flush=True,
+        )
         conn.commit()
     finally:
         conn.close()
     set_setting("champions_league_last_refresh", now_utc().isoformat())
+    set_setting("champions_league_selected_matchday", str(matchday))
     return imported
 
 
@@ -3377,6 +3389,114 @@ def normalized_team_name(name):
         "wolverhampton wanderers": "wolves",
     }
     return aliases.get(value, value)
+
+
+CHAMPIONS_LEAGUE_ENGLISH_TEAMS = frozenset({
+    "arsenal", "aston villa", "chelsea", "liverpool", "man city",
+    "man united", "newcastle", "tottenham",
+})
+
+
+def is_english_champions_league_fixture(fixture):
+    """Limit UK TV labels to fixtures involving an English club."""
+    if fixture.get("competition") != "champions_league":
+        return False
+    teams = {
+        normalized_team_name(fixture.get("home_team")),
+        normalized_team_name(fixture.get("away_team")),
+    }
+    return bool(teams & CHAMPIONS_LEAGUE_ENGLISH_TEAMS)
+
+
+def _champions_league_tv_teams_match(first, second):
+    ignored_words = {
+        "ac", "afc", "as", "cf", "club", "de", "fc", "ssc", "the",
+        "us",
+    }
+    first_words = set(normalized_team_name(first).split()) - ignored_words
+    second_words = set(normalized_team_name(second).split()) - ignored_words
+    return bool(first_words and second_words and first_words == second_words)
+
+
+def fetch_champions_league_uk_tv_listings(fixtures):
+    """Return confirmed UK channels for the supplied English CL fixtures."""
+    eligible = [
+        fixture for fixture in fixtures
+        if is_english_champions_league_fixture(dict(fixture))
+    ]
+    if not eligible:
+        return {}
+    try:
+        response = requests.get(
+            CHAMPIONS_LEAGUE_TV_SOURCE,
+            timeout=20,
+            headers={"User-Agent": "PremierLeaguePredictor/1.24"},
+        )
+        response.raise_for_status()
+    except Exception as exc:
+        print(f"[champions-league-tv] Listing unavailable: {exc}", flush=True)
+        return {}
+
+    listings = []
+    for block in re.findall(
+        r'<div class="fixture">(.*?)(?=<div class="fixture">|$)',
+        response.text,
+        flags=re.I | re.S,
+    ):
+        teams = re.search(
+            r'fixture__teams">\s*(.*?)\s*</div>', block, re.I | re.S
+        )
+        if not teams or " v " not in unescape(teams.group(1)):
+            continue
+        home, away = unescape(re.sub(r"<[^>]+>", "", teams.group(1))).split(
+            " v ", 1
+        )
+        channels = [
+            unescape(re.sub(r"<[^>]+>", "", channel)).strip()
+            for channel in re.findall(
+                r'class="channel-pill"[^>]*>(.*?)</span>', block,
+                re.I | re.S,
+            )
+        ]
+        confirmed = [
+            channel for channel in channels
+            if channel not in ("HBO Max", "TBC")
+            and not channel.endswith(" TBC")
+        ]
+        if confirmed:
+            listings.append((home.strip(), away.strip(), " · ".join(confirmed)))
+
+    found = {}
+    for fixture in eligible:
+        for home, away, broadcaster in listings:
+            if (
+                _champions_league_tv_teams_match(fixture["home_team"], home)
+                and _champions_league_tv_teams_match(fixture["away_team"], away)
+            ):
+                found[fixture["id"]] = broadcaster
+                break
+    return found
+
+
+def refresh_champions_league_tv_broadcasters(conn, matchday):
+    fixtures = conn.execute(
+        """SELECT id, competition, home_team, away_team, broadcaster
+           FROM fixtures
+           WHERE season = ? AND competition = 'champions_league'
+             AND matchday = ?""",
+        (SEASON, matchday),
+    ).fetchall()
+    listings = fetch_champions_league_uk_tv_listings(fixtures)
+    updated = 0
+    for fixture in fixtures:
+        broadcaster = listings.get(fixture["id"])
+        if broadcaster and broadcaster != fixture["broadcaster"]:
+            conn.execute(
+                "UPDATE fixtures SET broadcaster = ? WHERE id = ?",
+                (broadcaster, fixture["id"]),
+            )
+            updated += 1
+    return updated
 
 
 def sportscore_team_slug(name):
@@ -4007,8 +4127,16 @@ def import_live_matches_from_api_football_fallback():
             goals = provider_match.get("goals") or {}
             provider_status = _api_football_status(fixture_data.get("status"))
             elapsed = (fixture_data.get("status") or {}).get("elapsed")
+            provider_has_score = (
+                goals.get("home") is not None and goals.get("away") is not None
+            )
+            score_disagrees = provider_has_score and (
+                stored["home_score"] != goals.get("home")
+                or stored["away_score"] != goals.get("away")
+            )
             event_gap = (
                 _fixture_goal_event_coverage_missing(stored)
+                or score_disagrees
                 or (
                     stored["goals_json"] in (None, "", "[]")
                     and ((goals.get("home") or 0) > 0 or (goals.get("away") or 0) > 0)
@@ -4053,8 +4181,6 @@ def import_live_matches_from_api_football_fallback():
                     json.dumps(provider_match, sort_keys=True),
                 ),
             )
-            # Do not overwrite a complete primary score with a differing
-            # secondary score. The observation above retains that evidence.
             can_fill_score = (
                 stored["home_score"] is None or stored["away_score"] is None
                 or stored["status"] in ("SCHEDULED", "TIMED")
@@ -4075,19 +4201,27 @@ def import_live_matches_from_api_football_fallback():
                 provider_status in ("PAUSED", "FINISHED")
                 and stored["status"] in ("LIVE", "IN_PLAY")
             )
-            if can_fill_score or event_gap or clock_is_stale or phase_advanced:
+            # A stale primary clock plus a confirmed all-live API-Football
+            # score is sufficient evidence to correct a stale scoreline. Fetching
+            # events in the same pass keeps the score and scorer display together.
+            replace_score = provider_has_score and (
+                can_fill_score
+                or (score_disagrees and (clock_is_stale or phase_advanced))
+            )
+            if replace_score or event_gap or clock_is_stale or phase_advanced:
                 conn.execute(
                     """UPDATE fixtures SET status = ?,
-                           home_score = CASE WHEN home_score IS NULL THEN ? ELSE home_score END,
-                           away_score = CASE WHEN away_score IS NULL THEN ? ELSE away_score END,
+                           home_score = CASE WHEN ? THEN ? ELSE home_score END,
+                           away_score = CASE WHEN ? THEN ? ELSE away_score END,
                            minute = CASE WHEN minute IS NULL OR minute < ? THEN ? ELSE minute END,
                            goals_json = COALESCE(?, goals_json),
                            incidents_json = COALESCE(?, incidents_json),
                            last_updated = ?, live_data_source = 'API-Football'
                        WHERE id = ?""",
                     (
-                        provider_status, goals.get("home"), goals.get("away"), elapsed,
-                        elapsed, json.dumps(goal_events) if goal_events else None,
+                        provider_status, replace_score, goals.get("home"),
+                        replace_score, goals.get("away"), elapsed, elapsed,
+                        json.dumps(goal_events) if goal_events else None,
                         json.dumps(card_events) if card_events else None,
                         checked_at.isoformat(), stored["id"],
                     ),
@@ -4919,6 +5053,7 @@ def next_unfinished_gameweek(conn):
         SELECT MIN(matchday) AS matchday
         FROM fixtures
         WHERE season = ?
+          AND competition = 'premier_league'
           AND matchday IS NOT NULL
           AND status NOT IN ('FINISHED', 'CANCELLED')
         """,
@@ -4939,6 +5074,7 @@ def gameweek_open_at(conn, matchday):
         SELECT matchday, MAX(utc_date) AS final_kickoff
         FROM fixtures
         WHERE season = ?
+          AND competition = 'premier_league'
           AND matchday < ?
           AND matchday IS NOT NULL
         GROUP BY matchday
@@ -4979,7 +5115,9 @@ def dashboard_current_gameweek(conn):
             """
             SELECT MAX(matchday) AS matchday
             FROM fixtures
-            WHERE season = ? AND matchday IS NOT NULL
+            WHERE season = ?
+              AND competition = 'premier_league'
+              AND matchday IS NOT NULL
             """,
             (SEASON,),
         ).fetchone()
@@ -4993,7 +5131,9 @@ def dashboard_current_gameweek(conn):
         """
         SELECT MAX(matchday) AS matchday
         FROM fixtures
-        WHERE season = ? AND matchday < ?
+        WHERE season = ?
+          AND competition = 'premier_league'
+          AND matchday < ?
         """,
         (SEASON, matchday),
     ).fetchone()
@@ -5007,6 +5147,7 @@ def signal_latest_completed_gameweek(conn):
         SELECT matchday
         FROM fixtures
         WHERE season = ?
+          AND competition = 'premier_league'
           AND matchday IS NOT NULL
         GROUP BY matchday
         HAVING SUM(
@@ -5030,6 +5171,7 @@ def signal_gameweek_fixtures(conn, matchday):
         SELECT *
         FROM fixtures
         WHERE season = ?
+          AND competition = 'premier_league'
           AND matchday = ?
         ORDER BY utc_date
         """,
@@ -5770,11 +5912,31 @@ def champions_league():
     if not logged_in():
         return redirect("/")
     conn = get_db()
+    stored_matchdays = [
+        row["matchday"]
+        for row in conn.execute(
+            """SELECT DISTINCT matchday FROM fixtures
+               WHERE competition = 'champions_league' AND season = ?
+                 AND matchday IS NOT NULL
+               ORDER BY matchday""",
+            (SEASON,),
+        ).fetchall()
+    ]
+    selected_matchday = request.args.get(
+        "matchday", get_setting("champions_league_selected_matchday") or "1"
+    )
+    try:
+        selected_matchday = int(selected_matchday)
+    except (TypeError, ValueError):
+        selected_matchday = 1
+    selected_matchday = max(1, min(selected_matchday, 99))
+    available_matchdays = sorted(set(range(1, 9)) | set(stored_matchdays))
     fixtures = conn.execute(
         """SELECT * FROM fixtures
            WHERE competition = 'champions_league' AND season = ?
+             AND matchday = ?
            ORDER BY utc_date""",
-        (SEASON,),
+        (SEASON, selected_matchday),
     ).fetchall()
     conn.close()
     fixtures = [dict(row) for row in fixtures]
@@ -5788,6 +5950,8 @@ def champions_league():
         )
     return render_template(
         "side_events.html", fixtures=fixtures,
+        selected_matchday=selected_matchday,
+        available_matchdays=available_matchdays,
         has_live_fixtures=any(
             fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
             for fixture in fixtures
@@ -5804,7 +5968,15 @@ def import_champions_league_fixtures():
         flash("football-data.org is temporarily rate limiting requests. Please try again shortly.", "error")
         return redirect("/champions-league")
     try:
-        imported = import_champions_league_matches()
+        matchday = int(request.form.get("matchday", "1"))
+    except (TypeError, ValueError):
+        flash("Choose a valid Champions League matchday.", "error")
+        return redirect("/champions-league")
+    if not 1 <= matchday <= 99:
+        flash("Choose a valid Champions League matchday.", "error")
+        return redirect("/champions-league")
+    try:
+        imported = import_champions_league_matches(matchday)
         live_updated = import_champions_league_live_from_sportscore()
         flash(
             f"Champions League fixtures refreshed: {imported} imported; "
@@ -5814,7 +5986,7 @@ def import_champions_league_fixtures():
         if isinstance(exc, FootballAPIError):
             record_football_data_error(exc)
         flash(str(exc), "error")
-    return redirect("/champions-league")
+    return redirect(f"/champions-league?matchday={matchday}")
 
 
 @app.route("/head-to-head")
@@ -6494,6 +6666,64 @@ def historical_season(season):
     )
 
 
+def late_goal_points_lost(conn):
+    """Total points lost when added-time goals changed a final scoreline."""
+    losses = {}
+    fixtures = conn.execute(
+        """SELECT id, home_team, away_team, home_score, away_score, goals_json
+           FROM fixtures
+           WHERE season = ? AND competition = 'premier_league'
+             AND status = 'FINISHED' AND goals_json IS NOT NULL""",
+        (SEASON,),
+    ).fetchall()
+    for fixture in fixtures:
+        try:
+            goals = json.loads(fixture["goals_json"] or "[]")
+        except (TypeError, ValueError):
+            continue
+        removed = {"home": 0, "away": 0}
+        for goal in goals if isinstance(goals, list) else []:
+            try:
+                minute = int(goal.get("minute") or 0)
+                extra = int(goal.get("injuryTime") or 0)
+            except (TypeError, ValueError):
+                continue
+            if minute < 90 or (minute == 90 and extra <= 0):
+                continue
+            team = normalized_team_name((goal.get("team") or {}).get("name"))
+            if team == normalized_team_name(fixture["home_team"]):
+                removed["home"] += 1
+            elif team == normalized_team_name(fixture["away_team"]):
+                removed["away"] += 1
+        if not any(removed.values()):
+            continue
+        at_90_home = fixture["home_score"] - removed["home"]
+        at_90_away = fixture["away_score"] - removed["away"]
+        predictions = conn.execute(
+            """SELECT p.player_id, pl.name, p.home_score, p.away_score,
+                      COALESCE(p.dp, 0) AS dp
+               FROM predictions p JOIN players pl ON pl.id = p.player_id
+               WHERE p.fixture_id = ?""",
+            (fixture["id"],),
+        ).fetchall()
+        for prediction in predictions:
+            at_90 = calculate_prediction_points(
+                prediction["home_score"], prediction["away_score"],
+                at_90_home, at_90_away, prediction["dp"],
+            )
+            final = calculate_prediction_points(
+                prediction["home_score"], prediction["away_score"],
+                fixture["home_score"], fixture["away_score"], prediction["dp"],
+            )
+            lost = max(0, at_90 - final)
+            if lost:
+                entry = losses.setdefault(prediction["player_id"], {
+                    "id": prediction["player_id"], "name": prediction["name"], "total": 0,
+                })
+                entry["total"] += lost
+    return sorted(losses.values(), key=lambda row: (-row["total"], row["name"].casefold()))
+
+
 @app.route("/stats")
 @app.route("/league-stats")
 def stats():
@@ -6812,6 +7042,13 @@ def stats():
         if row["total"] == dp_exact_score_value
     ]
 
+    late_goal_loss_rows = late_goal_points_lost(conn)
+    late_goal_loss_value = late_goal_loss_rows[0]["total"] if late_goal_loss_rows else 0
+    most_late_goal_points_lost = [
+        row for row in late_goal_loss_rows
+        if row["total"] == late_goal_loss_value
+    ]
+
     best_gameweek_rows = conn.execute(
         """
         SELECT
@@ -6885,6 +7122,8 @@ def stats():
         correct_result_value=correct_result_value,
         most_dp_exact_scores=most_dp_exact_scores,
         dp_exact_score_value=dp_exact_score_value,
+        most_late_goal_points_lost=most_late_goal_points_lost,
+        late_goal_loss_value=late_goal_loss_value,
         best_gameweeks_overall=best_gameweeks_overall,
         best_gameweek_value=best_gameweek_value,
         completed_gameweeks=completed_gameweeks["total"],
@@ -6907,7 +7146,9 @@ def dashboard():
             """
             SELECT DISTINCT matchday
             FROM fixtures
-            WHERE season = ? AND matchday IS NOT NULL
+            WHERE season = ?
+              AND competition = 'premier_league'
+              AND matchday IS NOT NULL
             ORDER BY matchday
             """,
             (SEASON,),
@@ -6931,6 +7172,7 @@ def dashboard():
             SELECT *
             FROM fixtures
             WHERE season = ?
+              AND competition = 'premier_league'
               AND matchday = ?
             ORDER BY utc_date
             """,
@@ -6985,7 +7227,9 @@ def dashboard():
                       COALESCE(p.dp, 0) AS dp
                FROM predictions p
                JOIN fixtures f ON f.id = p.fixture_id
-               WHERE f.season = ? AND f.matchday = ?""",
+               WHERE f.season = ?
+                 AND f.competition = 'premier_league'
+                 AND f.matchday = ?""",
             (SEASON, current_matchday),
         ).fetchall()
         previous_league = overall_table_at_matchday(

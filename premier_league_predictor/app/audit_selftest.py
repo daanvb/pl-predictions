@@ -410,8 +410,8 @@ finally:
 
 original_competition_loader = football_api.get_competition_matches
 competition_attempts = []
-def fake_competition_loader(token, competition, season):
-    competition_attempts.append((competition, season))
+def fake_competition_loader(token, competition, season, matchday=None):
+    competition_attempts.append((competition, season, matchday))
     if len(competition_attempts) < 3:
         raise football_api.FootballAPIError("Football API returned HTTP 404")
     return [{"id": 2001}]
@@ -422,7 +422,9 @@ try:
     ]
 finally:
     football_api.get_competition_matches = original_competition_loader
-assert competition_attempts == [("CL", 2026), (2001, 2026), (2001, None)]
+assert competition_attempts == [
+    ("CL", 2026, None), (2001, 2026, None), (2001, None, None)
+]
 
 original_sportscore_get = sportscore._get
 sportscore._get = lambda path, params: {
@@ -1262,9 +1264,21 @@ conn.execute(
            VALUES (9010, ?, 2, ?, 'SCHEDULED', 'Next Home', 'Next Away')""",
     (season, (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()),
 )
+# Champions League matchdays share the same number range as Premier League
+# gameweeks. They must never change the Premier League dashboard's selection.
+conn.execute(
+    """INSERT INTO fixtures(id, season, competition, matchday, utc_date,
+           status, home_team, away_team)
+           VALUES (9020, ?, 'champions_league', 1, ?, 'SCHEDULED',
+                   'CL Home', 'CL Away')""",
+    (season, (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()),
+)
 conn.commit()
 gw2_opens_at = predictor.gameweek_open_at(conn, 2)
 assert gw2_opens_at.hour == 9
+assert [fixture["id"] for fixture in predictor.signal_gameweek_fixtures(
+    conn, 1
+)] == [9001, 9002]
 conn.close()
 
 # The completed GW stays on the dashboard until 09:00 UK time the next day;
@@ -2145,7 +2159,8 @@ conn.close()
 # Champions League imports retain the provider ID separately and use a safe
 # local ID, leaving Premier League prediction foreign keys untouched.
 original_cl_loader = predictor.get_football_champions_league_matches
-predictor.get_football_champions_league_matches = lambda token, season: [{
+original_cl_tv_refresh = predictor.refresh_champions_league_tv_broadcasters
+predictor.get_football_champions_league_matches = lambda token, season, matchday: [{
     "id": 880001,
     "matchday": 1,
     "utcDate": datetime.now(timezone.utc).isoformat(),
@@ -2156,9 +2171,11 @@ predictor.get_football_champions_league_matches = lambda token, season: [{
 }]
 predictor.set_setting("football_api_token", "test-token")
 try:
-    assert predictor.import_champions_league_matches() == 1
+    predictor.refresh_champions_league_tv_broadcasters = lambda conn, matchday: 0
+    assert predictor.import_champions_league_matches(1) == 1
 finally:
     predictor.get_football_champions_league_matches = original_cl_loader
+    predictor.refresh_champions_league_tv_broadcasters = original_cl_tv_refresh
     predictor.set_setting("football_api_token", "")
 conn = database.get_db()
 champions_fixture = conn.execute(
@@ -2169,6 +2186,72 @@ assert tuple(champions_fixture) == (
     -880001, "champions_league", "football-data.org", "880001"
 )
 conn.execute("DELETE FROM fixtures WHERE id = -880001")
+conn.commit()
+conn.close()
+
+# Champions League TV data is exact when the listing confirms a channel. It
+# must be limited to English clubs and leave unconfirmed/TBC listings blank.
+class ChampionsLeagueTVResponse:
+    text = '''
+    <div class="fixture"><div class="fixture__teams">FC Porto v Manchester City</div>
+    <div class="fixture__channel"><span class="channel-pill">Amazon Prime Video</span></div></div>
+    <div class="fixture"><div class="fixture__teams">Barcelona v Juventus</div>
+    <div class="fixture__channel"><span class="channel-pill">TNT Sports 1</span></div></div>
+    '''
+    def raise_for_status(self):
+        return None
+
+original_tv_listing_get = predictor.requests.get
+predictor.requests.get = lambda *args, **kwargs: ChampionsLeagueTVResponse()
+try:
+    listings = predictor.fetch_champions_league_uk_tv_listings([
+        {"id": -881001, "competition": "champions_league",
+         "home_team": "FC Porto", "away_team": "Manchester City"},
+        {"id": -881002, "competition": "champions_league",
+         "home_team": "Barcelona", "away_team": "Juventus"},
+    ])
+finally:
+    predictor.requests.get = original_tv_listing_get
+assert listings == {-881001: "Amazon Prime Video"}
+assert predictor.broadcaster_logo_url("TNT Sports 1")
+assert predictor.broadcaster_dark_logo_url("TNT Sports 1")
+
+# The HRK Metric counts the score value lost when an added-time goal changes
+# a completed Premier League result, including Double Points awards.
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO players(name, pin_hash, login_name)
+       VALUES ('HRK Audit Player', 'audit', 'hrk-audit-player')"""
+)
+hrk_player_id = conn.execute(
+    "SELECT id FROM players WHERE login_name = 'hrk-audit-player'"
+).fetchone()["id"]
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           home_score, away_score, goals_json, competition
+       ) VALUES (99010, ?, 3, ?, 'FINISHED', 'HRK Home', 'HRK Away', 1, 1,
+                 ?, 'premier_league')""",
+    (season, datetime.now(timezone.utc).isoformat(), json.dumps([{
+        "minute": 90, "injuryTime": 1,
+        "team": {"name": "HRK Away"},
+    }])),
+)
+conn.execute(
+    """INSERT INTO predictions(player_id, fixture_id, home_score, away_score,
+           dp) VALUES (?, 99010, 1, 0, 1)""",
+    (hrk_player_id,),
+)
+conn.commit()
+hrk_rows = predictor.late_goal_points_lost(conn)
+assert next(row for row in hrk_rows if row["id"] == hrk_player_id) == {
+    "id": hrk_player_id,
+    "name": "HRK Audit Player",
+    "total": 10,
+}
+conn.execute("DELETE FROM predictions WHERE fixture_id = 99010")
+conn.execute("DELETE FROM fixtures WHERE id = 99010")
+conn.execute("DELETE FROM players WHERE id = ?", (hrk_player_id,))
 conn.commit()
 conn.close()
 
@@ -2448,6 +2531,50 @@ finally:
     predictor.set_setting("api_football_key", "")
 conn = database.get_db()
 assert conn.execute("SELECT status FROM fixtures WHERE id = 99007").fetchone()[0] == "PAUSED"
+stale_fallback_kickoff = (
+    datetime.now(timezone.utc) - timedelta(minutes=73)
+).isoformat()
+conn.execute(
+    """UPDATE fixtures SET status = 'IN_PLAY', home_score = 1, away_score = 0,
+           utc_date = ?, minute = 70, goals_json = ?, live_data_source = 'SportScore'
+       WHERE id = 99007""",
+    (stale_fallback_kickoff, json.dumps([{
+        "team": {"name": "Fallback Home"},
+        "scorer": {"name": "Existing Scorer"}, "minute": 6,
+    }])),
+)
+conn.commit()
+conn.close()
+predictor.get_api_football_live_fixtures = lambda key: [{
+    "fixture": {"id": 456789, "date": api_fallback_kickoff,
+                "status": {"short": "2H", "elapsed": 73}},
+    "teams": {"home": {"name": "Fallback Home"},
+              "away": {"name": "Fallback Away"}},
+    "goals": {"home": 1, "away": 1},
+}]
+predictor.get_api_football_fixture_events = lambda key, fixture_id: [{
+    "type": "Goal", "detail": "Normal Goal",
+    "time": {"elapsed": 6, "extra": None},
+    "team": {"name": "Fallback Home"}, "player": {"name": "Existing Scorer"},
+}, {
+    "type": "Goal", "detail": "Normal Goal",
+    "time": {"elapsed": 73, "extra": None},
+    "team": {"name": "Fallback Away"}, "player": {"name": "Replacement Scorer"},
+}]
+predictor.set_setting("api_football_key", "test-key")
+predictor.set_setting("last_api_football_request", "")
+try:
+    assert predictor.import_live_matches_from_api_football_fallback() == 1
+finally:
+    predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.get_api_football_fixture_events = original_api_football_events
+    predictor.set_setting("api_football_key", "")
+conn = database.get_db()
+score_replacement = conn.execute(
+    "SELECT home_score, away_score, minute, goals_json FROM fixtures WHERE id = 99007"
+).fetchone()
+assert tuple(score_replacement[:3]) == (1, 1, 73)
+assert "Replacement Scorer" in score_replacement["goals_json"]
 conn.execute("DELETE FROM fixtures WHERE id = 99007")
 conn.commit()
 conn.close()
