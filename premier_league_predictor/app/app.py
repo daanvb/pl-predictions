@@ -65,7 +65,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.2.8"
+APP_VERSION = "1.3.0"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -176,6 +176,16 @@ else:
 
 init_db(seed_default_player=False)
 database_restore_lock = threading.Lock()
+
+
+@app.after_request
+def prevent_stale_html(response):
+    """Always fetch a current rendered page when Preddies is opened."""
+    if response.mimetype == "text/html":
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 def _parse_premier_league_news(xml_text, now=None):
@@ -679,7 +689,7 @@ def database_health(conn=None):
     }
 
 
-def fixture_scorers(goals_json, home_team, away_team):
+def fixture_scorers(goals_json, home_team, away_team, home_score=None, away_score=None):
     try:
         goals = json.loads(goals_json or "[]")
     except (TypeError, ValueError):
@@ -720,6 +730,20 @@ def fixture_scorers(goals_json, home_team, away_team):
             grouped[side].append(entry)
         if marker:
             entry["goals"].append(marker)
+
+    # During a VAR review, providers can correct the score and incident feed
+    # on separate refreshes. Never display a scorer that contradicts the
+    # scoreline currently shown to players.
+    for side, score in (("home", home_score), ("away", away_score)):
+        if score is None:
+            continue
+        try:
+            expected_goals = int(score)
+        except (TypeError, ValueError):
+            continue
+        displayed_goals = sum(len(entry["goals"]) for entry in grouped[side])
+        if displayed_goals != expected_goals:
+            grouped[side] = []
 
     return grouped
 
@@ -3587,32 +3611,50 @@ def _api_football_day():
     return now_utc().date().isoformat()
 
 
-def api_football_call_available():
+def _setting_value(conn, key):
+    if conn is None:
+        return get_setting(key)
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def _set_setting_value(conn, key, value):
+    if conn is None:
+        set_setting(key, value)
+        return
+    conn.execute(
+        """INSERT INTO settings(key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (key, value),
+    )
+
+
+def api_football_call_available(conn=None):
     """Enforce a conservative daily budget before any fallback request."""
     today = _api_football_day()
-    if get_setting("api_football_call_day") != today:
-        set_setting("api_football_call_day", today)
-        set_setting("api_football_call_count", "0")
+    if _setting_value(conn, "api_football_call_day") != today:
+        _set_setting_value(conn, "api_football_call_day", today)
+        _set_setting_value(conn, "api_football_call_count", "0")
     try:
-        return int(get_setting("api_football_call_count") or 0) < (
+        return int(_setting_value(conn, "api_football_call_count") or 0) < (
             API_FOOTBALL_DAILY_CALL_CAP
         )
     except ValueError:
         return True
 
 
-def record_api_football_call():
+def record_api_football_call(conn=None):
     today = _api_football_day()
-    if get_setting("api_football_call_day") != today:
-        set_setting("api_football_call_day", today)
+    if _setting_value(conn, "api_football_call_day") != today:
+        _set_setting_value(conn, "api_football_call_day", today)
         count = 0
     else:
         try:
-            count = int(get_setting("api_football_call_count") or 0)
+            count = int(_setting_value(conn, "api_football_call_count") or 0)
         except ValueError:
             count = 0
-    set_setting("api_football_call_count", str(count + 1))
-    set_setting("last_api_football_request", now_utc().isoformat())
+    _set_setting_value(conn, "api_football_call_count", str(count + 1))
+    _set_setting_value(conn, "last_api_football_request", now_utc().isoformat())
 
 
 def api_football_fallback_due():
@@ -3736,7 +3778,7 @@ def _api_football_fallback_needed(stored, checked_at):
     status = stored["status"] or ""
     score_missing = stored["home_score"] is None or stored["away_score"] is None
     events_missing = (
-        not stored["goals_json"]
+        stored["goals_json"] in (None, "", "[]")
         and ((stored["home_score"] or 0) > 0 or (stored["away_score"] or 0) > 0)
     )
     if kickoff + timedelta(minutes=5) <= checked_at and status in ("SCHEDULED", "TIMED"):
@@ -3774,7 +3816,7 @@ def import_live_matches_from_api_football_fallback():
         if not needing_fallback:
             return 0
 
-        record_api_football_call()
+        record_api_football_call(conn)
         live_fixtures = get_api_football_live_fixtures(get_setting("api_football_key"))
         for stored in needing_fallback:
             provider_match = _api_football_match_for_fixture(
@@ -3786,12 +3828,12 @@ def import_live_matches_from_api_football_fallback():
             goals = provider_match.get("goals") or {}
             provider_status = _api_football_status(fixture_data.get("status"))
             elapsed = (fixture_data.get("status") or {}).get("elapsed")
-            event_gap = not stored["goals_json"] and (
+            event_gap = stored["goals_json"] in (None, "", "[]") and (
                 (goals.get("home") or 0) > 0 or (goals.get("away") or 0) > 0
             )
             event_rows = []
-            if event_gap and fixture_data.get("id") and api_football_call_available():
-                record_api_football_call()
+            if event_gap and fixture_data.get("id") and api_football_call_available(conn):
+                record_api_football_call(conn)
                 event_rows = get_api_football_fixture_events(
                     get_setting("api_football_key"), fixture_data.get("id")
                 )
@@ -3834,7 +3876,19 @@ def import_live_matches_from_api_football_fallback():
                 stored["home_score"] is None or stored["away_score"] is None
                 or stored["status"] in ("SCHEDULED", "TIMED")
             )
-            if can_fill_score or event_gap:
+            try:
+                clock_is_stale = (
+                    provider_status in ("IN_PLAY", "PAUSED")
+                    and elapsed is not None
+                    and (
+                        stored["minute"] is None
+                        or int(elapsed) >= int(stored["minute"])
+                        + API_FOOTBALL_STALE_MINUTES
+                    )
+                )
+            except (TypeError, ValueError):
+                clock_is_stale = False
+            if can_fill_score or event_gap or clock_is_stale:
                 conn.execute(
                     """UPDATE fixtures SET status = ?,
                            home_score = CASE WHEN home_score IS NULL THEN ? ELSE home_score END,
@@ -6647,6 +6701,8 @@ def dashboard():
                 fixture.get("goals_json"),
                 fixture["home_team"],
                 fixture["away_team"],
+                fixture.get("home_score"),
+                fixture.get("away_score"),
             )
             fixture["red_cards"] = fixture_red_cards(
                 fixture.get("incidents_json"),

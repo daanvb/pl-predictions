@@ -165,6 +165,9 @@ conn.close()
 # Import the real Flask app after redirecting its database module.
 import app as predictor
 predictor.app.config["TESTING"] = True
+with predictor.app.test_client() as client:
+    cached_page = client.get("/")
+    assert cached_page.headers["Cache-Control"] == "no-store, max-age=0"
 assert predictor.news_cache["fetched_at"] == 0.0
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
@@ -2296,6 +2299,42 @@ assert conn.execute(
 assert conn.execute(
     "SELECT 1 FROM provider_event_observations WHERE fixture_id = 99007"
 ).fetchone() is not None
+conn.execute(
+    """UPDATE fixtures SET status = 'IN_PLAY', home_score = 1, away_score = 0,
+           minute = 1, goals_json = '[{"scorer":{"name":"Known"}}]',
+           live_data_source = 'SportScore' WHERE id = 99007"""
+)
+assert predictor.fixture_scorers(
+    json.dumps([{
+        "team": {"name": "Home FC"}, "scorer": {"name": "VAR scorer"},
+        "minute": 15,
+    }]),
+    "Home FC", "Away FC", 0, 0,
+) == {"home": [], "away": []}
+conn.commit()
+conn.close()
+predictor.get_api_football_live_fixtures = lambda key: [{
+    "fixture": {
+        "id": 456789, "date": api_fallback_kickoff,
+        "status": {"short": "1H", "elapsed": 6},
+    },
+    "teams": {
+        "home": {"name": "Fallback Home"},
+        "away": {"name": "Fallback Away"},
+    },
+    "goals": {"home": 1, "away": 0},
+}]
+predictor.get_api_football_fixture_events = lambda key, fixture_id: []
+predictor.set_setting("api_football_key", "test-key")
+predictor.set_setting("last_api_football_request", "")
+try:
+    assert predictor.import_live_matches_from_api_football_fallback() == 1
+finally:
+    predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.get_api_football_fixture_events = original_api_football_events
+    predictor.set_setting("api_football_key", "")
+conn = database.get_db()
+assert conn.execute("SELECT minute FROM fixtures WHERE id = 99007").fetchone()[0] == 6
 conn.execute("DELETE FROM fixtures WHERE id = 99007")
 conn.commit()
 conn.close()

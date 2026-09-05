@@ -2,6 +2,18 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.3.0] - 2026-09-05
+
+### New
+- Added an optional API-Football live-data fallback for missing or stalled live scores, clocks, goalscorers and red cards.
+- Added provider fixture mapping plus first-seen live-event observations for reliable provider comparisons.
+
+### Fixes
+- Live fixture clocks can now recover from a stalled primary feed using a confirmed API-Football elapsed minute.
+- Scorer lines are hidden during VAR reversals whenever their recorded goals no longer match the displayed score.
+- Restored the red live-fixture border in dark mode.
+- Preddies pages now fetch a fresh rendered view when opened.
+
 ## [1.2.8] - 2026-09-05
 
 ### Fixes
