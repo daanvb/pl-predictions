@@ -2414,6 +2414,44 @@ conn.execute("DELETE FROM fixtures WHERE id = 99007")
 conn.commit()
 conn.close()
 
+# The same guarded all-live request also covers stored Champions League rows.
+cl_fallback_kickoff = (datetime.now(timezone.utc) - timedelta(minutes=7)).isoformat()
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team, competition
+       ) VALUES (-99008, ?, 1, ?, 'SCHEDULED', 'CL Fallback Home',
+                 'CL Fallback Away', 'champions_league')""",
+    (season, cl_fallback_kickoff),
+)
+conn.commit()
+conn.close()
+predictor.get_api_football_live_fixtures = lambda key: [{
+    "fixture": {"id": 456790, "date": cl_fallback_kickoff,
+                "status": {"short": "1H", "elapsed": 7}},
+    "teams": {"home": {"name": "CL Fallback Home"},
+              "away": {"name": "CL Fallback Away"}},
+    "goals": {"home": 0, "away": 0},
+}]
+predictor.get_api_football_fixture_events = lambda key, fixture_id: []
+predictor.set_setting("api_football_key", "test-key")
+predictor.set_setting("last_api_football_request", "")
+try:
+    assert predictor.import_live_matches_from_api_football_fallback() == 1
+finally:
+    predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.get_api_football_fixture_events = original_api_football_events
+    predictor.set_setting("api_football_key", "")
+conn = database.get_db()
+cl_fallback = conn.execute(
+    """SELECT status, home_score, away_score, minute, live_data_source
+       FROM fixtures WHERE id = -99008"""
+).fetchone()
+assert tuple(cl_fallback) == ("IN_PLAY", 0, 0, 7, "API-Football")
+conn.execute("DELETE FROM fixtures WHERE id = -99008")
+conn.commit()
+conn.close()
+
 # UI fallback should stop saying Upcoming once stored kickoff has passed.
 past_fixture = {
     "status": "SCHEDULED",
