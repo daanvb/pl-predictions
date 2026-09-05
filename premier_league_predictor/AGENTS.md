@@ -19,6 +19,7 @@ Use economy mode by default. Keep investigation, tool output and explanations fo
 - Run the full Docker build before publishing an HA release, or when build-sensitive changes require it. The build must pass, including its complete regression suite, before publication.
 - Treat app version and changelog updates as release-sensitive. Keep both changelogs identical and verify version consistency.
 - For a user-requested stealth update, bump only the Home Assistant add-on version in `config.yaml`. Keep `APP_VERSION` unchanged and do not add a changelog entry.
+- Publish user-requested stealth updates automatically after the required release checks pass. Ask for approval before publishing a major release.
 - Do not skip release checks under the targeted-tests preference. A previous HA release failed because a changelog test assumed all releases contained every heading.
 - No web research unless current external information or explicit user instructions require it.
 
