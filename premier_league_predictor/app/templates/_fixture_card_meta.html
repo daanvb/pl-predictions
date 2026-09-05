@@ -18,7 +18,6 @@
 {% set tv_logo = broadcaster_logo_url(fixture.broadcaster) %}
 {% if tv_logo %}<img class="tv-logo tv-logo-light{% if dark_tv_logo %} tv-logo-has-dark{% endif %}" src="{{ tv_logo }}" alt="{{ fixture.broadcaster }}">
 {% if dark_tv_logo %}<img class="tv-logo tv-logo-dark" src="{{ dark_tv_logo }}" alt="" aria-hidden="true">{% endif %}
-<span class="tv-channel-label">{{ fixture.broadcaster }}</span>
 {% else %}<span class="tv-provider-label">{{ fixture.broadcaster }}</span>{% endif %}
 </span>
 </div>
