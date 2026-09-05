@@ -1013,238 +1013,6 @@ assert predictor.status_label({
     "utc_date": datetime.now(timezone.utc).isoformat(),
 }) == "AET"
 
-# The retired Champions League diagnostic is replaced by a read-only Premier
-# League shadow page. It must render without a key and clearly state isolation.
-shadow_response = client.get("/admin/live-feed-test")
-assert b"Latest Premier League news" not in shadow_response.data
-assert shadow_response.status_code == 200
-assert b"Premier League shadow feed" in shadow_response.data
-assert b"cannot alter scores, predictions, points or history" in shadow_response.data
-assert b"shadow-fixture-card" in shadow_response.data
-assert b"Champions League" not in shadow_response.data
-
-import bigballs_api
-normalized_shadow = bigballs_api.normalize_match({
-    "id": "shadow-1",
-    "home": {"name": "Arsenal", "logo_url": "https://img/arsenal.png"},
-    "away": {"name": "Chelsea"},
-    "status": "live",
-    "score": {"home": 2, "away": 1},
-})
-assert normalized_shadow["home_score"] == 2
-assert normalized_shadow["away_score"] == 1
-assert normalized_shadow["status"] == "live"
-normalized_stored_shadow = bigballs_api.normalize_match({
-    "id": "stored-shadow-1",
-    "home_team": {"name": "Leeds United"},
-    "away_team": {"name": "Brentford"},
-    "status": "finished",
-    "home_score": 1,
-    "away_score": 1,
-})
-assert normalized_stored_shadow["home"] == "Leeds United"
-assert normalized_stored_shadow["home_score"] == 1
-assert bigballs_api._match_list({"matches": [
-    {"id": "wrapped-match"}, "unexpected-string-row",
-]}) == [{"id": "wrapped-match"}]
-assert bigballs_api._meta({"meta": "official-league"}) == {
-    "source": "official-league"
-}
-field_result_events = bigballs_api._event_list({
-    "events": {
-        "value": [{"type": "goal", "player": {"name": "Wrapped Scorer"}}],
-        "source": "official-league",
-    }
-})
-assert field_result_events[0]["player"]["name"] == "Wrapped Scorer"
-embedded_events, embedded_meta = bigballs_api.get_match_events(
-    "unused-key", "embedded-match", {
-        "events": [{
-            "type": "goal", "description": "Goal — Embedded Scorer",
-        }],
-    }
-)
-assert embedded_events[0]["description"] == "Goal — Embedded Scorer"
-assert embedded_meta["source"] == "match-list"
-original_bigballs_request = bigballs_api._request
-try:
-    def stored_event_request(key, path, params=None, timeout=20):
-        if path.endswith("/events"):
-            raise bigballs_api.BigBallsAPIError("live adapter unavailable")
-        return {"data": {"events": [{
-            "type": "goal", "player": {"name": "Stored Scorer"},
-        }]}, "meta": {"source": "stored"}}
-    bigballs_api._request = stored_event_request
-    stored_events, stored_meta = bigballs_api.get_match_events("key", "match-id")
-    assert stored_events[0]["player"]["name"] == "Stored Scorer"
-    assert stored_meta["source"] == "stored"
-finally:
-    bigballs_api._request = original_bigballs_request
-
-try:
-    def field_result_event_request(key, path, params=None, timeout=20):
-        if path.endswith("/events"):
-            return {"data": [], "meta": "official-league"}
-        return {"data": {"events": {
-            "value": [{
-                "type": "goal", "player": {"name": "Fallback Scorer"},
-            }],
-            "source": "official-league", "via": "api",
-        }}, "meta": {"source": "official-league"}}
-    bigballs_api._request = field_result_event_request
-    fallback_events, fallback_meta = bigballs_api.get_match_events(
-        "key", "match-id"
-    )
-    assert fallback_events[0]["player"]["name"] == "Fallback Scorer"
-    assert fallback_meta["source"] == "official-league"
-finally:
-    bigballs_api._request = original_bigballs_request
-
-try:
-    stored_match_requests = []
-    def stored_match_request(key, path, params=None, timeout=20):
-        stored_match_requests.append((path, params))
-        return {"data": [{"id": params["date"]}], "meta": {"source": "stored"}}
-    bigballs_api._request = stored_match_request
-    archived_matches, archived_meta = bigballs_api.get_stored_premier_league_matches(
-        "key", ["2026-08-30", "2026-08-29", "2026-08-29"]
-    )
-    assert [item["id"] for item in archived_matches] == ["2026-08-29", "2026-08-30"]
-    assert all(path == "/stored/matches" for path, _ in stored_match_requests)
-    assert archived_meta["source"] == "stored"
-finally:
-    bigballs_api._request = original_bigballs_request
-
-# Shadow observations retain provider scores/events but never mutate the
-# matching Predictor fixture.
-original_bigballs_matches = predictor.get_bigballs_premier_league_matches
-original_bigballs_events = predictor.get_bigballs_match_events
-predictor.set_setting("bigballs_api_key", "shadow-test-key")
-predictor.get_bigballs_premier_league_matches = lambda key: ([{
-    "id": "shadow-home-away",
-    "home": {"id": "provider-home", "name": "Home FC"},
-    "away": {"id": "provider-away", "name": "Away FC"},
-    "status": "live",
-    "score": {"home": 2, "away": 1},
-    "kickoff_utc": live_kickoff,
-}], {"source": "audit"})
-predictor.get_bigballs_match_events = lambda key, match_id, raw=None: ([{
-    "type": "goal", "description": "Goal — Shadow Scorer"
-}], {"source": "audit"})
-try:
-    assert predictor.refresh_bigballs_shadow() == 1
-    predictor.get_bigballs_match_events = lambda key, match_id, raw=None: ([
-        {
-            "type": "goal", "description": "Goal — Shadow Scorer",
-            "team": {"name": "Home FC"}, "time": {"elapsed": 42},
-            "penalty": True,
-        },
-        {
-            "type": "goal", "description": "Goal — Shadow Own Goal",
-            "team_id": "provider-away", "match_minute": "67", "own_goal": True,
-        },
-        {
-            "type": "red_card", "description": "Red card — Shadow Defender",
-            "home_away": "away", "clock": {"display": "74"},
-        },
-        {
-            "type": "goal", "description": "Goal — Inferred Home",
-            "minute": 88,
-        },
-    ], {"source": "audit"})
-    assert predictor.refresh_bigballs_shadow() == 1
-    # A later finished observation may omit events. The admin comparison must
-    # retain the richer scorer timeline captured while the match was live.
-    predictor.get_bigballs_match_events = lambda key, match_id, raw=None: ([], {"source": "audit"})
-    assert predictor.refresh_bigballs_shadow() == 1
-finally:
-    predictor.get_bigballs_premier_league_matches = original_bigballs_matches
-    predictor.get_bigballs_match_events = original_bigballs_events
-    predictor.set_setting("bigballs_api_key", "")
-conn = database.get_db()
-unchanged_live_fixture = conn.execute(
-    "SELECT home_score, away_score FROM fixtures WHERE id = 8800"
-).fetchone()
-assert tuple(unchanged_live_fixture) == (2, 0)
-shadow_sample = conn.execute(
-    """SELECT * FROM bigballs_shadow_samples WHERE provider_match_id = ?
-       ORDER BY id DESC LIMIT 1""",
-    ("shadow-home-away",),
-).fetchone()
-assert shadow_sample["home_score"] == 2
-assert shadow_sample["away_score"] == 1
-assert shadow_sample["events_json"] == "[]"
-eventful_shadow_sample = conn.execute(
-    """SELECT * FROM bigballs_shadow_samples
-       WHERE provider_match_id = ? AND events_json != '[]'
-       ORDER BY id DESC LIMIT 1""",
-    ("shadow-home-away",),
-).fetchone()
-assert "Shadow Scorer" in eventful_shadow_sample["events_json"]
-assert "Shadow Defender" in eventful_shadow_sample["events_json"]
-shadow_with_events = client.get("/admin/live-feed-test")
-assert b"Shadow Defender" in shadow_with_events.data
-assert b"Shadow Scorer" in shadow_with_events.data
-assert b"42" in shadow_with_events.data
-assert b"(Pen)" in shadow_with_events.data
-assert b"Shadow Own Goal" in shadow_with_events.data
-assert b"67" in shadow_with_events.data
-assert b" og" in shadow_with_events.data
-assert b"Shadow Defender" in shadow_with_events.data
-assert b"74" in shadow_with_events.data
-assert b"Inferred Home" in shadow_with_events.data
-assert b"Inferred Home 88" in shadow_with_events.data
-assert b"shadow-events-home" in shadow_with_events.data
-assert b"shadow-events-away" in shadow_with_events.data
-shadow_html = shadow_with_events.data.decode("utf-8")
-away_event_block = shadow_html.split(
-    '<div class="shadow-events-side shadow-events-away">', 1
-)[1].split("</div>", 1)[0]
-assert "Shadow Own Goal" in away_event_block
-assert b'class="badge live"' in shadow_with_events.data
-assert b"Timing starts with the next score change observed by both feeds" in shadow_with_events.data
-assert b'aria-label="Big Balls milestone timing"' in shadow_with_events.data
-assert b">KO<" in shadow_with_events.data
-assert b">HT<" in shadow_with_events.data
-assert b">FT<" in shadow_with_events.data
-assert predictor.shadow_feed_milestone("IN_PLAY") == "KO"
-assert predictor.shadow_feed_milestone("half-time") == "HT"
-assert predictor.shadow_feed_milestone("FINISHED") == "FT"
-assert predictor.shadow_timing_label(
-    "2030-01-01T12:00:00+00:00", "2030-01-01T12:00:05+00:00"
-) == "Big Balls 5s after Live"
-
-# Once both feeds have observed a genuine score change, the comparison reports
-# the measured delay rather than treating the first imported score as timing.
-conn.execute(
-    "UPDATE fixtures SET home_score = 2, away_score = 2 WHERE id = 8800"
-)
-conn.execute(
-    """INSERT INTO predictor_live_samples(
-           fixture_id, captured_at, status, home_score, away_score
-       ) VALUES (8800, '2030-01-01T12:00:00+00:00', 'IN_PLAY', 2, 2)"""
-)
-conn.execute(
-    """INSERT INTO bigballs_shadow_samples(
-           provider_match_id, captured_at, home_team, away_team,
-           kickoff_utc, status, home_score, away_score, events_json, raw_json
-       ) VALUES (
-           'shadow-home-away', '2030-01-01T12:01:00+00:00',
-           'Home FC', 'Away FC', ?, 'live', 2, 2, '[]', '{}'
-       )""",
-    (live_kickoff,),
-)
-conn.commit()
-timed_shadow_response = client.get("/admin/live-feed-test")
-assert b"Big Balls updated 1m 0s after Live" in timed_shadow_response.data
-conn.execute("DELETE FROM bigballs_shadow_samples")
-conn.execute("DELETE FROM predictor_live_samples")
-conn.commit()
-conn.close()
-conn = database.get_db()
-conn.execute("DELETE FROM fixtures WHERE id IN (8800, 8801)")
-conn.commit()
-conn.close()
 
 for route in [
     "/dashboard",
@@ -1321,7 +1089,6 @@ assert retired_test_response.headers["Location"].endswith("/dashboard")
 admin_response = client.get("/admin")
 assert b"API Settings" in admin_response.data
 assert b'href="/admin/settings"' in admin_response.data
-assert b'href="/admin/live-feed-test"' in admin_response.data
 assert b"Database Health" in admin_response.data
 assert b">PREDICTIONS</div>" not in admin_response.data
 health = predictor.database_health()
@@ -1461,6 +1228,8 @@ assert predictor.signal_manual_reminder_key(manual_2_fixture) == (
 
 # Completed-GW lookup must work even with no next GW imported.
 conn = database.get_db()
+conn.execute("DELETE FROM fixtures WHERE id IN (8800, 8801)")
+conn.commit()
 season = predictor.SEASON
 now = datetime.now(timezone.utc).isoformat()
 for i in range(1, 3):
@@ -2000,19 +1769,6 @@ with open(
 ) as handle:
     fixture_card_meta_template = handle.read()
 
-with open(
-    os.path.join(templates_dir, "live_feed_test.html"),
-    "r",
-    encoding="utf-8",
-) as handle:
-    live_feed_test_template = handle.read()
-
-assert "?matchday={{ previous_matchday }}" in live_feed_test_template
-assert "Current GW{{ current_matchday }}" in live_feed_test_template
-assert "Viewing the stored Gameweek {{ matchday }} shadow comparison" in live_feed_test_template
-assert "shadow-update-lag" in live_feed_test_template
-assert '_news_ticker.html' not in live_feed_test_template
-
 assert '_match_stats.html' in predictions_template
 assert 'Live GW{{ matchday }}' not in predictions_template
 with open(
@@ -2071,9 +1827,6 @@ api_import_source = inspect.getsource(predictor.import_matches_from_api)
 assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_source
 gameweek_source = inspect.getsource(predictor.gameweek)
 assert "record_live_position_snapshot(conn, matchday)" in gameweek_source
-assert 'params={"sport": "football"}' in inspect.getsource(bigballs_api.get_match_events)
-assert '"/stored/matches"' in inspect.getsource(bigballs_api.get_stored_premier_league_matches)
-assert "force_events=True" in inspect.getsource(predictor.admin_bigballs_shadow_refresh)
 
 with open(
     os.path.join(templates_dir, "leaderboard.html"),
@@ -2166,7 +1919,6 @@ assert 'background:#0f172a;' in base_template
 assert 'tv-logo-dark' in base_template
 assert 'broadcaster_dark_logo_url' in inspect.getsource(predictor)
 assert 'TNT_Sports_%282023%29_alt.svg' in inspect.getsource(predictor)
-assert '{% include "_fixture_card_meta.html" %}' in live_feed_test_template
 assert "'AWAITING_LIVE_DATA','FINISHED'" in gameweek_template
 assert '<span class="badge">FT</span>' in fixture_card_meta_template
 assert 'html[data-theme="dark"]' in base_template

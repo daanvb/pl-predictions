@@ -305,50 +305,10 @@ def init_db(seed_default_player=True):
         ON live_position_snapshots(season, matchday, captured_at)
     """)
 
-    # Read-only shadow observations from Big Balls Sports Data. These never
-    # update Predictor fixtures, results, points or history.
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS bigballs_shadow_samples (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            provider_match_id TEXT NOT NULL,
-            captured_at TEXT NOT NULL,
-            home_team TEXT NOT NULL,
-            away_team TEXT NOT NULL,
-            kickoff_utc TEXT,
-            status TEXT,
-            home_score INTEGER,
-            away_score INTEGER,
-            events_json TEXT,
-            raw_json TEXT NOT NULL,
-            UNIQUE(provider_match_id, captured_at)
-        )
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_bigballs_shadow_match_time
-        ON bigballs_shadow_samples(provider_match_id, captured_at)
-    """)
-    _add_column_if_missing(
-        conn, "bigballs_shadow_samples", "event_raw_json", "TEXT"
-    )
 
-    # Change-only observations of the production Predictor score. These make
-    # it possible for the read-only shadow test to compare provider latency
-    # without allowing the shadow provider to alter live app data.
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS predictor_live_samples (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fixture_id INTEGER NOT NULL,
-            captured_at TEXT NOT NULL,
-            status TEXT,
-            home_score INTEGER,
-            away_score INTEGER,
-            FOREIGN KEY(fixture_id) REFERENCES fixtures(id) ON DELETE CASCADE
-        )
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_predictor_live_sample_fixture_time
-        ON predictor_live_samples(fixture_id, captured_at)
-    """)
+    conn.execute("DROP TABLE IF EXISTS bigballs_shadow_samples")
+    conn.execute("DROP TABLE IF EXISTS predictor_live_samples")
+    conn.execute("DELETE FROM settings WHERE key LIKE 'bigballs_%'")
 
     # Permanent end-of-season snapshots. Player names are copied rather than
     # linked so later account edits cannot rewrite historical tables.
