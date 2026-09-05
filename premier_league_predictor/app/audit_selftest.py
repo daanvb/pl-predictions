@@ -2032,6 +2032,7 @@ assert 'href="https://www.football-data.org/"' in gameweek_template
 assert "Match data from" in gameweek_template
 assert "Ordered by the current overall league position" in gameweek_template
 assert "player.season_points" in gameweek_template
+assert "display_player_name(player.name)" in gameweek_template
 assert "Position during this gameweek" in gameweek_template
 assert "position-chart-data" in gameweek_template
 assert "Swipe for earlier updates" in gameweek_template
@@ -2051,6 +2052,7 @@ assert '{% if fixture.home_score is none and fixture.away_score is none %}v{% el
 assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
 assert '_dashboard_live_summary.html' in dashboard_template
+assert "display_player_name(player.name)" in dashboard_live_summary_template
 assert '{% if gameweek_predictions_open %}' in dashboard_template
 assert dashboard_template.index('_dashboard_live_summary.html') < dashboard_template.index('{% for fixture in current_fixtures %}')
 assert 'href="#live-gameweek"' not in dashboard_template
@@ -2172,7 +2174,8 @@ assert 'reigning_premier_league_champion' in inspect.getsource(predictor.inject_
 assert predictor.resolve_reigning_champion_name("TROPiC", [{
     "name": "TROPiC Pendragon", "login_name": "TROPiC",
 }]) == "TROPiC Pendragon"
-assert 'display_player_name' not in gameweek_template
+assert 'button.appendChild(document.createTextNode(chartName));' in gameweek_template
+assert 'button.appendChild(document.createTextNode(String(player.name || "").trim().split(/\\s+/)[0]));' in dashboard_live_summary_template
 assert 'display_player_name' not in league_stats_template
 assert 'href="/champions-league"' in dashboard_template
 assert 'href="/head-to-head"' in dashboard_template

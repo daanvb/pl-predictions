@@ -1,3 +1,4 @@
+{% from "_player_badges.html" import display_player_name with context %}
 {% if live_gameweek_visible and live_table %}
 <div class="card live-table-card" id="live-gameweek">
 <h2>🏆 Live gameweek table</h2>
@@ -5,7 +6,7 @@
 <div class="leader-row">
 <div class="rank">{% if player.position == 1 %}🥇{% elif player.position == 2 %}🥈{% elif player.position == 3 %}🥉{% elif player.position == 4 %}💩{% else %}{{ player.position }}{% endif %}</div>
 <div>{% if player.position_change > 0 %}<span class="position-move position-up">▲{% if player.position_change > 1 %}{{ player.position_change }}{% endif %}</span>{% elif player.position_change < 0 %}<span class="position-move position-down">▼{% if player.position_change < -1 %}{{ -player.position_change }}{% endif %}</span>{% else %}<span class="position-move position-flat">–</span>{% endif %}</div>
-<div><strong>{{ player.name }}</strong>{% if gameweek_progress %}<div class="small">{{ gameweek_progress }}</div>{% endif %}</div>
+<div><strong>{{ display_player_name(player.name) }}</strong>{% if gameweek_progress %}<div class="small">{{ gameweek_progress }}</div>{% endif %}</div>
 <div class="leader-points">{{ player.season_points }}<div class="small" style="text-align:right">{{ player.points }} GW pts</div></div>
 </div>
 {% endfor %}

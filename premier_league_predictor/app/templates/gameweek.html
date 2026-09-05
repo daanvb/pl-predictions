@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_player_badges.html" import display_player_name with context %}
 {% block title %}Live GW {{ matchday }}{% endblock %}
 {% block content %}
 
@@ -58,7 +59,7 @@
 
 <div>
 
-<strong>{{ player.name }}</strong>
+<strong>{{ display_player_name(player.name) }}</strong>
 
 {% if gameweek_progress %}<div class="small">{{ gameweek_progress }}</div>{% endif %}
 
