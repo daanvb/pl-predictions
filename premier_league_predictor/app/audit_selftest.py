@@ -2386,6 +2386,21 @@ assert predictor.fixture_scorers(
     }]),
     "Home FC", "Away FC", 0, 0,
 ) == {"home": [], "away": []}
+assert predictor._fixture_goal_event_coverage_missing({
+    "goals_json": json.dumps([{
+        "team": {"name": "Away FC"}, "scorer": {"name": "Away scorer"},
+    }]),
+    "home_team": "Home FC", "away_team": "Away FC",
+    "home_score": 1, "away_score": 1,
+}) is True
+assert predictor._fixture_goal_event_coverage_missing({
+    "goals_json": json.dumps([
+        {"team": {"name": "Home FC"}, "scorer": {"name": "Home scorer"}},
+        {"team": {"name": "Away FC"}, "scorer": {"name": "Away scorer"}},
+    ]),
+    "home_team": "Home FC", "away_team": "Away FC",
+    "home_score": 1, "away_score": 1,
+}) is False
 conn.commit()
 conn.close()
 predictor.get_api_football_live_fixtures = lambda key: [{

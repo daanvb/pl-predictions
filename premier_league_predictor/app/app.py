@@ -3913,6 +3913,40 @@ def _api_football_match_for_fixture(conn, stored, live_fixtures):
     return candidates[0]
 
 
+def _fixture_goal_event_coverage_missing(stored):
+    """Return true when stored goal events do not explain the scoreline."""
+    try:
+        events = json.loads(stored["goals_json"] or "[]")
+    except (TypeError, ValueError):
+        return True
+    if not isinstance(events, list):
+        return True
+    expected = {
+        "home": stored["home_score"],
+        "away": stored["away_score"],
+    }
+    counts = {"home": 0, "away": 0}
+    home = normalized_team_name(stored["home_team"])
+    away = normalized_team_name(stored["away_team"])
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        team = normalized_team_name((event.get("team") or {}).get("name"))
+        if team == home:
+            counts["home"] += 1
+        elif team == away:
+            counts["away"] += 1
+    for side, score in expected.items():
+        if score is None:
+            continue
+        try:
+            if counts[side] < int(score):
+                return True
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
 def _api_football_fallback_needed(stored, checked_at):
     kickoff = parse_utc(stored["utc_date"])
     if not kickoff:
@@ -3924,10 +3958,7 @@ def _api_football_fallback_needed(stored, checked_at):
         return False
     status = stored["status"] or ""
     score_missing = stored["home_score"] is None or stored["away_score"] is None
-    events_missing = (
-        stored["goals_json"] in (None, "", "[]")
-        and ((stored["home_score"] or 0) > 0 or (stored["away_score"] or 0) > 0)
-    )
+    events_missing = _fixture_goal_event_coverage_missing(stored)
     if kickoff + timedelta(minutes=5) <= checked_at and status in ("SCHEDULED", "TIMED"):
         return True
     if status in ("LIVE", "IN_PLAY") and score_missing:
@@ -3975,9 +4006,7 @@ def import_live_matches_from_api_football_fallback():
             goals = provider_match.get("goals") or {}
             provider_status = _api_football_status(fixture_data.get("status"))
             elapsed = (fixture_data.get("status") or {}).get("elapsed")
-            event_gap = stored["goals_json"] in (None, "", "[]") and (
-                (goals.get("home") or 0) > 0 or (goals.get("away") or 0) > 0
-            )
+            event_gap = _fixture_goal_event_coverage_missing(stored)
             event_rows = []
             if event_gap and fixture_data.get("id") and api_football_call_available(conn):
                 record_api_football_call(conn)
