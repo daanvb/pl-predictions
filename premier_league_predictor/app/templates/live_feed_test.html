@@ -53,6 +53,15 @@
 <div><span class="badge {% if item.score_matches %}open{% else %}live{% endif %}">{% if item.score_matches %}✓ Agrees{% else %}Review{% endif %}</span></div>
 <div class="small shadow-observed">{{ sample.status }} · {{ local_timestamp(sample.captured_at) }}</div>
 <div class="small shadow-update-lag">⏱️ {% if item.update_lag_label %}{{ item.update_lag_label }}{% else %}Timing starts with the next score change observed by both feeds{% endif %}</div>
+<div class="shadow-milestone-timing" aria-label="Big Balls milestone timing">
+{% for timing in item.timing_rows %}
+<div class="shadow-milestone-row">
+<strong>{{ timing.milestone }}</strong>
+<span>{{ timing.label }}</span>
+{% if timing.live_at or timing.shadow_at %}<small>Live {{ timing.live_at or "–" }} · Big Balls {{ timing.shadow_at or "–" }}</small>{% endif %}
+</div>
+{% endfor %}
+</div>
 {% if not (item.events.home or item.events.away or item.events.other) and (sample.home_score is not none or sample.away_score is not none) %}<div class="small shadow-events-unavailable">No event or scorer data was returned by Big Balls for any stored observation of this match.</div>{% endif %}
 {% else %}
 <div class="small shadow-awaiting">Awaiting the first matching shadow observation.</div>

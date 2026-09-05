@@ -2,6 +2,30 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.2.6] - 2026-09-05
+
+### Important
+- Extended live match handling for knockout fixtures through extra time and penalty shootouts.
+
+### New
+- Added automatic reigning-champion badges for the Champions League and MCFG Cockfight Cup, ready for each competition's first recorded winner.
+- Added clear `ET`, `ET HT`, `AET` and `PENS` match states, including the live shootout score when available.
+
+### Changes
+- Placed competition trophies consistently before player names while keeping live graphs and statistics pages uncluttered.
+- Simplified the upcoming competition panels and Prize Structure introduction.
+- Reworked the Past Winners competition tabs and winner rows so their trophies, names and labels align more clearly on mobile.
+
+### Fixes
+
+#### UI
+- Improved competition trophy size and proportions in page headings and the MCFG Cockfight Cup panel.
+- Matched the dark-mode live graph legend background to its surrounding panel.
+- Preserved first- and second-half added-time labels such as `45+3` and `90+6` across more live-feed formats.
+
+#### Database
+- Added non-destructive match-phase and penalty-shootout score fields for future knockout competitions.
+
 ## [1.2.5] - 2026-09-04
 
 ### Important

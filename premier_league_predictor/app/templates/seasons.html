@@ -14,9 +14,9 @@
 </div>
 
 <div class="winner-tabs" role="tablist" aria-label="Past winners by competition">
-<button type="button" class="winner-tab is-active" data-winner-tab="premier"><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> Premier League</button>
-<button type="button" class="winner-tab" data-winner-tab="champions"><span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League</button>
-<button type="button" class="winner-tab" data-winner-tab="head-to-head"><span class="competition-icon competition-icon-h2h"><img src="/static/fa-cup-trophy.png" alt=""></span> MCFG Cockfight Cup</button>
+<button type="button" class="winner-tab is-active" data-winner-tab="premier"><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span><span class="winner-tab-label">Premier League</span></button>
+<button type="button" class="winner-tab" data-winner-tab="champions"><span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span><span class="winner-tab-label">Champions League</span></button>
+<button type="button" class="winner-tab" data-winner-tab="head-to-head"><span class="competition-icon competition-icon-h2h"><img src="/static/fa-cup-trophy.png" alt=""></span><span class="winner-tab-label">MCFG Cockfight Cup</span></button>
 </div>
 
 <section class="winner-panel is-active" data-winner-panel="premier">
@@ -25,7 +25,7 @@
 <h2>Most League Wins</h2>
 <div class="past-winners-record">
 {% for player in most_titles %}
-<span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> {{ player.winner_name }}{% if not loop.last %}<br>{% endif %}
+<span class="past-winner-name-line"><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span><span>{{ player.winner_name }}</span></span>
 {% else %}—{% endfor %}
 </div>
 <div class="muted">{{ title_record }} title{% if title_record != 1 %}s{% endif %}{% if most_titles|length > 1 %} · tied{% endif %}</div>
