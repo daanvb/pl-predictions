@@ -10,16 +10,23 @@
 <div class="card" style="text-align:center;padding:34px 24px">
 <img src="/static/champions-league-trophy.png" alt="Champions League trophy" style="width:72px;height:72px;object-fit:contain;margin-bottom:12px">
 {% if session.get('admin') %}
-<form method="POST" action="/admin/champions-league/import" style="margin:0 0 14px">
+<form class="champions-matchday-form" method="POST" action="/admin/champions-league/import">
 <label class="small" for="champions-matchday">Champions League matchday</label>
-<select id="champions-matchday" name="matchday" style="margin:0 8px">
+<select class="champions-matchday-select" id="champions-matchday" name="matchday">
 {% for matchday in available_matchdays %}<option value="{{ matchday }}"{% if matchday == selected_matchday %} selected{% endif %}>Matchday {{ matchday }}</option>{% endfor %}
 </select>
 <button class="primary">Refresh this matchday</button>
 </form>
 {% endif %}
+</div>
+
 {% if fixtures %}
-<p class="muted">Champions League matchday {{ selected_matchday }}. Predictions and the competition table will be enabled in the next stage.</p>
+<div class="card">
+<div>
+<h2 style="margin-bottom:6px">🏆 Champions League matchday {{ selected_matchday }}</h2>
+<p class="muted" style="margin-top:0">Fixtures</p>
+</div>
+<div style="margin-top:10px">
 {% for fixture in fixtures %}
 <div class="fixture fixture-set{% if fixture.status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
 <div class="fixture-row-grid"><div class="fixture-match">
@@ -27,12 +34,14 @@
 <div class="fixture-centre">{% if fixture.status in ('LIVE','IN_PLAY','PAUSED','FINISHED') and fixture.home_score is not none and fixture.away_score is not none %}<span class="fixture-scoreline"><span>{{ fixture.home_score }}</span><span class="fixture-score-dash">–</span><span>{{ fixture.away_score }}</span></span>{% else %}v{% endif %}</div>
 <div class="fixture-away"><span class="fixture-team-cluster fixture-team-cluster-away"><strong>{{ short_team_name(fixture.away_team) }}</strong><span class="team-badge-slot">{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</span></span></div>
 </div></div>
-<div class="fixture-submeta">{{ local_datetime(fixture.utc_date) }}</div>
-{% if fixture.scorers.home or fixture.scorers.away or fixture.red_cards.home or fixture.red_cards.away %}<div class="fixture-scorers"><div class="fixture-scorers-home">{% for scorer in fixture.scorers.home %}<span>⚽ {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in fixture.red_cards.home %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div><div class="fixture-scorers-away">{% for scorer in fixture.scorers.away %}<span>⚽ {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in fixture.red_cards.away %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div></div>{% endif %}
+{% if fixture.status not in ('LIVE','IN_PLAY','PAUSED','FINISHED') %}<div class="fixture-submeta">{{ local_datetime(fixture.utc_date) }}</div>{% endif %}
+{% if fixture.scorers.home or fixture.scorers.away or fixture.red_cards.home or fixture.red_cards.away %}<div class="fixture-scorers" aria-label="Goalscorers"><div class="fixture-scorers-home">{% for scorer in fixture.scorers.home %}<span>⚽ {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in fixture.red_cards.home %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div><div class="fixture-scorers-away">{% for scorer in fixture.scorers.away %}<span>⚽ {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in fixture.red_cards.away %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div></div>{% endif %}
 {% include "_fixture_card_meta.html" %}
 </div>
 {% endfor %}
+</div>
 {% else %}
+<div class="card">
 <p class="muted" style="margin-bottom:0">Fixtures, predictions and the competition table will appear here when the knockout stage begins.</p>
 {% endif %}
 </div>

@@ -979,6 +979,14 @@ assert predictor.sportscore_fixture_status({
     "status": "live",
     "status_text": "Extra time interval",
 }) == "PAUSED"
+assert predictor.sportscore_fixture_status({
+    "status": "ended",
+    "status_text": "Full time",
+}) == "FINISHED"
+assert predictor.sportscore_fixture_status({
+    "status": "live",
+    "status_text": "FT (AET)",
+}) == "FINISHED"
 assert predictor.provider_match_phase({
     "status": "IN_PLAY",
     "status_text": "Extra time",
@@ -2213,8 +2221,48 @@ try:
 finally:
     predictor.requests.get = original_tv_listing_get
 assert listings == {-881001: "Amazon Prime Video"}
+assert predictor._champions_league_tv_teams_match(
+    "Liverpool", "Liverpool"
+)
+assert predictor._champions_league_tv_teams_match(
+    "Club Atlético de Madrid", "Atl. Madrid"
+)
+
+class TeamPageTVResponse:
+    def __init__(self, text):
+        self.text = text
+    def raise_for_status(self):
+        return None
+
+team_listing_html = '''
+<tr><td class="detalles">Champions League</td>
+<td class="local"><span title="Liverpool">Liverpool</span></td>
+<td class="visitante"><span title="Atl. Madrid">Atl. Madrid</span></td>
+<td class="canales"><ul class="listaCanales">
+<li title="HBO MAX"></li><li title="TNT Sports"></li><li title="TNT Sports 1"></li>
+</ul></td></tr>
+'''
+predictor.requests.get = lambda url, **kwargs: TeamPageTVResponse(
+    "" if "live-champions-league" in url else team_listing_html
+)
+try:
+    listings = predictor.fetch_champions_league_uk_tv_listings([{
+        "id": -881003, "competition": "champions_league",
+        "home_team": "Liverpool", "away_team": "Club Atlético de Madrid",
+    }])
+finally:
+    predictor.requests.get = original_tv_listing_get
+assert listings == {-881003: "TNT Sports 1"}
 assert predictor.broadcaster_logo_url("TNT Sports 1")
 assert predictor.broadcaster_dark_logo_url("TNT Sports 1")
+assert 'is_english_champions_league_fixture' in inspect.getsource(predictor.inject_globals)
+with open(
+    os.path.join(templates_dir, "_fixture_card_meta.html"),
+    "r", encoding="utf-8",
+) as handle:
+    fixture_card_meta_template = handle.read()
+assert 'UK TV pending' in fixture_card_meta_template
+assert 'tv-channel-label' not in fixture_card_meta_template
 
 # The HRK Metric counts the score value lost when an added-time goal changes
 # a completed Premier League result, including Double Points awards.
