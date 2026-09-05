@@ -8,7 +8,8 @@
 <div>{% if player.position_change > 0 %}<span class="position-move position-up">▲{% if player.position_change > 1 %}{{ player.position_change }}{% endif %}</span>{% elif player.position_change < 0 %}<span class="position-move position-down">▼{% if player.position_change < -1 %}{{ -player.position_change }}{% endif %}</span>{% else %}<span class="position-move position-flat">–</span>{% endif %}</div>
 <strong class="live-player-name">{{ display_player_name(player.name) }}</strong>
 {% if gameweek_progress %}<div class="small live-player-progress">{{ gameweek_progress }}</div>{% endif %}
-<div class="leader-points">{{ player.season_points }}<div class="small" style="text-align:right">{{ player.points }} GW pts</div></div>
+<strong class="leader-points">{{ player.season_points }}</strong>
+<div class="small live-player-points">{{ player.points }} GW pts</div>
 </div>
 {% endfor %}
 
