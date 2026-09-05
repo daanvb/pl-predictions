@@ -6652,6 +6652,64 @@ def historical_season(season):
     )
 
 
+def late_goal_points_lost(conn):
+    """Total points lost when added-time goals changed a final scoreline."""
+    losses = {}
+    fixtures = conn.execute(
+        """SELECT id, home_team, away_team, home_score, away_score, goals_json
+           FROM fixtures
+           WHERE season = ? AND competition = 'premier_league'
+             AND status = 'FINISHED' AND goals_json IS NOT NULL""",
+        (SEASON,),
+    ).fetchall()
+    for fixture in fixtures:
+        try:
+            goals = json.loads(fixture["goals_json"] or "[]")
+        except (TypeError, ValueError):
+            continue
+        removed = {"home": 0, "away": 0}
+        for goal in goals if isinstance(goals, list) else []:
+            try:
+                minute = int(goal.get("minute") or 0)
+                extra = int(goal.get("injuryTime") or 0)
+            except (TypeError, ValueError):
+                continue
+            if minute < 90 or (minute == 90 and extra <= 0):
+                continue
+            team = normalized_team_name((goal.get("team") or {}).get("name"))
+            if team == normalized_team_name(fixture["home_team"]):
+                removed["home"] += 1
+            elif team == normalized_team_name(fixture["away_team"]):
+                removed["away"] += 1
+        if not any(removed.values()):
+            continue
+        at_90_home = fixture["home_score"] - removed["home"]
+        at_90_away = fixture["away_score"] - removed["away"]
+        predictions = conn.execute(
+            """SELECT p.player_id, pl.name, p.home_score, p.away_score,
+                      COALESCE(p.dp, 0) AS dp
+               FROM predictions p JOIN players pl ON pl.id = p.player_id
+               WHERE p.fixture_id = ?""",
+            (fixture["id"],),
+        ).fetchall()
+        for prediction in predictions:
+            at_90 = calculate_prediction_points(
+                prediction["home_score"], prediction["away_score"],
+                at_90_home, at_90_away, prediction["dp"],
+            )
+            final = calculate_prediction_points(
+                prediction["home_score"], prediction["away_score"],
+                fixture["home_score"], fixture["away_score"], prediction["dp"],
+            )
+            lost = max(0, at_90 - final)
+            if lost:
+                entry = losses.setdefault(prediction["player_id"], {
+                    "id": prediction["player_id"], "name": prediction["name"], "total": 0,
+                })
+                entry["total"] += lost
+    return sorted(losses.values(), key=lambda row: (-row["total"], row["name"].casefold()))
+
+
 @app.route("/stats")
 @app.route("/league-stats")
 def stats():
@@ -6970,6 +7028,13 @@ def stats():
         if row["total"] == dp_exact_score_value
     ]
 
+    late_goal_loss_rows = late_goal_points_lost(conn)
+    late_goal_loss_value = late_goal_loss_rows[0]["total"] if late_goal_loss_rows else 0
+    most_late_goal_points_lost = [
+        row for row in late_goal_loss_rows
+        if row["total"] == late_goal_loss_value
+    ]
+
     best_gameweek_rows = conn.execute(
         """
         SELECT
@@ -7043,6 +7108,8 @@ def stats():
         correct_result_value=correct_result_value,
         most_dp_exact_scores=most_dp_exact_scores,
         dp_exact_score_value=dp_exact_score_value,
+        most_late_goal_points_lost=most_late_goal_points_lost,
+        late_goal_loss_value=late_goal_loss_value,
         best_gameweeks_overall=best_gameweeks_overall,
         best_gameweek_value=best_gameweek_value,
         completed_gameweeks=completed_gameweeks["total"],
