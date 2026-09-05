@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.2.7] - 2026-09-05
+
+### Fixes
+- Enlarged reigning-champion trophies beside player names for clearer visibility.
+- Added champion trophies to the dashboard and Live Gameweek tables, while keeping graph legends uncluttered.
+- Removed extra spacing around champion badges.
+
 ## [1.2.6] - 2026-09-05
 
 ### Important
