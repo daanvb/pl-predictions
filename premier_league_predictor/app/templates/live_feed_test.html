@@ -62,7 +62,8 @@
 </div>
 {% endfor %}
 </div>
-{% if not (item.events.home or item.events.away or item.events.other) and (sample.home_score is not none or sample.away_score is not none) %}<div class="small shadow-events-unavailable">No event or scorer data was returned by Big Balls for any stored observation of this match.</div>{% endif %}
+<div class="small shadow-events-unavailable">{{ item.event_check_label }}</div>
+{% if item.event_raw %}<details class="shadow-event-raw"><summary>Latest raw Big Balls event response{% if item.event_source %} · {{ item.event_source }}{% endif %}</summary><pre>{{ item.event_raw }}</pre></details>{% endif %}
 {% else %}
 <div class="small shadow-awaiting">Awaiting the first matching shadow observation.</div>
 {% endif %}

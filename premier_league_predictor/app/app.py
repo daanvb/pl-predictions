@@ -3857,6 +3857,7 @@ def refresh_bigballs_shadow(force_events=False):
                 previous["status"], previous["home_score"], previous["away_score"]
             ) if previous else None
             events_json = previous["events_json"] if previous else None
+            event_raw_json = previous["event_raw_json"] if previous else None
             score_changed = previous is None or current_state[1:] != previous_state[1:]
             is_live = match["status"] in (
                 "live", "in_progress", "in_play", "paused"
@@ -3869,12 +3870,20 @@ def refresh_bigballs_shadow(force_events=False):
                 and any(value is not None for value in current_state[1:])
             ):
                 try:
-                    events, _ = get_bigballs_match_events(
+                    events, event_meta = get_bigballs_match_events(
                         api_key, match["id"], raw_match
                     )
                     events_json = json.dumps(events, separators=(",", ":"))
+                    event_raw_json = json.dumps({
+                        "source": (
+                            event_meta.get("event_source")
+                            or event_meta.get("source")
+                        ),
+                        "response": event_meta.get("raw_response"),
+                    }, separators=(",", ":"))
                 except BigBallsAPIError as exc:
                     events_json = json.dumps({"error": str(exc)})
+                    event_raw_json = json.dumps({"error": str(exc)})
             previous_events = previous["events_json"] if previous else None
             # Keep every scheduled event check. A quiet response is evidence
             # for the provider comparison, rather than an invisible no-op.
@@ -3888,12 +3897,13 @@ def refresh_bigballs_shadow(force_events=False):
                 """INSERT INTO bigballs_shadow_samples(
                        provider_match_id, captured_at, home_team, away_team,
                        kickoff_utc, status, home_score, away_score,
-                       events_json, raw_json
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       events_json, event_raw_json, raw_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     match["id"], captured_at, match["home"], match["away"],
                     match["kickoff_utc"], match["status"],
                     match["home_score"], match["away_score"], events_json,
+                    event_raw_json,
                     json.dumps(raw_match, separators=(",", ":")),
                 ),
             )
@@ -9186,6 +9196,26 @@ def admin_bigballs_shadow_test():
         )
         sample = samples_by_key.get(key)
         events = []
+        latest_events = []
+        latest_event_error = None
+        latest_event_raw = None
+        latest_event_source = None
+        if sample and sample["events_json"]:
+            try:
+                latest_parsed = json.loads(sample["events_json"])
+                if isinstance(latest_parsed, list):
+                    latest_events = latest_parsed
+                elif isinstance(latest_parsed, dict):
+                    latest_event_error = latest_parsed.get("error")
+            except (TypeError, ValueError):
+                latest_event_error = "Preddies could not read the saved event response."
+        if sample and sample["event_raw_json"]:
+            try:
+                latest_raw = json.loads(sample["event_raw_json"])
+                latest_event_source = latest_raw.get("source")
+                latest_event_raw = json.dumps(latest_raw, indent=2)[:12000]
+            except (TypeError, ValueError):
+                latest_event_raw = sample["event_raw_json"][:12000]
         event_sample = event_samples_by_key.get(key) or sample
         if event_sample and event_sample["events_json"]:
             try:
@@ -9397,6 +9427,21 @@ def admin_bigballs_shadow_test():
                 if moment and moment not in grouped["moments"]:
                     grouped["moments"].append(moment)
             display_events[side] = grouped_events
+        recognised_event_count = sum(
+            len(display_events[side]) for side in ("home", "away", "other")
+        )
+        if not sample:
+            event_check_label = "Big Balls has not returned a matching fixture yet."
+        elif latest_event_error:
+            event_check_label = f"Big Balls event request failed: {latest_event_error}"
+        elif sample["events_json"] is None:
+            event_check_label = "No Big Balls event request was recorded for this check."
+        else:
+            event_check_label = (
+                f"Event check at {local_timestamp(sample['captured_at'])}: "
+                f"{len(latest_events)} event(s) returned; "
+                f"{recognised_event_count} recognised for display."
+            )
         score_matches = bool(
             sample
             and sample["home_score"] == fixture["home_score"]
@@ -9438,6 +9483,9 @@ def admin_bigballs_shadow_test():
             "update_lag_label": update_lag_label,
             "timing_rows": timing_rows,
             "events": display_events,
+            "event_check_label": event_check_label,
+            "event_raw": latest_event_raw,
+            "event_source": latest_event_source,
         })
     return render_template(
         "live_feed_test.html",

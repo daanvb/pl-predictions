@@ -96,7 +96,10 @@ def get_match_events(api_key, match_id, match=None):
     # endpoint as the canonical source.
     embedded_events = _event_list(match)
     if embedded_events:
-        return embedded_events, {"source": "match-list"}
+        return embedded_events, {
+            "source": "match-list", "event_source": "match-list",
+            "raw_response": match,
+        }
     event_error = None
     try:
         payload = _request(
@@ -109,7 +112,9 @@ def get_match_events(api_key, match_id, match=None):
         payload = {}
     data = _event_list(payload.get("data"))
     if isinstance(data, list) and data:
-        return data, _meta(payload)
+        return data, {
+            **_meta(payload), "event_source": "events", "raw_response": payload
+        }
 
     # During a live match the multi-field detail envelope can contain events
     # even when the dedicated event collection has not been populated yet.
@@ -121,7 +126,10 @@ def get_match_events(api_key, match_id, match=None):
         )
         live_events = _event_list(live_payload.get("data"))
         if live_events:
-            return live_events, _meta(live_payload)
+            return live_events, {
+                **_meta(live_payload), "event_source": "match-detail",
+                "raw_response": live_payload,
+            }
     except BigBallsAPIError:
         pass
 
@@ -133,13 +141,18 @@ def get_match_events(api_key, match_id, match=None):
         stored = stored_payload.get("data") or {}
         if isinstance(stored, dict) and isinstance(stored.get("match"), dict):
             stored = stored["match"]
-        stored_events = _event_list(stored)
-        if isinstance(stored_events, list):
-            return stored_events, _meta(stored_payload)
+            stored_events = _event_list(stored)
+            if isinstance(stored_events, list):
+                return stored_events, {
+                    **_meta(stored_payload), "event_source": "stored-detail",
+                    "raw_response": stored_payload,
+                }
     except BigBallsAPIError:
         if event_error:
             raise event_error
-    return [], _meta(payload)
+    return [], {
+        **_meta(payload), "event_source": "events", "raw_response": payload
+    }
 
 
 def _meta(payload):

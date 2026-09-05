@@ -327,6 +327,9 @@ def init_db(seed_default_player=True):
         CREATE INDEX IF NOT EXISTS idx_bigballs_shadow_match_time
         ON bigballs_shadow_samples(provider_match_id, captured_at)
     """)
+    _add_column_if_missing(
+        conn, "bigballs_shadow_samples", "event_raw_json", "TEXT"
+    )
 
     # Change-only observations of the production Predictor score. These make
     # it possible for the read-only shadow test to compare provider latency
