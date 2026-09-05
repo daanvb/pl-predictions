@@ -65,7 +65,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -4006,7 +4006,13 @@ def import_live_matches_from_api_football_fallback():
             goals = provider_match.get("goals") or {}
             provider_status = _api_football_status(fixture_data.get("status"))
             elapsed = (fixture_data.get("status") or {}).get("elapsed")
-            event_gap = _fixture_goal_event_coverage_missing(stored)
+            event_gap = (
+                _fixture_goal_event_coverage_missing(stored)
+                or (
+                    stored["goals_json"] in (None, "", "[]")
+                    and ((goals.get("home") or 0) > 0 or (goals.get("away") or 0) > 0)
+                )
+            )
             event_rows = []
             if event_gap and fixture_data.get("id") and api_football_call_available(conn):
                 record_api_football_call(conn)

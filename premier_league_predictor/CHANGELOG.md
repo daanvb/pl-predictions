@@ -2,6 +2,18 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.4.0] - 2026-09-05
+
+### New
+- Added a Champions League fixture foundation with an admin refresh and a dedicated fixture list.
+- Added live Champions League scores, clocks, goalscorers, red cards and badges from SportScore.
+- Extended the guarded API-Football fallback to cover stored Champions League fixtures.
+
+### Fixes
+- Backfill incomplete live scorer feeds when a displayed scoreline contains a missing event.
+- Accept a confirmed API-Football half-time or final-status update when the primary live feed is late.
+- Kept Premier League live enrichment isolated from Champions League fixtures.
+
 ## [1.3.0] - 2026-09-05
 
 ### New

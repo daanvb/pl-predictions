@@ -2208,7 +2208,7 @@ cl_live = conn.execute(
     """SELECT status, home_score, away_score, live_data_source, goals_json
        FROM fixtures WHERE id = -880002"""
 ).fetchone()
-assert tuple(cl_live[:4]) == ("LIVE", 1, 0, "SportScore")
+assert tuple(cl_live[:4]) == ("IN_PLAY", 1, 0, "SportScore")
 assert "CL Scorer" in cl_live["goals_json"]
 conn.execute("DELETE FROM fixtures WHERE id = -880002")
 conn.commit()
@@ -2437,12 +2437,14 @@ predictor.get_api_football_live_fixtures = lambda key: [{
               "away": {"name": "Fallback Away"}},
     "goals": {"home": 1, "away": 0},
 }]
+predictor.get_api_football_fixture_events = lambda key, fixture_id: []
 predictor.set_setting("api_football_key", "test-key")
 predictor.set_setting("last_api_football_request", "")
 try:
     assert predictor.import_live_matches_from_api_football_fallback() == 1
 finally:
     predictor.get_api_football_live_fixtures = original_api_football_live
+    predictor.get_api_football_fixture_events = original_api_football_events
     predictor.set_setting("api_football_key", "")
 conn = database.get_db()
 assert conn.execute("SELECT status FROM fixtures WHERE id = 99007").fetchone()[0] == "PAUSED"
