@@ -57,13 +57,9 @@
 {% endif %}
 </div>
 
-<div>
+<strong class="live-player-name">{{ display_player_name(player.name) }}</strong>
 
-<strong>{{ display_player_name(player.name) }}</strong>
-
-{% if gameweek_progress %}<div class="small">{{ gameweek_progress }}</div>{% endif %}
-
-</div>
+{% if gameweek_progress %}<div class="small live-player-progress">{{ gameweek_progress }}</div>{% endif %}
 
 <div class="leader-points">
 {{ player.season_points }}

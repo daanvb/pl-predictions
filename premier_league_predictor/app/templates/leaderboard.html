@@ -210,6 +210,28 @@ Positions are ranked by total points. If points are level, the tie-break order i
   .league-player {
     overflow-wrap: normal;
   }
+  .league-table-row:not(.league-table-header) {
+    grid-template-rows: auto auto;
+    row-gap: 0;
+  }
+  .league-table-row > .league-position {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+  .league-table-row > .league-player {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: grid;
+    grid-template-rows: subgrid;
+  }
+  .league-player > strong {
+    align-self: center;
+  }
+  .league-table-row > .leader-points {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
   .league-mobile-details {
     display: block;
     margin-top: 3px;
