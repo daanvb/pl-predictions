@@ -35,6 +35,10 @@ def test_connection(token):
         raise FootballAPIError(
             "Your API account does not have permission to access this resource."
         )
+    if response.status_code == 429:
+        raise FootballAPIError(
+            "football-data.org is rate limiting requests. Please try again shortly."
+        )
 
     raise FootballAPIError(
         f"Football API returned HTTP {response.status_code}"
@@ -62,6 +66,10 @@ def get_competition_matches(token, competition, season=2026):
     if response.status_code == 403:
         raise FootballAPIError(
             "Your API account does not have permission to retrieve these fixtures."
+        )
+    if response.status_code == 429:
+        raise FootballAPIError(
+            "football-data.org is rate limiting requests. Please try again shortly."
         )
 
     if response.status_code != 200:
@@ -116,6 +124,10 @@ def get_match(token, match_id):
     if response.status_code == 403:
         raise FootballAPIError(
             "Your API account cannot retrieve match event details."
+        )
+    if response.status_code == 429:
+        raise FootballAPIError(
+            "football-data.org is rate limiting requests. Please try again shortly."
         )
 
     if response.status_code != 200:
