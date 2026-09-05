@@ -410,8 +410,8 @@ finally:
 
 original_competition_loader = football_api.get_competition_matches
 competition_attempts = []
-def fake_competition_loader(token, competition, season):
-    competition_attempts.append((competition, season))
+def fake_competition_loader(token, competition, season, matchday=None):
+    competition_attempts.append((competition, season, matchday))
     if len(competition_attempts) < 3:
         raise football_api.FootballAPIError("Football API returned HTTP 404")
     return [{"id": 2001}]
@@ -422,7 +422,9 @@ try:
     ]
 finally:
     football_api.get_competition_matches = original_competition_loader
-assert competition_attempts == [("CL", 2026), (2001, 2026), (2001, None)]
+assert competition_attempts == [
+    ("CL", 2026, None), (2001, 2026, None), (2001, None, None)
+]
 
 original_sportscore_get = sportscore._get
 sportscore._get = lambda path, params: {
@@ -2157,7 +2159,8 @@ conn.close()
 # Champions League imports retain the provider ID separately and use a safe
 # local ID, leaving Premier League prediction foreign keys untouched.
 original_cl_loader = predictor.get_football_champions_league_matches
-predictor.get_football_champions_league_matches = lambda token, season: [{
+original_cl_tv_refresh = predictor.refresh_champions_league_tv_broadcasters
+predictor.get_football_champions_league_matches = lambda token, season, matchday: [{
     "id": 880001,
     "matchday": 1,
     "utcDate": datetime.now(timezone.utc).isoformat(),
@@ -2168,9 +2171,11 @@ predictor.get_football_champions_league_matches = lambda token, season: [{
 }]
 predictor.set_setting("football_api_token", "test-token")
 try:
-    assert predictor.import_champions_league_matches() == 1
+    predictor.refresh_champions_league_tv_broadcasters = lambda conn, matchday: 0
+    assert predictor.import_champions_league_matches(1) == 1
 finally:
     predictor.get_football_champions_league_matches = original_cl_loader
+    predictor.refresh_champions_league_tv_broadcasters = original_cl_tv_refresh
     predictor.set_setting("football_api_token", "")
 conn = database.get_db()
 champions_fixture = conn.execute(
@@ -2183,6 +2188,33 @@ assert tuple(champions_fixture) == (
 conn.execute("DELETE FROM fixtures WHERE id = -880001")
 conn.commit()
 conn.close()
+
+# Champions League TV data is exact when the listing confirms a channel. It
+# must be limited to English clubs and leave unconfirmed/TBC listings blank.
+class ChampionsLeagueTVResponse:
+    text = '''
+    <div class="fixture"><div class="fixture__teams">FC Porto v Manchester City</div>
+    <div class="fixture__channel"><span class="channel-pill">Amazon Prime Video</span></div></div>
+    <div class="fixture"><div class="fixture__teams">Barcelona v Juventus</div>
+    <div class="fixture__channel"><span class="channel-pill">TNT Sports 1</span></div></div>
+    '''
+    def raise_for_status(self):
+        return None
+
+original_tv_listing_get = predictor.requests.get
+predictor.requests.get = lambda *args, **kwargs: ChampionsLeagueTVResponse()
+try:
+    listings = predictor.fetch_champions_league_uk_tv_listings([
+        {"id": -881001, "competition": "champions_league",
+         "home_team": "FC Porto", "away_team": "Manchester City"},
+        {"id": -881002, "competition": "champions_league",
+         "home_team": "Barcelona", "away_team": "Juventus"},
+    ])
+finally:
+    predictor.requests.get = original_tv_listing_get
+assert listings == {-881001: "Amazon Prime Video"}
+assert predictor.broadcaster_logo_url("TNT Sports 1")
+assert predictor.broadcaster_dark_logo_url("TNT Sports 1")
 
 # Champions League live enrichment is independent from the Premier League
 # current-gameweek query and carries the same score, clock and event fields.

@@ -45,13 +45,15 @@ def test_connection(token):
     )
 
 
-def get_competition_matches(token, competition, season=2026):
+def get_competition_matches(token, competition, season=2026, matchday=None):
     if not token:
         raise FootballAPIError("No API token has been configured.")
 
     params = {"limit": 500}
     if season is not None:
         params["season"] = season
+    if matchday is not None:
+        params["matchday"] = matchday
 
     response = requests.get(
         f"{API_BASE}/competitions/{competition}/matches",
@@ -84,14 +86,14 @@ def get_matches(token, season=2026):
     return get_competition_matches(token, COMPETITION, season)
 
 
-def get_champions_league_matches(token, season=2026):
-    """Try the documented CL code, numeric ID and provider-current season."""
+def get_champions_league_matches(token, season=2026, matchday=None):
+    """Retrieve one Champions League matchday using the available CL ID."""
     attempts = (("CL", season), (2001, season), (2001, None))
     last_error = None
     for competition, requested_season in attempts:
         try:
             return get_competition_matches(
-                token, competition, requested_season
+                token, competition, requested_season, matchday
             )
         except FootballAPIError as exc:
             last_error = exc

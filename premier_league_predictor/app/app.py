@@ -127,6 +127,10 @@ PREMIER_LEAGUE_FIXTURE_SOURCE = (
     "https://www.premierleague.com/en/news/4675097/"
     "all-380-fixtures-for-202627-premier-league-season"
 )
+CHAMPIONS_LEAGUE_TV_SOURCE = (
+    "https://www.live-footballontv.com/"
+    "live-champions-league-football-on-tv.html"
+)
 
 SKY_SPORTS_LOGO = (
     "https://upload.wikimedia.org/wikipedia/commons/9/9d/"
@@ -2071,14 +2075,14 @@ def broadcaster_logo_url(broadcaster):
     if broadcaster == "Sky Sports":
         return SKY_SPORTS_LOGO
 
-    if broadcaster == "TNT Sports":
+    if (broadcaster or "").startswith("TNT Sports"):
         return TNT_SPORTS_LOGO
 
     return None
 
 
 def broadcaster_dark_logo_url(broadcaster):
-    if broadcaster == "TNT Sports":
+    if (broadcaster or "").startswith("TNT Sports"):
         return TNT_SPORTS_DARK_LOGO
 
     return None
@@ -2999,12 +3003,14 @@ def _champions_league_fixture_id(conn, source_fixture_id):
     return candidate
 
 
-def import_champions_league_matches():
-    """Import Champions League fixtures into their own competition namespace."""
+def import_champions_league_matches(matchday):
+    """Import one Champions League matchday into its own namespace."""
     token = get_setting("football_api_token")
     if not token:
         return 0
-    matches = get_football_champions_league_matches(token, season=SEASON)
+    matches = get_football_champions_league_matches(
+        token, season=SEASON, matchday=matchday
+    )
     conn = get_db()
     imported = 0
     try:
@@ -3047,10 +3053,16 @@ def import_champions_league_matches():
                 ),
             )
             imported += 1
+        tv_updated = refresh_champions_league_tv_broadcasters(conn, matchday)
+        print(
+            f"[champions-league-tv] Updated {tv_updated} broadcaster(s)",
+            flush=True,
+        )
         conn.commit()
     finally:
         conn.close()
     set_setting("champions_league_last_refresh", now_utc().isoformat())
+    set_setting("champions_league_selected_matchday", str(matchday))
     return imported
 
 
@@ -3377,6 +3389,114 @@ def normalized_team_name(name):
         "wolverhampton wanderers": "wolves",
     }
     return aliases.get(value, value)
+
+
+CHAMPIONS_LEAGUE_ENGLISH_TEAMS = frozenset({
+    "arsenal", "aston villa", "chelsea", "liverpool", "man city",
+    "man united", "newcastle", "tottenham",
+})
+
+
+def is_english_champions_league_fixture(fixture):
+    """Limit UK TV labels to fixtures involving an English club."""
+    if fixture.get("competition") != "champions_league":
+        return False
+    teams = {
+        normalized_team_name(fixture.get("home_team")),
+        normalized_team_name(fixture.get("away_team")),
+    }
+    return bool(teams & CHAMPIONS_LEAGUE_ENGLISH_TEAMS)
+
+
+def _champions_league_tv_teams_match(first, second):
+    ignored_words = {
+        "ac", "afc", "as", "cf", "club", "de", "fc", "ssc", "the",
+        "us",
+    }
+    first_words = set(normalized_team_name(first).split()) - ignored_words
+    second_words = set(normalized_team_name(second).split()) - ignored_words
+    return bool(first_words and second_words and first_words == second_words)
+
+
+def fetch_champions_league_uk_tv_listings(fixtures):
+    """Return confirmed UK channels for the supplied English CL fixtures."""
+    eligible = [
+        fixture for fixture in fixtures
+        if is_english_champions_league_fixture(dict(fixture))
+    ]
+    if not eligible:
+        return {}
+    try:
+        response = requests.get(
+            CHAMPIONS_LEAGUE_TV_SOURCE,
+            timeout=20,
+            headers={"User-Agent": "PremierLeaguePredictor/1.24"},
+        )
+        response.raise_for_status()
+    except Exception as exc:
+        print(f"[champions-league-tv] Listing unavailable: {exc}", flush=True)
+        return {}
+
+    listings = []
+    for block in re.findall(
+        r'<div class="fixture">(.*?)(?=<div class="fixture">|$)',
+        response.text,
+        flags=re.I | re.S,
+    ):
+        teams = re.search(
+            r'fixture__teams">\s*(.*?)\s*</div>', block, re.I | re.S
+        )
+        if not teams or " v " not in unescape(teams.group(1)):
+            continue
+        home, away = unescape(re.sub(r"<[^>]+>", "", teams.group(1))).split(
+            " v ", 1
+        )
+        channels = [
+            unescape(re.sub(r"<[^>]+>", "", channel)).strip()
+            for channel in re.findall(
+                r'class="channel-pill"[^>]*>(.*?)</span>', block,
+                re.I | re.S,
+            )
+        ]
+        confirmed = [
+            channel for channel in channels
+            if channel not in ("HBO Max", "TBC")
+            and not channel.endswith(" TBC")
+        ]
+        if confirmed:
+            listings.append((home.strip(), away.strip(), " · ".join(confirmed)))
+
+    found = {}
+    for fixture in eligible:
+        for home, away, broadcaster in listings:
+            if (
+                _champions_league_tv_teams_match(fixture["home_team"], home)
+                and _champions_league_tv_teams_match(fixture["away_team"], away)
+            ):
+                found[fixture["id"]] = broadcaster
+                break
+    return found
+
+
+def refresh_champions_league_tv_broadcasters(conn, matchday):
+    fixtures = conn.execute(
+        """SELECT id, competition, home_team, away_team, broadcaster
+           FROM fixtures
+           WHERE season = ? AND competition = 'champions_league'
+             AND matchday = ?""",
+        (SEASON, matchday),
+    ).fetchall()
+    listings = fetch_champions_league_uk_tv_listings(fixtures)
+    updated = 0
+    for fixture in fixtures:
+        broadcaster = listings.get(fixture["id"])
+        if broadcaster and broadcaster != fixture["broadcaster"]:
+            conn.execute(
+                "UPDATE fixtures SET broadcaster = ? WHERE id = ?",
+                (broadcaster, fixture["id"]),
+            )
+            updated += 1
+    return updated
 
 
 def sportscore_team_slug(name):
@@ -5778,11 +5898,31 @@ def champions_league():
     if not logged_in():
         return redirect("/")
     conn = get_db()
+    stored_matchdays = [
+        row["matchday"]
+        for row in conn.execute(
+            """SELECT DISTINCT matchday FROM fixtures
+               WHERE competition = 'champions_league' AND season = ?
+                 AND matchday IS NOT NULL
+               ORDER BY matchday""",
+            (SEASON,),
+        ).fetchall()
+    ]
+    selected_matchday = request.args.get(
+        "matchday", get_setting("champions_league_selected_matchday") or "1"
+    )
+    try:
+        selected_matchday = int(selected_matchday)
+    except (TypeError, ValueError):
+        selected_matchday = 1
+    selected_matchday = max(1, min(selected_matchday, 99))
+    available_matchdays = sorted(set(range(1, 9)) | set(stored_matchdays))
     fixtures = conn.execute(
         """SELECT * FROM fixtures
            WHERE competition = 'champions_league' AND season = ?
+             AND matchday = ?
            ORDER BY utc_date""",
-        (SEASON,),
+        (SEASON, selected_matchday),
     ).fetchall()
     conn.close()
     fixtures = [dict(row) for row in fixtures]
@@ -5796,6 +5936,8 @@ def champions_league():
         )
     return render_template(
         "side_events.html", fixtures=fixtures,
+        selected_matchday=selected_matchday,
+        available_matchdays=available_matchdays,
         has_live_fixtures=any(
             fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
             for fixture in fixtures
@@ -5812,7 +5954,15 @@ def import_champions_league_fixtures():
         flash("football-data.org is temporarily rate limiting requests. Please try again shortly.", "error")
         return redirect("/champions-league")
     try:
-        imported = import_champions_league_matches()
+        matchday = int(request.form.get("matchday", "1"))
+    except (TypeError, ValueError):
+        flash("Choose a valid Champions League matchday.", "error")
+        return redirect("/champions-league")
+    if not 1 <= matchday <= 99:
+        flash("Choose a valid Champions League matchday.", "error")
+        return redirect("/champions-league")
+    try:
+        imported = import_champions_league_matches(matchday)
         live_updated = import_champions_league_live_from_sportscore()
         flash(
             f"Champions League fixtures refreshed: {imported} imported; "
@@ -5822,7 +5972,7 @@ def import_champions_league_fixtures():
         if isinstance(exc, FootballAPIError):
             record_football_data_error(exc)
         flash(str(exc), "error")
-    return redirect("/champions-league")
+    return redirect(f"/champions-league?matchday={matchday}")
 
 
 @app.route("/head-to-head")
