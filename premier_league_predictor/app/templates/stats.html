@@ -13,5 +13,6 @@
 <div class="stat"><div class="small">CORRECT SCORES WITH DP</div><div class="stat-number">{{ personal.dp_exact_scores }}</div></div>
 <div class="stat"><div class="small">BEST GAMEWEEK</div><div class="stat-number">{% if best_gameweek %}{{ best_gameweek.points }}{% else %}—{% endif %}</div>{% if best_gameweek %}<div class="muted">GW{{ best_gameweek.matchday }}</div>{% endif %}</div>
 </div></div>
+<div class="card muted">Updated after every settled game block.</div>
 </div>
 {% endblock %}

@@ -166,6 +166,7 @@ PRIME_VIDEO_LOGO = (
 # source for every other fixture.
 CHAMPIONS_LEAGUE_TV_OVERRIDES = {
     ("man united", "sabah"): "TNT Sports 1",
+    ("man united", "sabah fk"): "TNT Sports 1",
 }
 
 app = Flask(__name__, template_folder="templates")
@@ -2368,20 +2369,44 @@ def canonical_team_name(name):
         "club atletico de madrid": "atletico madrid",
         "atletico de madrid": "atletico madrid",
         "atletico madrid": "atletico madrid",
+        "atletico": "atletico madrid",
+        "club brugge kv": "club brugge",
+        "club brugge": "club brugge",
+        "rsc anderlecht": "anderlecht",
+        "anderlecht": "anderlecht",
+        "pae aek": "aek athens",
+        "aek athens": "aek athens",
+        "lask linz": "lask",
+        "lask": "lask",
         "fc internazionale milano": "inter",
+        "internazionale milano": "inter",
         "internazionale": "inter",
         "inter milan": "inter",
+        "inter": "inter",
         "real betis balompie": "real betis",
         "real betis": "real betis",
         "feyenoord rotterdam": "feyenoord",
         "feyenoord": "feyenoord",
         "sporting clube de portugal": "sporting",
         "sporting cp": "sporting",
+        "sporting lisbon": "sporting",
         "ssc napoli": "napoli",
+        "napoli": "napoli",
         "paris saint germain": "psg",
+        "paris sg": "psg",
+        "psg": "psg",
         "psv eindhoven": "psv",
+        "psv": "psv",
         "fc shakhtar donetsk": "shakhtar donetsk",
+        "fk shakhtar donetsk": "shakhtar donetsk",
+        "shakhtar donetsk": "shakhtar donetsk",
         "galatasaray sk": "galatasaray",
+        "galatasaray": "galatasaray",
+        "sk slovan bratislava": "slovan bratislava",
+        "slovan bratislava": "slovan bratislava",
+        "sabah fk": "sabah",
+        "sabah": "sabah",
+        "bodo glimt": "bodo glimt",
     }
 
     if value in aliases:
@@ -2451,6 +2476,13 @@ def short_team_name(name):
         "psg": "PSG",
         "psv": "PSV",
         "shakhtar donetsk": "Shakhtar Donetsk",
+        "club brugge": "Club Brugge",
+        "anderlecht": "Anderlecht",
+        "aek athens": "AEK Athens",
+        "lask": "LASK",
+        "slovan bratislava": "Slovan Bratislava",
+        "sabah": "Sabah FK",
+        "bodo glimt": "Bodø/Glimt",
     }
 
     if key in names:
@@ -3577,15 +3609,30 @@ def repair_missing_completed_results():
 
 
 def normalized_team_name(name):
-    value = re.sub(r"[^a-z0-9]+", " ", (name or "").casefold()).strip()
-    words = [word for word in value.split() if word not in ("fc", "afc")]
+    value = unicodedata.normalize("NFKD", str(name or ""))
+    value = value.encode("ascii", "ignore").decode("ascii").casefold()
+    value = re.sub(r"[^a-z0-9]+", " ", value).strip()
+    words = [word for word in value.split() if word not in (
+        "ac", "afc", "cf", "club", "fc", "fk", "sc", "sk", "ssc",
+    )]
     value = " ".join(words)
     aliases = {
+        "atletico de madrid": "atletico madrid",
+        "club atletico de madrid": "atletico madrid",
         "brighton hove albion": "brighton",
+        "feyenoord rotterdam": "feyenoord",
+        "internazionale": "inter",
+        "internazionale milano": "inter",
+        "inter milan": "inter",
         "manchester city": "man city",
         "manchester united": "man united",
         "newcastle united": "newcastle",
         "nottingham forest": "nottm forest",
+        "paris saint germain": "psg",
+        "paris sg": "psg",
+        "real betis balompie": "real betis",
+        "sporting clube de portugal": "sporting",
+        "sporting cp": "sporting",
         "tottenham hotspur": "tottenham",
         "west ham united": "west ham",
         "wolverhampton wanderers": "wolves",
@@ -3809,6 +3856,13 @@ def sportscore_team_slug(name):
         "psg": "paris-saint-germain",
         "psv": "psv-eindhoven",
         "shakhtar donetsk": "shakhtar-donetsk",
+        "club brugge": "club-brugge",
+        "anderlecht": "anderlecht",
+        "aek athens": "aek-athens",
+        "lask": "lask-linz",
+        "slovan bratislava": "slovan-bratislava",
+        "sabah": "sabah-fk",
+        "bodo glimt": "bodo-glimt",
     }
     return aliases.get(normalized, normalized.replace(" ", "-"))
 
@@ -10074,39 +10128,128 @@ def test_live_football_api():
     return redirect("/admin/settings")
 
 
-@app.route("/admin/settings/live-football-api/today", methods=["POST"])
-def test_live_football_api_today():
-    """Read-only diagnostic for the provider's current day match list."""
+def _live_football_test_auto_refresh(provider_matches, match_date, day):
+    """Refresh today's test only around a scheduled or active live match."""
+    if day != "today":
+        return False
+    current = now_utc()
+    for match in provider_matches:
+        status = _live_football_status(match, "SCHEDULED")
+        if status in ("IN_PLAY", "PAUSED"):
+            return True
+        kickoff = _live_football_value(match, "kickoff", "kickoff_time", "start_time")
+        try:
+            kickoff_time = datetime.strptime(str(kickoff), "%H:%M").time()
+            kickoff_at = datetime.combine(match_date, kickoff_time, tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        if kickoff_at - timedelta(minutes=5) <= current <= kickoff_at + timedelta(minutes=5):
+            return True
+    return False
+
+
+def _is_live_football_premier_league_match(match):
+    """Keep the diagnostic focused on the app's Premier League fixtures."""
+    league = match.get("league") if isinstance(match, dict) else {}
+    league = league if isinstance(league, dict) else {}
+    league_id = str(league.get("id") or "").casefold()
+    league_name = str(league.get("name") or "").casefold()
+    return league_id == "lfa-premier-league" or league_name == "premier league"
+
+
+def _live_football_test_events(record):
+    goals, cards = [], []
+    for event in _live_football_events(record):
+        detail = event.get("detail") if isinstance(event, dict) else {}
+        detail = detail if isinstance(detail, dict) else {}
+        player = detail.get("player")
+        player_name = player.get("name") if isinstance(player, dict) else player
+        minute, injury_time = parse_live_minute(event.get("time") or event.get("minute"))
+        label = f"{minute}{'+' + str(injury_time) if injury_time else ''}'" if minute is not None else ""
+        event_type = str(event.get("type") or "").casefold()
+        entry = {"player": player_name or "Unknown player", "minute": label, "side": event.get("side") or ""}
+        if "goal" in event_type:
+            goals.append(entry)
+        elif "red" in event_type or "second" in json.dumps(detail).casefold():
+            cards.append(entry)
+    return goals, cards
+
+
+@app.route("/admin/live-football-api/test")
+def live_football_api_test():
+    """Read-only diagnostic for today or yesterday's provider match list."""
     if not is_admin():
         return redirect("/")
+    day = request.args.get("day", "today")
+    if day not in ("today", "yesterday"):
+        day = "today"
+    include_details = request.args.get("details") == "1"
+    match_date = now_utc().date() - timedelta(days=1 if day == "yesterday" else 0)
     try:
-        match_date = now_utc().date().isoformat()
         provider_matches = get_live_football_matches(
-            get_setting("live_football_api_key"), match_date
+            get_setting("live_football_api_key"), match_date.isoformat()
         )
     except LiveFootballAPIError as exc:
         flash(str(exc), "error")
-        return redirect("/admin/settings")
+        return redirect("/admin")
 
+    provider_matches = [
+        match for match in provider_matches
+        if _is_live_football_premier_league_match(match)
+    ]
     matches = []
     for match in provider_matches:
-        home_score, away_score = _live_football_scores(match)
-        minute, injury_time = _live_football_minute(match)
+        detail_error = ""
+        provider_match = match
+        provider_id = _live_football_match_id(match)
+        if include_details and provider_id is not None:
+            try:
+                details = get_live_football_match_details(
+                    get_setting("live_football_api_key"), provider_id
+                )
+                if isinstance(details, dict):
+                    provider_match = {**match, **details}
+            except LiveFootballAPIError as exc:
+                detail_error = str(exc)
+        home_score, away_score = _live_football_scores(provider_match)
+        minute, injury_time = _live_football_minute(provider_match)
+        status = _live_football_status(provider_match, "SCHEDULED")
+        match_phase = _live_football_match_phase(provider_match)
+        kickoff = _live_football_value(provider_match, "kickoff", "kickoff_time", "start_time")
+        kickoff_at = f"{match_date.isoformat()}T{kickoff or '00:00'}:00+00:00"
+        goals, cards = _live_football_test_events(provider_match)
         matches.append({
-            "id": _live_football_match_id(match),
-            "home_team": _live_football_team_name(match, "home") or "Unknown home team",
-            "away_team": _live_football_team_name(match, "away") or "Unknown away team",
+            "id": provider_id,
+            "home_team": _live_football_team_name(provider_match, "home") or "Unknown home team",
+            "away_team": _live_football_team_name(provider_match, "away") or "Unknown away team",
             "home_score": home_score,
             "away_score": away_score,
-            "status": _live_football_status(match, "SCHEDULED"),
+            "status": status,
+            "status_label": status_label({
+                "status": status,
+                "minute": minute,
+                "injury_time": injury_time,
+                "match_phase": match_phase,
+                "utc_date": kickoff_at,
+            }),
             "minute": minute,
             "injury_time": injury_time,
-            "event_count": len(_live_football_events(match)),
+            "event_count": len(_live_football_events(provider_match)),
+            "goals": goals,
+            "cards": cards,
+            "detail_error": detail_error,
         })
     set_setting("last_live_football_api_test", now_utc().isoformat())
     return render_template(
-        "live_football_api_test.html", match_date=match_date, matches=matches,
+        "live_football_api_test.html", match_date=match_date.isoformat(),
+        day=day, matches=matches, include_details=include_details,
+        auto_refresh=live_football_test_auto_refresh(provider_matches, match_date, day),
     )
+
+
+@app.route("/admin/settings/live-football-api/today", methods=["POST"])
+def test_live_football_api_today():
+    return redirect("/admin/live-football-api/test?day=today")
 
 
 @app.route(

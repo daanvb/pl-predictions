@@ -2,17 +2,22 @@
 {% block title %}Live Football API test{% endblock %}
 {% block content %}
 <div class="hero">
-<h1>🧪 Today’s provider test</h1>
-<p>Live Football API · {{ match_date }}</p>
+<h1>🧪 Live Football API test</h1>
+<p>{{ 'Today' if day == 'today' else 'Yesterday' }} · {{ match_date }}</p>
 </div>
 
-<div class="nav"><a href="/admin/settings">← API Settings</a></div>
+<div class="nav">
+<a href="/admin">← Admin</a>
+<a href="/admin/live-football-api/test?day=today">Today</a>
+<a href="/admin/live-football-api/test?day=yesterday">Yesterday</a>
+<a href="/admin/live-football-api/test?day={{ day }}&amp;details=1">{{ 'Today' if day == 'today' else 'Yesterday' }}: scores &amp; events</a>
+</div>
 
 <div class="card">
-<p class="muted">This is read-only. It makes one request for today’s match list and does not change Premier League or Champions League fixtures.</p>
-<form method="POST" action="/admin/settings/live-football-api/today">
-<button class="primary">Refresh today’s test</button>
-</form>
+<p class="muted">Read-only Premier League provider check. It does not change any fixtures.</p>
+{% if not include_details %}<p class="small">The match list supplies scores and status only. Use “{{ 'Today' if day == 'today' else 'Yesterday' }}: scores &amp; events” to make one detailed request per Premier League match and verify scorers and cards.</p>{% endif %}
+{% if include_details %}<p class="small">Detailed check loaded: final/current score and returned goal/card events.</p>{% endif %}
+{% if auto_refresh %}<p class="small">● Auto-refreshing every 60 seconds while a Premier League match is live, or in the five minutes before kick-off.</p>{% endif %}
 </div>
 
 {% if matches %}
@@ -24,13 +29,23 @@
     <div class="fixture-away"><strong>{{ match.away_team }}</strong></div>
   </div>
   <div class="fixture-card-meta">
-    <div class="fixture-status"><span class="badge{% if match.status in ('IN_PLAY', 'PAUSED') %} live{% endif %}">{{ match.status }}{% if match.minute is not none %} {{ match.minute }}{% if match.injury_time %}+{{ match.injury_time }}{% endif %}'{% endif %}</span></div>
-    <div class="fixture-broadcaster"><span class="small">{{ match.event_count }} event{{ '' if match.event_count == 1 else 's' }} in list response</span></div>
+    <div class="fixture-status"><span class="badge{% if match.status in ('IN_PLAY', 'PAUSED') %} live{% endif %}">{{ match.status_label }}</span></div>
+    <div class="fixture-broadcaster"><span class="small">{% if include_details %}{{ match.event_count }} event{{ '' if match.event_count == 1 else 's' }} returned{% else %}Score/status list response{% endif %}</span></div>
   </div>
   <p class="small muted" style="margin:8px 0 0">Provider match ID: {{ match.id or 'not supplied' }}</p>
+  {% if match.goals or match.cards %}
+  <div class="small" style="margin-top:8px">
+    {% for goal in match.goals %}<div>⚽ {{ goal.player }} {{ goal.minute }}{% if goal.side %} · {{ goal.side }}{% endif %}</div>{% endfor %}
+    {% for card in match.cards %}<div>🟥 {{ card.player }} {{ card.minute }}{% if card.side %} · {{ card.side }}{% endif %}</div>{% endfor %}
+  </div>
+  {% endif %}
+  {% if match.detail_error %}<p class="small" style="color:#fca5a5">Event detail unavailable: {{ match.detail_error }}</p>{% endif %}
 </div>
 {% endfor %}
 {% else %}
-<div class="card muted">The provider returned no matches for today.</div>
+<div class="card muted">The provider returned no matches for {{ 'today' if day == 'today' else 'yesterday' }}.</div>
+{% endif %}
+{% if auto_refresh %}
+<script>window.setTimeout(() => window.location.reload(), 60000);</script>
 {% endif %}
 {% endblock %}

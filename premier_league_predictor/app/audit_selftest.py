@@ -957,6 +957,17 @@ assert b"GW2" not in response.data
 # Secondary-provider team/status/event normalization.
 assert predictor.normalized_team_name("Manchester United FC") == "man united"
 assert predictor.normalized_team_name("Wolverhampton Wanderers") == "wolves"
+assert predictor.normalized_team_name("Sabah FK") == "sabah"
+assert predictor.normalized_team_name("Club Atlético de Madrid") == "atletico madrid"
+assert predictor.normalized_team_name("FC Internazionale Milano") == "inter"
+assert predictor.normalized_team_name("Real Betis Balompié") == "real betis"
+assert predictor.normalized_team_name("Sporting Clube de Portugal") == "sporting"
+assert predictor.status_label({
+    "status": "IN_PLAY", "minute": 45, "injury_time": 3, "match_phase": None,
+}) == "LIVE 45+3'"
+assert predictor.status_label({
+    "status": "IN_PLAY", "minute": 90, "injury_time": 6, "match_phase": None,
+}) == "LIVE 90+6'"
 assert predictor.sportscore_team_slug("Nottingham Forest FC") == "nottingham-forest"
 assert predictor.sportscore_team_slug("Manchester United FC") == "manchester-united"
 assert predictor.safe_team_logo_url("https://sportscore.com/media/team.png")
@@ -2278,6 +2289,9 @@ assert predictor._champions_league_tv_teams_match(
 )
 assert predictor.confirmed_champions_league_broadcaster({
     "home_team": "Manchester United", "away_team": "Sabah",
+}) == "TNT Sports 1"
+assert predictor.confirmed_champions_league_broadcaster({
+    "home_team": "Manchester United", "away_team": "Sabah FK",
 }) == "TNT Sports 1"
 assert "champions_league_display_matchday" in inspect.getsource(predictor.champions_league)
 assert "live-football-api/today" in inspect.getsource(predictor.test_live_football_api_today)
