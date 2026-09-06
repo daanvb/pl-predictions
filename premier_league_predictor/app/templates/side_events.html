@@ -5,7 +5,7 @@
 <h1><span class="competition-icon competition-icon-cl champions-title-trophy"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League</h1>
 </div>
 
-<div class="nav"><a href="/dashboard">← Dashboard</a></div>
+<div class="nav"><a href="/dashboard">← Dashboard</a>{% if show_champions_h2h %}<a href="/champions-league">Hide head-to-head</a>{% else %}<a href="/champions-league?h2h=1">Head-to-head results</a>{% endif %}</div>
 
 <div class="card" style="text-align:center;padding:34px 24px">
 <img src="/static/champions-league-trophy.png" alt="Champions League trophy" style="width:72px;height:72px;object-fit:contain;margin-bottom:12px">
@@ -25,6 +25,19 @@
 {% for fixture in fixtures %}
 <div class="fixture fixture-set champions-fixture-card{% if fixture.status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
 {% include "_fixture_card_core.html" %}
+{% if show_champions_h2h %}
+<details class="match-stats">
+<summary><span>📊 Head-to-head · last 5</span><span class="match-stats-chevron">⌄</span></summary>
+<div class="match-stats-body">
+{% if fixture.h2h.head_to_head %}
+<div class="h2h-summary"><strong>{{ short_team_name(fixture.home_team) }}</strong> {{ fixture.h2h.h2h_home_wins }} wins <span>·</span> {{ fixture.h2h.h2h_draws }} draws <span>·</span> <strong>{{ short_team_name(fixture.away_team) }}</strong> {{ fixture.h2h.h2h_away_wins }} wins</div>
+<div class="past-results">{% for result in fixture.h2h.head_to_head %}<div class="past-result"><div class="past-result-date">{{ result.utc_date[:10] }}</div><div class="past-result-score">{{ short_team_name(result.home_team) }} <strong>{{ result.home_score }}–{{ result.away_score }}</strong> {{ short_team_name(result.away_team) }}</div></div>{% endfor %}</div>
+{% else %}
+<p class="muted" style="margin-bottom:0">No previous meeting is stored yet.</p>
+{% endif %}
+</div>
+</details>
+{% endif %}
 </div>
 {% endfor %}
 </div>

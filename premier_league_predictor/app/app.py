@@ -12,6 +12,7 @@ import unicodedata
 import sqlite3
 import requests
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import csv
 import io
 import zlib
@@ -4297,7 +4298,7 @@ def _live_football_status(record, fallback="SCHEDULED"):
         return "IN_PLAY"
     if value in ("halftime", "half", "break", "interval", "extratimehalftime"):
         return "PAUSED"
-    if value in ("finished", "fulltime", "ft", "afterextratime", "penaltyshootout"):
+    if value in ("finished", "fulltime", "ft", "afterextratime", "penaltyshootout", "completed", "complete", "ended", "final"):
         return "FINISHED"
     return fallback
 
@@ -6612,8 +6613,8 @@ def champions_league():
            ORDER BY utc_date""",
         (SEASON, selected_matchday),
     ).fetchall()
-    conn.close()
     fixtures = [dict(row) for row in fixtures]
+    show_champions_h2h = request.args.get("h2h") == "1"
     for fixture in fixtures:
         if (
             fixture["competition"] == "champions_league"
@@ -6627,8 +6628,12 @@ def champions_league():
         fixture["red_cards"] = fixture_red_cards(
             fixture.get("incidents_json"), fixture["home_team"], fixture["away_team"],
         )
+        if show_champions_h2h:
+            fixture["h2h"] = match_stats_for_fixture(conn, fixture)
+    conn.close()
     return render_template(
         "side_events.html", fixtures=fixtures,
+        show_champions_h2h=show_champions_h2h,
         has_live_fixtures=any(
             fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
             for fixture in fixtures
@@ -8148,7 +8153,7 @@ def predictions(matchday):
         (SEASON, matchday),
     ).fetchone()[0] == 0
 
-    fixtures = conn.execute(
+    fixtures = list(conn.execute(
         """
         SELECT
             f.*,
@@ -8162,19 +8167,34 @@ def predictions(matchday):
          AND p.player_id = ?
         WHERE f.season = ?
           AND f.matchday = ?
-          AND (
-              f.competition = 'premier_league'
-              OR (f.competition = 'champions_league' AND ?)
-          )
+          AND f.competition = 'premier_league'
         ORDER BY f.utc_date
         """,
         (
             session["player_id"],
             SEASON,
             matchday,
-            premier_league_complete,
         ),
-    ).fetchall()
+    ).fetchall())
+
+    # After the active Premier League round settles, add the next Champions
+    # League fixture block even though its provider matchday number differs.
+    # Keeping both sections in one form preserves each fixture's own lock time.
+    if premier_league_complete:
+        champions_matchday = champions_league_display_matchday(conn)
+        if champions_matchday is not None:
+            fixtures.extend(conn.execute(
+                """
+                SELECT f.*, p.home_score AS predicted_home, p.away_score AS predicted_away,
+                       p.points, COALESCE(p.dp, 0) AS predicted_dp
+                FROM fixtures f
+                LEFT JOIN predictions p ON p.fixture_id = f.id AND p.player_id = ?
+                WHERE f.season = ? AND f.competition = 'champions_league'
+                  AND f.matchday = ?
+                ORDER BY f.utc_date
+                """,
+                (session["player_id"], SEASON, champions_matchday),
+            ).fetchall())
 
     if not fixtures:
         conn.close()
@@ -8503,7 +8523,16 @@ def predictions(matchday):
             f"/predict/{matchday}"
         )
 
-    show_match_stats = request.args.get("history") != "1"
+    # Match history is useful but expensive: load it only when explicitly asked.
+    # Completed gameweeks remain a fast, read-only history view.
+    show_match_stats = (
+        request.args.get("history") == "1"
+        and any(
+            fixture["competition"] == "premier_league"
+            and fixture["status"] not in ("FINISHED", "CANCELLED")
+            for fixture in fixtures
+        )
+    )
     fixture_stats = (
         build_fixture_stats(conn, fixtures)
         if show_match_stats
@@ -10288,20 +10317,40 @@ def live_football_api_test():
     provider_matches = _live_football_test_matches_for_premier_league(
         provider_matches, match_date
     )
+    detail_results = {}
+    if include_details:
+        # Event requests are optional and capped so a manual check remains
+        # responsive without creating an uncontrolled burst of provider calls.
+        with ThreadPoolExecutor(max_workers=min(3, len(provider_matches) or 1)) as executor:
+            futures = {
+                executor.submit(
+                    get_live_football_match_details,
+                    get_setting("live_football_api_key"), provider_id,
+                ): provider_id
+                for match in provider_matches
+                if (provider_id := _live_football_match_id(match)) is not None
+            }
+            for future in as_completed(futures):
+                provider_id = futures[future]
+                try:
+                    detail_results[provider_id] = future.result()
+                except LiveFootballAPIError as exc:
+                    detail_results[provider_id] = exc
     matches = []
     for match in provider_matches:
         detail_error = ""
         provider_match = match
         provider_id = _live_football_match_id(match)
-        if include_details and provider_id is not None:
-            try:
-                details = get_live_football_match_details(
-                    get_setting("live_football_api_key"), provider_id
-                )
-                if isinstance(details, dict):
-                    provider_match = {**match, **details}
-            except LiveFootballAPIError as exc:
-                detail_error = str(exc)
+        details = detail_results.get(provider_id)
+        if isinstance(details, LiveFootballAPIError):
+            detail_error = str(details)
+        elif isinstance(details, dict):
+            detail_match = details.get("match")
+            if not isinstance(detail_match, dict):
+                detail_match = details
+            provider_match = {**match, **detail_match}
+            if "events" in details:
+                provider_match["events"] = details["events"]
         home_score, away_score = _live_football_scores(provider_match)
         minute, injury_time = _live_football_minute(provider_match)
         status = _live_football_status(provider_match, "SCHEDULED")

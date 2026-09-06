@@ -10,6 +10,7 @@
 
 <div class="nav">
 <a href="/dashboard">← Dashboard</a>
+{% if show_match_stats %}<a href="/predict/{{ matchday }}">Hide match history</a>{% else %}<a href="/predict/{{ matchday }}?history=1">View match history</a>{% endif %}
 </div>
 
 <form method="POST">
@@ -18,9 +19,7 @@
 {% for fixture in fixtures %}
 {% if fixture.competition != current_competition.value %}
   {% set current_competition.value = fixture.competition %}
-  {% if fixture.competition == 'champions_league' %}
-  <div class="card muted" style="margin-top:18px">🏆 Champions League predictions are separate from Premier League predictions.</div>
-  {% endif %}
+  <div class="card muted" style="margin-top:18px">{% if fixture.competition == 'champions_league' %}🏆 Champions League predictions are separate from Premier League predictions.{% else %}⚽ Premier League predictions{% endif %}</div>
 {% endif %}
 {% set exact_score = fixture.predicted_home is not none
     and fixture.predicted_away is not none

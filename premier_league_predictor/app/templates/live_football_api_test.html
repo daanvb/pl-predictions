@@ -16,7 +16,7 @@
 <div class="card">
 <p class="muted">Read-only Premier League provider check. It does not change any fixtures.</p>
 {% if not include_details %}<p class="small">Scores, time and status are shown below. “Load scorer &amp; card events” makes one extra request per English Premier League match.</p>{% endif %}
-{% if include_details %}<p class="small">Detailed check loaded: final/current score and returned goal/card events.</p>{% endif %}
+{% if include_details %}<p class="small">Detailed check loaded: final/current score and returned goal/card events. Event checks run three at a time.</p>{% endif %}
 {% if auto_refresh %}<p class="small">● Auto-refreshing every 60 seconds while a Premier League match is live, or in the five minutes before kick-off.</p>{% endif %}
 </div>
 
@@ -31,13 +31,13 @@
     </div>
     <div class="fixture-submeta">{{ match.kickoff_label }}</div>
     <div class="fixture-card-meta">
-      <div class="fixture-status"><span class="badge{% if match.status in ('IN_PLAY', 'PAUSED') %} live{% endif %}">{{ match.status_label }}</span></div>
+      <div class="fixture-status"><span class="badge{% if match.status in ('IN_PLAY', 'PAUSED') %} live{% elif match.status == 'SCHEDULED' %} open{% endif %}">{{ match.status_label }}</span></div>
     </div>
   </div>
   {% if match.goals or match.cards %}
-  <div class="small" style="margin-top:8px">
-    {% for goal in match.goals %}<div>⚽ {% if goal.penalty %}Penalty · {% endif %}{{ goal.player }} {{ goal.minute }}{% if goal.side %} · {{ goal.side }}{% endif %}</div>{% endfor %}
-    {% for card in match.cards %}<div>🟥 {{ card.player }} {{ card.minute }}{% if card.side %} · {{ card.side }}{% endif %}</div>{% endfor %}
+  <div class="small" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+    {% for goal in match.goals %}<div style="display:grid;grid-template-columns:1.25em minmax(0,1fr);gap:4px"><span aria-hidden="true">⚽</span><span>{{ goal.player }} {{ goal.minute }}{% if goal.penalty %} (Pen){% endif %}{% if goal.side %} · {{ goal.side }}{% endif %}</span></div>{% endfor %}
+    {% for card in match.cards %}<div style="display:grid;grid-template-columns:1.25em minmax(0,1fr);gap:4px"><span aria-hidden="true">🟥</span><span>{{ card.player }} {{ card.minute }}{% if card.side %} · {{ card.side }}{% endif %}</span></div>{% endfor %}
   </div>
   {% endif %}
   {% if match.detail_error %}<p class="small" style="color:#fca5a5">Event detail unavailable: {{ match.detail_error }}</p>{% endif %}

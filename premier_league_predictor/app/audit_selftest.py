@@ -744,6 +744,39 @@ finally:
 assert response.status_code == 200
 assert b"FT" in response.data
 
+# Detailed endpoint payloads nest the authoritative status in `match`; the
+# diagnostic must use it so a finished score cannot be labelled Upcoming.
+original_test_matches = predictor.get_live_football_matches
+original_test_details = predictor.get_live_football_match_details
+predictor.get_live_football_matches = lambda _key, _date: [{
+    "id": "test-nested-detail", "kickoff": "19:00",
+    "home": {"name": "Home FC"}, "away": {"name": "Away FC"},
+}]
+predictor.get_live_football_match_details = lambda _key, _id: {
+    "match": {
+        "header": {
+            "home": {"name": "Home FC", "score": "2"},
+            "away": {"name": "Away FC", "score": "1"},
+            "status": {"state": "completed", "display": "FT"},
+        },
+    },
+    "events": [{
+        "type": "Goal", "time": "90+2'", "side": "home",
+        "detail": {"player": {"name": "Late Winner"}, "is_penalty": True},
+    }],
+}
+predictor._live_football_test_premier_league_pairs = lambda _date: {("home", "away")}
+try:
+    response = client.get("/admin/live-football-api/test?day=yesterday&details=1")
+finally:
+    predictor.get_live_football_matches = original_test_matches
+    predictor.get_live_football_match_details = original_test_details
+    predictor._live_football_test_premier_league_pairs = original_test_premier_league_pairs
+assert response.status_code == 200
+assert b"FT" in response.data
+assert b"(Pen)" in response.data
+assert b"Late Winner" in response.data
+
 original_badge_get = predictor.requests.get
 badge_calls = []
 
