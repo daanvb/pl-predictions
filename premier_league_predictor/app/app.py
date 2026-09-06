@@ -4610,7 +4610,7 @@ def import_champions_league_live_from_live_football_api():
     return updated
 
 
-def _live_football_team_history_h2h_rows(api_key, fixture):
+def _live_football_team_history_h2h_rows(api_key, fixture, provider_match=None):
     """Resolve clubs from provider search, then match their history by provider IDs."""
     def provider_team(name):
         teams = search_live_football_teams(api_key, name)
@@ -4631,8 +4631,14 @@ def _live_football_team_history_h2h_rows(api_key, fixture):
             None,
         )
 
-    home_team = provider_team(fixture["home_team"])
-    away_team = provider_team(fixture["away_team"])
+    if isinstance(provider_match, dict):
+        # A matched scheduled fixture already contains the provider's stable
+        # club IDs. Reuse them instead of searching a translated club name.
+        home_team = provider_match.get("home")
+        away_team = provider_match.get("away")
+    else:
+        home_team = provider_team(fixture["home_team"])
+        away_team = provider_team(fixture["away_team"])
     home_id = home_team.get("id") if isinstance(home_team, dict) else None
     away_id = away_team.get("id") if isinstance(away_team, dict) else None
     if not home_id or not away_id:
@@ -4665,6 +4671,8 @@ def _live_football_team_history_h2h_rows(api_key, fixture):
                 "home": {"name": app_home}, "away": {"name": app_away},
                 "score": f"{home_score}-{away_score}",
             })
+        if len(rows) >= 5:
+            break
     rows.sort(key=lambda row: str(row.get("date") or ""), reverse=True)
     return rows[:5]
 
@@ -4684,14 +4692,32 @@ def import_champions_league_h2h_from_live_football_api():
                AND matchday = ? ORDER BY utc_date""",
             (SEASON, matchday),
         ).fetchall()
-        matches_by_date = {}
+        lookup_fixtures = []
         for fixture in fixtures:
+            try:
+                previous = json.loads(
+                    get_setting(f"champions_league_h2h_outcome_{fixture['id']}") or "{}"
+                )
+            except (TypeError, ValueError):
+                previous = {}
+            # Completed H2H history cannot change. Reuse the result on later
+            # refreshes rather than charging the same provider calls again.
+            if previous.get("outcome") == "stored" or (
+                previous.get("outcome") == "no_provider_history"
+                and previous.get("source") == "team_history"
+            ):
+                outcomes[str(fixture["id"])] = previous
+                continue
+            lookup_fixtures.append(fixture)
+
+        matches_by_date = {}
+        for fixture in lookup_fixtures:
             match_date = parse_utc(fixture["utc_date"]).date().isoformat()
             if match_date not in matches_by_date:
                 matches_by_date[match_date] = get_live_football_matches(api_key, match_date)
         candidates = []
         unmapped_fixtures = []
-        for fixture in fixtures:
+        for fixture in lookup_fixtures:
             match_date = parse_utc(fixture["utc_date"]).date().isoformat()
             provider_match = _live_football_match_for_fixture(
                 conn, fixture, matches_by_date[match_date]
@@ -4704,16 +4730,17 @@ def import_champions_league_h2h_from_live_football_api():
                 outcomes[str(fixture["id"])] = {"outcome": "missing_provider_id"}
                 continue
             matched += 1
-            candidates.append((fixture, provider_id))
+            candidates.append((fixture, provider_id, provider_match))
 
         # The endpoint costs one credit per fixture. Run a small bounded batch
         # so a full round remains responsive without bursting the provider.
         payloads = {}
         fallback_fixtures = []
+        fallback_provider_matches = {}
         with ThreadPoolExecutor(max_workers=min(3, len(candidates) or 1)) as executor:
             futures = {
                 executor.submit(get_live_football_head_to_head, api_key, provider_id): fixture
-                for fixture, provider_id in candidates
+                for fixture, provider_id, _provider_match in candidates
             }
             for future in as_completed(futures):
                 fixture = futures[future]
@@ -4724,7 +4751,7 @@ def import_champions_league_h2h_from_live_football_api():
                         "outcome": "provider_error", "detail": str(exc),
                     }
 
-        for fixture, _provider_id in candidates:
+        for fixture, _provider_id, provider_match in candidates:
             payload = payloads.get(fixture["id"])
             if not isinstance(payload, dict):
                 continue
@@ -4734,6 +4761,7 @@ def import_champions_league_h2h_from_live_football_api():
                 # response. Its clubs' completed-match history remains the
                 # fallback source for the five H2H records we display.
                 fallback_fixtures.append(fixture)
+                fallback_provider_matches[fixture["id"]] = provider_match
                 continue
             stored = rejected = 0
             for index, row in enumerate(rows):
@@ -4773,14 +4801,37 @@ def import_champions_league_h2h_from_live_football_api():
 
         # Upcoming CL fixtures are not always published in the provider's
         # day list. Recover their H2H from the club's verified past results.
-        for fixture in unmapped_fixtures + fallback_fixtures:
-            try:
-                rows = _live_football_team_history_h2h_rows(api_key, fixture)
-            except LiveFootballAPIError as exc:
-                outcomes[str(fixture["id"])] = {"outcome": "provider_error", "detail": str(exc)}
+        # Keep this bounded like the direct H2H requests: it cuts a whole
+        # matchday's wait substantially without overloading the provider.
+        fallback_targets = unmapped_fixtures + fallback_fixtures
+        fallback_rows = {}
+        with ThreadPoolExecutor(max_workers=min(3, len(fallback_targets) or 1)) as executor:
+            futures = {
+                executor.submit(
+                    _live_football_team_history_h2h_rows,
+                    api_key,
+                    fixture,
+                    fallback_provider_matches.get(fixture["id"]),
+                ): fixture
+                for fixture in fallback_targets
+            }
+            for future in as_completed(futures):
+                fixture = futures[future]
+                try:
+                    fallback_rows[fixture["id"]] = future.result()
+                except LiveFootballAPIError as exc:
+                    outcomes[str(fixture["id"])] = {
+                        "outcome": "provider_error", "detail": str(exc),
+                    }
+
+        for fixture in fallback_targets:
+            rows = fallback_rows.get(fixture["id"])
+            if rows is None:
                 continue
             if not rows:
-                outcomes[str(fixture["id"])] = {"outcome": "no_provider_history"}
+                outcomes[str(fixture["id"])] = {
+                    "outcome": "no_provider_history", "source": "team_history",
+                }
                 continue
             stored = rejected = 0
             for index, row in enumerate(rows):
