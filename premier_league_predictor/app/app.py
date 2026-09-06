@@ -65,6 +65,8 @@ from live_football_api import (
     get_head_to_head as get_live_football_head_to_head,
     get_live_match_details as get_live_football_match_details,
     get_matches as get_live_football_matches,
+    get_team_matches as get_live_football_team_matches,
+    search_teams as search_live_football_teams,
     test_connection as test_live_football_connection,
 )
 from sportscore import (
@@ -3622,6 +3624,7 @@ def normalized_team_name(name):
     aliases = {
         "atletico": "atletico madrid",
         "atletico madrid": "atletico madrid",
+        "atl madrid": "atletico madrid",
         "atletico de madrid": "atletico madrid",
         "club atletico de madrid": "atletico madrid",
         "brighton hove albion": "brighton",
@@ -4575,6 +4578,62 @@ def import_champions_league_live_from_live_football_api():
     return updated
 
 
+def _live_football_team_history_h2h_rows(api_key, fixture):
+    """Resolve clubs from provider search, then match their history by provider IDs."""
+    def provider_team(name):
+        teams = search_live_football_teams(api_key, name)
+        target = canonical_team_name(name)
+        exact = next(
+            (team for team in teams
+             if canonical_team_name(team.get("name")) == target),
+            None,
+        )
+        if exact:
+            return exact
+        # Search results are ranked by the provider. If it uses an unfamiliar
+        # abbreviation, select the first senior team instead of inventing an alias.
+        return next(
+            (team for team in teams
+             if "u19" not in str(team.get("name") or "").casefold()
+             and "u21" not in str(team.get("name") or "").casefold()),
+            None,
+        )
+
+    home_team = provider_team(fixture["home_team"])
+    away_team = provider_team(fixture["away_team"])
+    home_id = home_team.get("id") if isinstance(home_team, dict) else None
+    away_id = away_team.get("id") if isinstance(away_team, dict) else None
+    if not home_id or not away_id:
+        return []
+    rows = []
+    # The provider exposes seasons separately. These three cover the previous
+    # three completed campaigns, enough to fill the five-result H2H display.
+    for season in (f"{SEASON - 1}/{SEASON}", f"{SEASON - 2}/{SEASON - 1}", f"{SEASON - 3}/{SEASON - 2}"):
+        for match in get_live_football_team_matches(api_key, home_id, season):
+            home = match.get("home") if isinstance(match, dict) else {}
+            away = match.get("away") if isinstance(match, dict) else {}
+            provider_pair = (
+                str(home.get("id") or "") if isinstance(home, dict) else "",
+                str(away.get("id") or "") if isinstance(away, dict) else "",
+            )
+            if provider_pair not in ((str(home_id), str(away_id)), (str(away_id), str(home_id))):
+                continue
+            home_score = home.get("score") if isinstance(home, dict) else None
+            away_score = away.get("score") if isinstance(away, dict) else None
+            if home_score is None or away_score is None:
+                continue
+            # Persist the app's own club names, leaving H2H display and stats
+            # independent from a provider abbreviation such as "Atl. Madrid".
+            app_home = fixture["home_team"] if provider_pair[0] == str(home_id) else fixture["away_team"]
+            app_away = fixture["away_team"] if provider_pair[1] == str(away_id) else fixture["home_team"]
+            rows.append({
+                "date": match.get("date"),
+                "home": {"name": app_home}, "away": {"name": app_away},
+                "score": f"{home_score}-{away_score}",
+            })
+    return rows
+
+
 def import_champions_league_h2h_from_live_football_api():
     """Store every provider H2H record and keep a per-fixture import outcome."""
     api_key = get_setting("live_football_api_key")
@@ -4596,13 +4655,14 @@ def import_champions_league_h2h_from_live_football_api():
             if match_date not in matches_by_date:
                 matches_by_date[match_date] = get_live_football_matches(api_key, match_date)
         candidates = []
+        unmapped_fixtures = []
         for fixture in fixtures:
             match_date = parse_utc(fixture["utc_date"]).date().isoformat()
             provider_match = _live_football_match_for_fixture(
                 conn, fixture, matches_by_date[match_date]
             )
             if not provider_match:
-                outcomes[str(fixture["id"])] = {"outcome": "not_mapped"}
+                unmapped_fixtures.append(fixture)
                 continue
             provider_id = _live_football_match_id(provider_match)
             if provider_id is None:
@@ -4670,6 +4730,54 @@ def import_champions_league_h2h_from_live_football_api():
             outcomes[str(fixture["id"])] = {
                 "outcome": "stored" if stored else "invalid_provider_history",
                 "returned": len(rows), "stored": stored, "rejected": rejected,
+            }
+
+        # Upcoming CL fixtures are not always published in the provider's
+        # day list. Recover their H2H from the club's verified past results.
+        for fixture in unmapped_fixtures:
+            try:
+                rows = _live_football_team_history_h2h_rows(api_key, fixture)
+            except LiveFootballAPIError as exc:
+                outcomes[str(fixture["id"])] = {"outcome": "provider_error", "detail": str(exc)}
+                continue
+            if not rows:
+                outcomes[str(fixture["id"])] = {"outcome": "no_provider_history"}
+                continue
+            stored = rejected = 0
+            for index, row in enumerate(rows):
+                home = row.get("home") if isinstance(row, dict) else {}
+                away = row.get("away") if isinstance(row, dict) else {}
+                home_name = home.get("name") if isinstance(home, dict) else None
+                away_name = away.get("name") if isinstance(away, dict) else None
+                score = str(row.get("score") or "") if isinstance(row, dict) else ""
+                scores = re.match(r"^\s*(\d+)\s*[-–]\s*(\d+)\s*$", score)
+                played_at = parse_utc(str(row.get("date") or "").replace(" ", "T")) if isinstance(row, dict) else None
+                if not (home_name and away_name and scores and played_at):
+                    rejected += 1
+                    continue
+                season = played_at.year if played_at.month >= 7 else played_at.year - 1
+                identity = f"live-football-api-team-h2h|{fixture['id']}|{played_at.isoformat()}|{home_name}|{away_name}|{index}"
+                history_id = -(zlib.crc32(identity.encode("utf-8")) + 1)
+                conn.execute(
+                    """INSERT INTO historical_fixtures(
+                           id, season, matchday, utc_date, home_team, away_team,
+                           home_score, away_score, status, competition
+                       ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'FINISHED', ?)
+                       ON CONFLICT(id) DO UPDATE SET
+                           season = excluded.season, utc_date = excluded.utc_date,
+                           home_team = excluded.home_team, away_team = excluded.away_team,
+                           home_score = excluded.home_score, away_score = excluded.away_score,
+                           status = 'FINISHED', competition = excluded.competition""",
+                    (history_id, season, played_at.isoformat(), home_name, away_name,
+                     int(scores.group(1)), int(scores.group(2)),
+                     "Live Football API Champions League team history"),
+                )
+                stored += 1
+                imported += 1
+            outcomes[str(fixture["id"])] = {
+                "outcome": "stored" if stored else "invalid_provider_history",
+                "returned": len(rows), "stored": stored, "rejected": rejected,
+                "source": "team_history",
             }
         conn.commit()
     finally:

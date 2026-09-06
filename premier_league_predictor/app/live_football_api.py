@@ -75,6 +75,20 @@ def get_live_match_details(api_key, match_id):
     return _get(api_key, "/live_match_details", {"match_id": str(match_id)})
 
 
+def search_teams(api_key, query):
+    """Return provider team records matching a club name."""
+    data = _get(api_key, "/team_search", {"q": str(query)})
+    return data.get("teams") or [] if isinstance(data, dict) else []
+
+
+def get_team_matches(api_key, team_id, season):
+    """Return one club's completed and scheduled matches for a provider season."""
+    data = _get(api_key, "/team_matches", {
+        "team_id": str(team_id), "season": str(season),
+    })
+    return data.get("matches") or [] if isinstance(data, dict) else []
+
+
 def get_head_to_head(api_key, match_id):
     """Return the provider's historical meetings for a fixture (one credit)."""
     return _get(api_key, "/h2h", {"match_id": str(match_id)})
