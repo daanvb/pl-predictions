@@ -8523,16 +8523,9 @@ def predictions(matchday):
             f"/predict/{matchday}"
         )
 
-    # Match history is useful but expensive: load it only when explicitly asked.
-    # Completed gameweeks remain a fast, read-only history view.
-    show_match_stats = (
-        request.args.get("history") == "1"
-        and any(
-            fixture["competition"] == "premier_league"
-            and fixture["status"] not in ("FINISHED", "CANCELLED")
-            for fixture in fixtures
-        )
-    )
+    # Match stats are part of every live prediction card. History keeps its
+    # existing lightweight, read-only view.
+    show_match_stats = request.args.get("history") != "1"
     fixture_stats = (
         build_fixture_stats(conn, fixtures)
         if show_match_stats
@@ -10359,6 +10352,13 @@ def live_football_api_test():
         kickoff_match = re.search(r"\b(\d{1,2}:\d{2})\b", str(kickoff or ""))
         kickoff_time = kickoff_match.group(1) if kickoff_match else "00:00"
         goals, cards = _live_football_test_events(provider_match)
+        kickoff_at = parse_utc(f"{match_date.isoformat()}T{kickoff_time}:00:00+00:00")
+        data_mismatch = (
+            status == "SCHEDULED"
+            and kickoff_at is not None
+            and kickoff_at > now_utc()
+            and (home_score is not None or away_score is not None or goals or cards)
+        )
         matches.append({
             "id": provider_id,
             "home_team": _live_football_team_name(provider_match, "home") or "Unknown home team",
@@ -10380,6 +10380,7 @@ def live_football_api_test():
             "goals": goals,
             "cards": cards,
             "detail_error": detail_error,
+            "data_mismatch": data_mismatch,
         })
     set_setting("last_live_football_api_test", now_utc().isoformat())
     return render_template(

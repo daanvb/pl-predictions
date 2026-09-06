@@ -34,6 +34,7 @@
       <div class="fixture-status"><span class="badge{% if match.status in ('IN_PLAY', 'PAUSED') %} live{% elif match.status == 'SCHEDULED' %} open{% endif %}">{{ match.status_label }}</span></div>
     </div>
   </div>
+  {% if match.data_mismatch %}<p class="small" style="color:#fca5a5;margin:10px 0 0">⚠ Provider inconsistency: it reports Upcoming before kick-off alongside score or event data. These details are not being treated as a valid live result.</p>{% endif %}
   {% if match.goals or match.cards %}
   <div class="small" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
     {% for goal in match.goals %}<div style="display:grid;grid-template-columns:1.25em minmax(0,1fr);gap:4px"><span aria-hidden="true">⚽</span><span>{{ goal.player }} {{ goal.minute }}{% if goal.penalty %} (Pen){% endif %}{% if goal.side %} · {{ goal.side }}{% endif %}</span></div>{% endfor %}
