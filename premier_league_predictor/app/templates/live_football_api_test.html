@@ -30,6 +30,18 @@
       <div class="fixture-centre live-score live-score-grid"><span class="live-score-home">{{ match.home_score if match.home_score is not none else '–' }}</span><span class="live-score-dash">{% if match.home_score is none and match.away_score is none %}v{% else %}–{% endif %}</span><span class="live-score-away">{{ match.away_score if match.away_score is not none else '–' }}</span></div>
       <div class="fixture-away"><span class="fixture-team-cluster fixture-team-cluster-away"><strong>{{ match.away_team }}</strong><span class="team-badge-slot">{% if match.away_logo %}<img class="team-badge" src="{{ team_badge_url(match.away_logo) }}" alt="" loading="lazy">{% endif %}</span></span></div>
     </div>
+    {% if match.home_scorers or match.away_scorers or match.cards %}
+    <div class="fixture-scorers" aria-label="Goalscorers">
+      <div class="fixture-scorers-home">
+        {% for scorer in match.home_scorers %}<span><span aria-hidden="true">⚽</span> {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}
+        {% for card in match.cards if card.side == 'home' %}<span class="fixture-red-card">🟥 {{ card.player }} {{ card.minute }}</span>{% endfor %}
+      </div>
+      <div class="fixture-scorers-away">
+        {% for scorer in match.away_scorers %}<span><span aria-hidden="true">⚽</span> {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}
+        {% for card in match.cards if card.side == 'away' %}<span class="fixture-red-card">🟥 {{ card.player }} {{ card.minute }}</span>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
     <div class="fixture-submeta">{{ match.kickoff_label }}</div>
     <div class="fixture-card-meta">
       <div class="fixture-status"><span class="badge{% if match.status in ('IN_PLAY', 'PAUSED') %} live{% elif match.status == 'SCHEDULED' %} open{% endif %}">{{ match.status_label }}</span></div>
@@ -37,18 +49,6 @@
   </div>
   {% if match.data_mismatch %}<p class="small" style="color:#fca5a5;margin:10px 0 0">⚠ Provider inconsistency: it reports Upcoming before kick-off alongside score or event data. These details are not being treated as a valid live result.</p>{% endif %}
   <p class="small muted" style="margin:10px 0 0">Last provider change seen: {{ match.last_change_at }}</p>
-  {% if match.goals or match.cards %}
-  <div class="fixture-scorers" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
-    <div class="fixture-scorers-home">
-      {% for goal in match.goals if goal.side == 'home' %}<span><span aria-hidden="true">⚽</span> {{ goal.player }} {{ goal.minute }}{% if goal.penalty %} (Pen){% endif %}</span>{% endfor %}
-      {% for card in match.cards if card.side == 'home' %}<span class="fixture-red-card">🟥 {{ card.player }} {{ card.minute }}</span>{% endfor %}
-    </div>
-    <div class="fixture-scorers-away">
-      {% for goal in match.goals if goal.side == 'away' %}<span><span aria-hidden="true">⚽</span> {{ goal.player }} {{ goal.minute }}{% if goal.penalty %} (Pen){% endif %}</span>{% endfor %}
-      {% for card in match.cards if card.side == 'away' %}<span class="fixture-red-card">🟥 {{ card.player }} {{ card.minute }}</span>{% endfor %}
-    </div>
-  </div>
-  {% endif %}
   {% if match.detail_error %}<p class="small" style="color:#fca5a5">Event detail unavailable: {{ match.detail_error }}</p>{% endif %}
 </div>
 {% endfor %}

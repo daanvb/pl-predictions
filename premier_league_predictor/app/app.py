@@ -10298,6 +10298,20 @@ def _live_football_test_events(record):
     return goals, cards
 
 
+def _live_football_test_scorers(goals, side):
+    """Combine a player's goals so the score card names them once."""
+    grouped = {}
+    for goal in goals:
+        if str(goal.get("side") or "").casefold() != side:
+            continue
+        name = goal.get("player") or "Unknown player"
+        minute = goal.get("minute") or ""
+        if goal.get("penalty"):
+            minute = f"{minute} (Pen)".strip()
+        grouped.setdefault(name, []).append(minute)
+    return [{"name": name, "goals": minutes} for name, minutes in grouped.items()]
+
+
 def _live_football_test_status_label(status, minute, injury_time, match_phase, match_date, kickoff):
     """Use the production label formatter, with safe list-response kickoff input."""
     if status == "SCHEDULED":
@@ -10525,6 +10539,8 @@ def live_football_api_test():
             "injury_time": injury_time,
             "event_count": len(_live_football_events(provider_match)),
             "goals": goals,
+            "home_scorers": _live_football_test_scorers(goals, "home"),
+            "away_scorers": _live_football_test_scorers(goals, "away"),
             "cards": cards,
             "detail_error": detail_error,
             "data_mismatch": data_mismatch,
