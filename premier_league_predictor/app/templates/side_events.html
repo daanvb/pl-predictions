@@ -28,14 +28,7 @@
 <div style="margin-top:10px">
 {% for fixture in fixtures %}
 <div class="fixture fixture-set champions-fixture-card{% if fixture.status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
-<div class="fixture-row-grid"><div class="fixture-match">
-<div class="fixture-home"><span class="fixture-team-cluster fixture-team-cluster-home"><span class="team-badge-slot">{% if fixture.home_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.home_logo) }}" alt="" loading="lazy">{% endif %}</span><strong>{{ short_team_name(fixture.home_team) }}</strong></span></div>
-<div class="fixture-centre">{% if fixture.status in ('LIVE','IN_PLAY','PAUSED','FINISHED') and fixture.home_score is not none and fixture.away_score is not none %}<span class="fixture-scoreline"><span>{{ fixture.home_score }}</span><span class="fixture-score-dash">–</span><span>{{ fixture.away_score }}</span></span>{% else %}v{% endif %}</div>
-<div class="fixture-away"><span class="fixture-team-cluster fixture-team-cluster-away"><strong>{{ short_team_name(fixture.away_team) }}</strong><span class="team-badge-slot">{% if fixture.away_logo %}<img class="team-badge" src="{{ team_badge_url(fixture.away_logo) }}" alt="" loading="lazy">{% endif %}</span></span></div>
-</div></div>
-{% if fixture.status not in ('LIVE','IN_PLAY','PAUSED','FINISHED') %}<div class="fixture-submeta">{{ local_datetime(fixture.utc_date) }}</div>{% endif %}
-{% if fixture.scorers.home or fixture.scorers.away or fixture.red_cards.home or fixture.red_cards.away %}<div class="fixture-scorers" aria-label="Goalscorers"><div class="fixture-scorers-home">{% for scorer in fixture.scorers.home %}<span>⚽ {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in fixture.red_cards.home %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div><div class="fixture-scorers-away">{% for scorer in fixture.scorers.away %}<span>⚽ {{ scorer.name }}{% if scorer.goals %} {{ scorer.goals|join(', ') }}{% endif %}</span>{% endfor %}{% for card in fixture.red_cards.away %}<span class="fixture-red-card">🟥 {{ card.name }}{% if card.minute %} {{ card.minute }}{% endif %}</span>{% endfor %}</div></div>{% endif %}
-{% include "_fixture_card_meta.html" %}
+{% include "_fixture_card_core.html" %}
 </div>
 {% endfor %}
 </div>

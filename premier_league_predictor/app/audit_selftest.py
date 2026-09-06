@@ -1830,6 +1830,13 @@ with open(
     fixture_prediction_template = handle.read()
 
 with open(
+    os.path.join(templates_dir, "_fixture_card_core.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    fixture_card_core_template = handle.read()
+
+with open(
     os.path.join(templates_dir, "_fixture_card_meta.html"),
     "r",
     encoding="utf-8",
@@ -1868,7 +1875,8 @@ assert "mobileTimelineWidth" in gameweek_template
 assert "stage.scrollLeft = Math.max(0, stage.scrollWidth - stage.clientWidth)" in gameweek_template
 assert 'snapshot.cause_label || snapshot.milestone || "Position change"' in gameweek_template
 assert '_fixture_prediction_rows.html' in gameweek_template
-assert '_fixture_prediction_rows.html' in dashboard_template
+assert '_fixture_card_core.html' in dashboard_template
+assert '_fixture_prediction_rows.html' in fixture_card_core_template
 assert 'class="pick-grid{% if exact_score %} exact-score-row{% endif %}"' in fixture_prediction_template
 assert "reveal_map.get(fixture.id)" in fixture_prediction_template
 assert "stay hidden until this fixture kicks off" in fixture_prediction_template
@@ -1884,12 +1892,12 @@ assert "display_player_name(player.name)" in dashboard_live_summary_template
 assert '{% if gameweek_predictions_open %}' in dashboard_template
 assert dashboard_template.index('_dashboard_live_summary.html') < dashboard_template.index('{% for fixture in current_fixtures %}')
 assert 'href="#live-gameweek"' not in dashboard_template
-assert '_fixture_card_meta.html' in dashboard_template
+assert '_fixture_card_meta.html' in fixture_card_core_template
 assert '_fixture_card_meta.html' in gameweek_template
 assert "position_chart=dashboard_position_chart" in inspect.getsource(predictor.dashboard)
 assert "{% if live_gameweek_visible and position_chart.snapshots|length > 0 %}" in gameweek_template
 assert "team-badge-slot" in gameweek_template
-assert "team-badge-slot" in dashboard_template
+assert "team-badge-slot" in fixture_card_core_template
 api_import_source = inspect.getsource(predictor.import_matches_from_api)
 assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_source
 assert "import_champions_league_matches" in inspect.getsource(predictor)
@@ -2042,8 +2050,8 @@ assert 'height:32px;min-height:32px;max-height:32px;inline-size:32px;block-size:
 assert 'background: #f1f5f9;' in base_template
 assert dashboard_template.index('{% include "_news_ticker.html" %}') < dashboard_template.index('{% include "_dashboard_live_summary.html" %}')
 assert dashboard_template.index('{% include "_dashboard_live_summary.html" %}') < dashboard_template.index('Current Round')
-assert 'fixture.home_logo' in dashboard_template
-assert 'fixture.away_logo' in dashboard_template
+assert 'fixture.home_logo' in fixture_card_core_template
+assert 'fixture.away_logo' in fixture_card_core_template
 
 # Broadcaster logos are deliberately omitted from Predictions.
 assert 'broadcaster_logo_url' not in predictions_template
