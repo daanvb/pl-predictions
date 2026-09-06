@@ -2467,6 +2467,24 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
   margin: 2px 0 0;
   flex: 0 0 auto;
 }
+@media (max-width: 640px) {
+  /* Keep the live table dense: player names get the middle column and totals
+     stay visibly larger than the settled season table. */
+  .live-table-card .leader-row {
+    grid-template-columns: 38px 22px minmax(0, 1fr) 72px;
+    column-gap: 2px;
+  }
+  .live-table-card .live-player-name {
+    white-space: nowrap;
+    font-size: 18px;
+  }
+  .live-table-card .leader-points {
+    font-size: 40px;
+  }
+  .league-table-row > .leader-points.league-stat {
+    font-size: 18px;
+  }
+}
 </style>
 </head>
 <body>

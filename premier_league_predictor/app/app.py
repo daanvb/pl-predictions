@@ -10157,6 +10157,35 @@ def _is_live_football_premier_league_match(match):
     return league_id == "lfa-premier-league" or league_name == "premier league"
 
 
+def _live_football_test_premier_league_pairs(match_date):
+    """Use Preddies' own fixture list: provider league labels are not reliable."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT home_team, away_team FROM fixtures
+               WHERE season = ? AND competition = 'premier_league'
+                 AND substr(utc_date, 1, 10) = ?""",
+            (SEASON, match_date.isoformat()),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {
+        (normalized_team_name(row["home_team"]), normalized_team_name(row["away_team"]))
+        for row in rows
+    }
+
+
+def _live_football_test_matches_for_premier_league(provider_matches, match_date):
+    expected_pairs = _live_football_test_premier_league_pairs(match_date)
+    return [
+        match for match in provider_matches
+        if (
+            normalized_team_name(_live_football_team_name(match, "home")),
+            normalized_team_name(_live_football_team_name(match, "away")),
+        ) in expected_pairs
+    ]
+
+
 def _live_football_test_events(record):
     goals, cards = [], []
     for event in _live_football_events(record):
@@ -10207,10 +10236,9 @@ def live_football_api_test():
         flash(str(exc), "error")
         return redirect("/admin")
 
-    provider_matches = [
-        match for match in provider_matches
-        if _is_live_football_premier_league_match(match)
-    ]
+    provider_matches = _live_football_test_matches_for_premier_league(
+        provider_matches, match_date
+    )
     matches = []
     for match in provider_matches:
         detail_error = ""

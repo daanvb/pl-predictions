@@ -698,6 +698,7 @@ with client.session_transaction() as sess:
 # The isolated provider diagnostic must render from the documented list shape,
 # filter non-Premier-League matches, and reuse the normal LIVE added-time label.
 original_test_matches = predictor.get_live_football_matches
+original_test_premier_league_pairs = predictor._live_football_test_premier_league_pairs
 predictor.get_live_football_matches = lambda _key, _date: [
     {
         "id": "test-premier-league", "league": {
@@ -713,14 +714,35 @@ predictor.get_live_football_matches = lambda _key, _date: [
         "away": {"name": "Other Away", "score": 0},
     },
 ]
+predictor._live_football_test_premier_league_pairs = lambda _date: {
+    ("home", "away"),
+}
 try:
     response = client.get("/admin/live-football-api/test?day=today")
 finally:
     predictor.get_live_football_matches = original_test_matches
+    predictor._live_football_test_premier_league_pairs = original_test_premier_league_pairs
 assert response.status_code == 200
 assert b"LIVE 45+2&#39;" in response.data
 assert b"Home FC" in response.data
 assert b"Other Home" not in response.data
+
+# Yesterday follows the same safe, filtered rendering path.
+original_test_matches = predictor.get_live_football_matches
+predictor.get_live_football_matches = lambda _key, _date: [{
+    "id": "test-history", "league": {"id": "unreliable", "name": "Premier League"},
+    "kickoff": "19:00", "status": {"state": "finished", "display": "FT"},
+    "home": {"name": "Home FC", "score": 2},
+    "away": {"name": "Away FC", "score": 1},
+}]
+predictor._live_football_test_premier_league_pairs = lambda _date: {("home", "away")}
+try:
+    response = client.get("/admin/live-football-api/test?day=yesterday")
+finally:
+    predictor.get_live_football_matches = original_test_matches
+    predictor._live_football_test_premier_league_pairs = original_test_premier_league_pairs
+assert response.status_code == 200
+assert b"FT" in response.data
 
 original_badge_get = predictor.requests.get
 badge_calls = []
