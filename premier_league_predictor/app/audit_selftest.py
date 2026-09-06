@@ -2034,6 +2034,8 @@ assert "same prediction-league format as the Premier League" in champions_league
 assert "begin with the Champions League knockout stage" in champions_league_template
 assert "one Double Points fixture" in champions_league_template
 assert "wins the competition and the £20 prize" in champions_league_template
+assert "champions-matchday-select" not in champions_league_template
+assert "Refresh current fixtures" in champions_league_template
 assert dashboard_template.index('href="/leaderboard"') < dashboard_template.index('href="/champions-league"') < dashboard_template.index('href="/head-to-head"') < dashboard_template.index('href="/stats"')
 assert 'id="dashboard-menu-toggle"' in dashboard_template
 assert 'id="dashboard-menu"' in dashboard_template
@@ -2274,6 +2276,11 @@ assert predictor._champions_league_tv_teams_match(
 assert predictor._champions_league_tv_teams_match(
     "Club Atlético de Madrid", "Atl. Madrid"
 )
+assert predictor.confirmed_champions_league_broadcaster({
+    "home_team": "Manchester United", "away_team": "Sabah",
+}) == "TNT Sports 1"
+assert "champions_league_display_matchday" in inspect.getsource(predictor.champions_league)
+assert "live-football-api/today" in inspect.getsource(predictor.test_live_football_api_today)
 
 class TeamPageTVResponse:
     def __init__(self, text):

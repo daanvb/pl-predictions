@@ -161,6 +161,13 @@ PRIME_VIDEO_LOGO = (
     "Amazon_Prime_Video_logo_%282022%29.svg"
 )
 
+# Exact UK assignments used only when the listing feed has not yet published a
+# matchable row.  Keep this deliberately small: the normal listing remains the
+# source for every other fixture.
+CHAMPIONS_LEAGUE_TV_OVERRIDES = {
+    ("man united", "sabah"): "TNT Sports 1",
+}
+
 app = Flask(__name__, template_folder="templates")
 app.config["MAX_CONTENT_LENGTH"] = 128 * 1024 * 1024
 
@@ -3237,6 +3244,30 @@ def import_champions_league_matches(matchday):
     return imported
 
 
+def champions_league_display_matchday(conn):
+    """Choose the live or next scheduled Champions League fixture block."""
+    rows = conn.execute(
+        """SELECT matchday, status, utc_date FROM fixtures
+           WHERE competition = 'champions_league' AND season = ?
+             AND matchday IS NOT NULL
+           ORDER BY utc_date""",
+        (SEASON,),
+    ).fetchall()
+    if not rows:
+        return 1
+    live = [row for row in rows if row["status"] in ("LIVE", "IN_PLAY", "PAUSED")]
+    if live:
+        return live[0]["matchday"]
+    current = now_utc()
+    upcoming = [
+        row for row in rows
+        if parse_utc(row["utc_date"]) and parse_utc(row["utc_date"]) >= current
+    ]
+    if upcoming:
+        return upcoming[0]["matchday"]
+    return rows[-1]["matchday"]
+
+
 def import_matches_from_api():
     token = get_setting(
         "football_api_token"
@@ -3605,6 +3636,14 @@ def _champions_league_tv_teams_match(first, second):
     return bool(first_words and second_words and first_words == second_words)
 
 
+def confirmed_champions_league_broadcaster(fixture):
+    """Return a narrowly scoped confirmed fallback broadcaster, if one exists."""
+    return CHAMPIONS_LEAGUE_TV_OVERRIDES.get((
+        normalized_team_name(fixture["home_team"]),
+        normalized_team_name(fixture["away_team"]),
+    ))
+
+
 def _confirmed_uk_tv_channel(channels):
     """Keep the specific UK channel rather than generic platform duplicates."""
     confirmed = [
@@ -3737,7 +3776,7 @@ def refresh_champions_league_tv_broadcasters(conn, matchday):
     listings = fetch_champions_league_uk_tv_listings(fixtures)
     updated = 0
     for fixture in fixtures:
-        broadcaster = listings.get(fixture["id"])
+        broadcaster = listings.get(fixture["id"]) or confirmed_champions_league_broadcaster(fixture)
         if broadcaster and broadcaster != fixture["broadcaster"]:
             conn.execute(
                 "UPDATE fixtures SET broadcaster = ? WHERE id = ?",
@@ -6471,25 +6510,7 @@ def champions_league():
     if not logged_in():
         return redirect("/")
     conn = get_db()
-    stored_matchdays = [
-        row["matchday"]
-        for row in conn.execute(
-            """SELECT DISTINCT matchday FROM fixtures
-               WHERE competition = 'champions_league' AND season = ?
-                 AND matchday IS NOT NULL
-               ORDER BY matchday""",
-            (SEASON,),
-        ).fetchall()
-    ]
-    selected_matchday = request.args.get(
-        "matchday", get_setting("champions_league_selected_matchday") or "1"
-    )
-    try:
-        selected_matchday = int(selected_matchday)
-    except (TypeError, ValueError):
-        selected_matchday = 1
-    selected_matchday = max(1, min(selected_matchday, 99))
-    available_matchdays = sorted(set(range(1, 9)) | set(stored_matchdays))
+    selected_matchday = champions_league_display_matchday(conn)
     fixtures = conn.execute(
         """SELECT * FROM fixtures
            WHERE competition = 'champions_league' AND season = ?
@@ -6509,8 +6530,6 @@ def champions_league():
         )
     return render_template(
         "side_events.html", fixtures=fixtures,
-        selected_matchday=selected_matchday,
-        available_matchdays=available_matchdays,
         has_live_fixtures=any(
             fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
             for fixture in fixtures
@@ -6526,14 +6545,11 @@ def import_champions_league_fixtures():
     if football_data_rate_limit_active():
         flash("football-data.org is temporarily rate limiting requests. Please try again shortly.", "error")
         return redirect("/champions-league")
+    conn = get_db()
     try:
-        matchday = int(request.form.get("matchday", "1"))
-    except (TypeError, ValueError):
-        flash("Choose a valid Champions League matchday.", "error")
-        return redirect("/champions-league")
-    if not 1 <= matchday <= 99:
-        flash("Choose a valid Champions League matchday.", "error")
-        return redirect("/champions-league")
+        matchday = champions_league_display_matchday(conn)
+    finally:
+        conn.close()
     try:
         imported = import_champions_league_matches(matchday)
         live_updated = import_champions_league_live_from_sportscore()
@@ -6545,7 +6561,7 @@ def import_champions_league_fixtures():
         if isinstance(exc, FootballAPIError):
             record_football_data_error(exc)
         flash(str(exc), "error")
-    return redirect(f"/champions-league?matchday={matchday}")
+    return redirect("/champions-league")
 
 
 @app.route("/head-to-head")
@@ -10020,6 +10036,41 @@ def test_live_football_api():
     except LiveFootballAPIError as exc:
         flash(str(exc), "error")
     return redirect("/admin/settings")
+
+
+@app.route("/admin/settings/live-football-api/today", methods=["POST"])
+def test_live_football_api_today():
+    """Read-only diagnostic for the provider's current day match list."""
+    if not is_admin():
+        return redirect("/")
+    try:
+        match_date = now_utc().date().isoformat()
+        provider_matches = get_live_football_matches(
+            get_setting("live_football_api_key"), match_date
+        )
+    except LiveFootballAPIError as exc:
+        flash(str(exc), "error")
+        return redirect("/admin/settings")
+
+    matches = []
+    for match in provider_matches:
+        home_score, away_score = _live_football_scores(match)
+        minute, injury_time = _live_football_minute(match)
+        matches.append({
+            "id": _live_football_match_id(match),
+            "home_team": _live_football_team_name(match, "home") or "Unknown home team",
+            "away_team": _live_football_team_name(match, "away") or "Unknown away team",
+            "home_score": home_score,
+            "away_score": away_score,
+            "status": _live_football_status(match, "SCHEDULED"),
+            "minute": minute,
+            "injury_time": injury_time,
+            "event_count": len(_live_football_events(match)),
+        })
+    set_setting("last_live_football_api_test", now_utc().isoformat())
+    return render_template(
+        "live_football_api_test.html", match_date=match_date, matches=matches,
+    )
 
 
 @app.route(

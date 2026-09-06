@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Live Football API test{% endblock %}
+{% block content %}
+<div class="hero">
+<h1>🧪 Today’s provider test</h1>
+<p>Live Football API · {{ match_date }}</p>
+</div>
+
+<div class="nav"><a href="/admin/settings">← API Settings</a></div>
+
+<div class="card">
+<p class="muted">This is read-only. It makes one request for today’s match list and does not change Premier League or Champions League fixtures.</p>
+<form method="POST" action="/admin/settings/live-football-api/today">
+<button class="primary">Refresh today’s test</button>
+</form>
+</div>
+
+{% if matches %}
+{% for match in matches %}
+<div class="fixture">
+  <div class="fixture-match">
+    <div class="fixture-home"><strong>{{ match.home_team }}</strong></div>
+    <div class="fixture-centre">{% if match.home_score is not none and match.away_score is not none %}{{ match.home_score }} – {{ match.away_score }}{% else %}v{% endif %}</div>
+    <div class="fixture-away"><strong>{{ match.away_team }}</strong></div>
+  </div>
+  <div class="fixture-card-meta">
+    <div class="fixture-status"><span class="badge{% if match.status in ('IN_PLAY', 'PAUSED') %} live{% endif %}">{{ match.status }}{% if match.minute is not none %} {{ match.minute }}{% if match.injury_time %}+{{ match.injury_time }}{% endif %}'{% endif %}</span></div>
+    <div class="fixture-broadcaster"><span class="small">{{ match.event_count }} event{{ '' if match.event_count == 1 else 's' }} in list response</span></div>
+  </div>
+  <p class="small muted" style="margin:8px 0 0">Provider match ID: {{ match.id or 'not supplied' }}</p>
+</div>
+{% endfor %}
+{% else %}
+<div class="card muted">The provider returned no matches for today.</div>
+{% endif %}
+{% endblock %}

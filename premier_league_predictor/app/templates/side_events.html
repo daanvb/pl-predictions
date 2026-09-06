@@ -11,11 +11,7 @@
 <img src="/static/champions-league-trophy.png" alt="Champions League trophy" style="width:72px;height:72px;object-fit:contain;margin-bottom:12px">
 {% if session.get('admin') %}
 <form class="champions-matchday-form" method="POST" action="/admin/champions-league/import">
-<label class="small" for="champions-matchday">Choose round</label>
-<select class="champions-matchday-select" id="champions-matchday" name="matchday">
-{% for matchday in available_matchdays %}<option value="{{ matchday }}"{% if matchday == selected_matchday %} selected{% endif %}>Round {{ matchday }}</option>{% endfor %}
-</select>
-<button class="primary">Refresh this matchday</button>
+<button class="primary">Refresh current fixtures</button>
 </form>
 {% endif %}
 </div>
