@@ -4183,7 +4183,10 @@ def _live_football_value(record, *names):
 
 
 def _live_football_team_name(record, side):
+    header = record.get("header") if isinstance(record, dict) else None
     value = _live_football_value(record, f"{side}_team", side)
+    if isinstance(header, dict):
+        value = header.get(side) or header.get(f"{side}_team") or value
     if isinstance(value, dict):
         return value.get("name") or value.get("team_name")
     return value
@@ -4197,8 +4200,18 @@ def _live_football_scores(record):
     score = _live_football_value(record, "score", "scores")
     if not isinstance(score, dict):
         score = {}
+    header = record.get("header") if isinstance(record, dict) else None
     home = _live_football_value(record, "home_score")
     away = _live_football_value(record, "away_score")
+    home_team = _live_football_value(record, "home")
+    away_team = _live_football_value(record, "away")
+    if isinstance(header, dict):
+        home_team = header.get("home") or home_team
+        away_team = header.get("away") or away_team
+    if home is None and isinstance(home_team, dict):
+        home = home_team.get("score")
+    if away is None and isinstance(away_team, dict):
+        away = away_team.get("score")
     def score_value(value):
         try:
             return int(value) if value is not None and not isinstance(value, bool) else None
@@ -4212,6 +4225,8 @@ def _live_football_scores(record):
 
 def _live_football_status(record, fallback="SCHEDULED"):
     status = _live_football_value(record, "state", "status", "match_status")
+    if isinstance(record, dict) and isinstance(record.get("header"), dict):
+        status = record["header"].get("status") or status
     if isinstance(status, dict):
         status = status.get("state") or status.get("name") or status.get("status")
     value = re.sub(r"[^a-z]+", "", str(status or "").casefold())
@@ -4226,6 +4241,13 @@ def _live_football_status(record, fallback="SCHEDULED"):
 
 def _live_football_minute(record):
     value = _live_football_value(record, "minute", "elapsed", "display")
+    if isinstance(record, dict):
+        header = record.get("header")
+        status = header.get("status") if isinstance(header, dict) else record.get("status")
+        if status is None:
+            status = record.get("status")
+        if isinstance(status, dict):
+            value = status.get("minute") or status.get("display") or value
     minute, injury_time = parse_live_minute(value)
     return minute, injury_time
 
@@ -4234,6 +4256,10 @@ def _live_football_match_phase(record):
     values = []
     for name in ("state", "status", "match_status", "phase", "period"):
         status = record.get(name) if isinstance(record, dict) else None
+        if name in ("state", "status", "match_status") and isinstance(record, dict):
+            header = record.get("header")
+            if isinstance(header, dict):
+                status = header.get("status") or status
         if isinstance(status, dict):
             status = status.get("state") or status.get("name") or status.get("status")
         if status is not None:
@@ -4247,7 +4273,7 @@ def _live_football_match_phase(record):
 
 
 def _live_football_penalty_scores(record):
-    penalties = _live_football_value(record, "penalties", "penalty_score", "penalty_scores")
+    penalties = _live_football_value(record, "penalties", "penalty", "penalty_score", "penalty_scores")
     if not isinstance(penalties, dict):
         penalties = {}
     def value_for(side):
@@ -4398,6 +4424,11 @@ def import_champions_league_live_from_live_football_api():
             score_changed = home_score is not None and away_score is not None and (
                 home_score != stored["home_score"] or away_score != stored["away_score"]
             )
+            clock_changed = (
+                minute is not None and minute != stored["minute"]
+            ) or (
+                injury_time is not None and injury_time != stored["injury_time"]
+            )
             events = []
             details_checked = False
             provider_id = _live_football_match_id(provider_match)
@@ -4428,7 +4459,7 @@ def import_champions_league_live_from_live_football_api():
                      str(event.get("time") or event.get("minute") or ""), checked_at.isoformat(),
                      json.dumps(event, sort_keys=True)),
                 )
-            if events or state_changed or score_changed:
+            if events or state_changed or score_changed or clock_changed:
                 conn.execute(
                     """UPDATE fixtures SET status = ?, home_score = COALESCE(?, home_score),
                            away_score = COALESCE(?, away_score), minute = COALESCE(?, minute),

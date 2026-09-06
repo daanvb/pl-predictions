@@ -2737,13 +2737,17 @@ conn.close()
 original_live_football_matches = predictor.get_live_football_matches
 original_live_football_details = predictor.get_live_football_match_details
 predictor.get_live_football_matches = lambda key, match_date: [{
-    "id": "lf-99009", "home_team": {"name": "Trial Home"},
-    "away_team": {"name": "Trial Away"}, "home_score": 1, "away_score": 0,
-    "state": "inPlay", "minute": "12'",
+    "id": "lf-99009", "home": {"name": "Trial Home", "score": 1},
+    "away": {"name": "Trial Away", "score": 0},
+    "status": {"state": "inPlay", "display": "12'"},
 }]
 predictor.get_live_football_match_details = lambda key, match_id: {
-    "home_score": 1, "away_score": 0, "state": "inPlay", "minute": "12+3'",
-    "phase": "penalties", "penalties": {"home": 4, "away": 3},
+    "header": {
+        "home": {"name": "Trial Home", "score": "1"},
+        "away": {"name": "Trial Away", "score": "0"},
+        "status": {"state": "penalties", "minute": "12+3'"},
+    },
+    "penalty": {"home": 4, "away": 3},
     "events": [{
         "type": "Goal", "time": "12'", "side": "home",
         "detail": {"player": {"name": "Trial Scorer"}},

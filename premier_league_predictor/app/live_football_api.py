@@ -36,12 +36,22 @@ def _get(api_key, path, params=None):
             params={"api_key": api_key, **(params or {})},
             timeout=20,
         )
+    except requests.Timeout as exc:
+        raise LiveFootballAPIError(
+            "Live Football API did not respond within 20 seconds."
+        ) from exc
     except requests.RequestException as exc:
-        raise LiveFootballAPIError("Live Football API is temporarily unavailable.") from exc
+        raise LiveFootballAPIError(
+            "Live Football API could not be reached."
+        ) from exc
     if response.status_code == 429:
         raise LiveFootballAPIError("Live Football API rate limit reached.")
     if response.status_code in (401, 403):
         raise LiveFootballAPIError("Live Football API key was rejected.")
+    if response.status_code == 503:
+        raise LiveFootballAPIError(
+            "Live Football API's upstream data source is temporarily unavailable."
+        )
     if response.status_code != 200:
         raise LiveFootballAPIError(
             f"Live Football API returned HTTP {response.status_code}."
