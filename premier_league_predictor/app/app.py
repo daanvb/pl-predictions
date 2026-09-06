@@ -6552,6 +6552,11 @@ def champions_league():
     conn.close()
     fixtures = [dict(row) for row in fixtures]
     for fixture in fixtures:
+        if (
+            fixture["competition"] == "champions_league"
+            and not fixture.get("broadcaster")
+        ):
+            fixture["broadcaster"] = confirmed_champions_league_broadcaster(fixture)
         fixture["scorers"] = fixture_scorers(
             fixture.get("goals_json"), fixture["home_team"], fixture["away_team"],
             fixture.get("home_score"), fixture.get("away_score"),
