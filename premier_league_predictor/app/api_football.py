@@ -52,6 +52,15 @@ def get_live_fixtures(api_key):
     return _get(api_key, "/fixtures", {"live": "all"}).get("response", [])
 
 
+def get_premier_league_fixtures_for_date(api_key, match_date, season):
+    """Return the English Premier League's scheduled and completed games for one date."""
+    return _get(api_key, "/fixtures", {
+        "date": match_date,
+        "league": 39,
+        "season": season,
+    }).get("response", [])
+
+
 def get_fixture_events(api_key, fixture_id):
     """Return events only after a targeted live-data fallback is needed."""
     return _get(api_key, "/fixtures/events", {"fixture": fixture_id}).get(

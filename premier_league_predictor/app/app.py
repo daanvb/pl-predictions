@@ -57,6 +57,7 @@ from api_football import (
     APIFootballError,
     get_fixture_events as get_api_football_fixture_events,
     get_live_fixtures as get_api_football_live_fixtures,
+    get_premier_league_fixtures_for_date as get_api_football_premier_league_fixtures_for_date,
     test_connection as test_api_football_connection,
 )
 from live_football_api import (
@@ -4060,7 +4061,14 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                     normalized_team_name(candidate.get("home")),
                     normalized_team_name(candidate.get("away")),
                 )
-                if candidate_key == stored_key:
+                candidate_kickoff = parse_utc(candidate.get("time"))
+                if (
+                    candidate_key == stored_key
+                    and (
+                        candidate_kickoff is None
+                        or (kickoff and abs((candidate_kickoff - kickoff).total_seconds()) <= 3 * 60 * 60)
+                    )
+                ):
                     details = candidate
                     break
 
@@ -4190,7 +4198,15 @@ def import_champions_league_live_from_sportscore():
                         continue
                     raise
                 actual = (normalized_team_name(candidate.get("home")), normalized_team_name(candidate.get("away")))
-                if actual == expected and "uefa champions league" in (candidate.get("competition") or "").casefold():
+                candidate_kickoff = parse_utc(candidate.get("time"))
+                if (
+                    actual == expected
+                    and (
+                        candidate_kickoff is None
+                        or (kickoff and abs((candidate_kickoff - kickoff).total_seconds()) <= 3 * 60 * 60)
+                    )
+                    and "uefa champions league" in (candidate.get("competition") or "").casefold()
+                ):
                     details = candidate
                     break
             if details is None:
@@ -4862,12 +4878,26 @@ def import_live_matches_from_api_football_fallback():
         if not needing_fallback:
             return 0
 
+        api_key = get_setting("api_football_key")
         record_api_football_call(conn)
-        live_fixtures = get_api_football_live_fixtures(get_setting("api_football_key"))
+        live_fixtures = get_api_football_live_fixtures(api_key)
+        fixtures_by_date = None
         for stored in needing_fallback:
             provider_match = _api_football_match_for_fixture(
                 conn, stored, live_fixtures
             )
+            # API-Football's live endpoint drops a match immediately at FT.
+            # For a stale primary row, check the English PL date feed once so
+            # the final whistle cannot leave the dashboard frozen on LIVE.
+            if not provider_match:
+                if fixtures_by_date is None and api_football_call_available(conn):
+                    record_api_football_call(conn)
+                    fixtures_by_date = get_api_football_premier_league_fixtures_for_date(
+                        api_key, now_utc().date().isoformat(), SEASON
+                    )
+                provider_match = _api_football_match_for_fixture(
+                    conn, stored, fixtures_by_date or []
+                )
             if not provider_match:
                 continue
             fixture_data = provider_match.get("fixture") or {}
