@@ -4246,6 +4246,15 @@ def _live_football_team_name(record, side):
     return value
 
 
+def _live_football_team_logo(record, side):
+    """Read a safe team badge from either documented provider response shape."""
+    if not isinstance(record, dict):
+        return None
+    header = record.get("header")
+    team = header.get(side) if isinstance(header, dict) else record.get(side)
+    return safe_team_logo_url(team.get("logo")) if isinstance(team, dict) else None
+
+
 def _live_football_match_id(record):
     return _live_football_value(record, "id", "match_id", "fixture_id")
 
@@ -10263,6 +10272,8 @@ def live_football_api_test():
             "id": provider_id,
             "home_team": _live_football_team_name(provider_match, "home") or "Unknown home team",
             "away_team": _live_football_team_name(provider_match, "away") or "Unknown away team",
+            "home_logo": _live_football_team_logo(provider_match, "home"),
+            "away_logo": _live_football_team_logo(provider_match, "away"),
             "home_score": home_score,
             "away_score": away_score,
             "status": status,
