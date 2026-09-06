@@ -49,6 +49,7 @@
   </div>
   {% if match.data_mismatch %}<p class="small" style="color:#fca5a5;margin:10px 0 0">⚠ Provider inconsistency: it reports Upcoming before kick-off alongside score or event data. These details are not being treated as a valid live result.</p>{% endif %}
   <p class="small muted" style="margin:10px 0 0">Last provider change seen: {{ match.last_change_at }}</p>
+  {% if match.change_log %}<details class="match-stats" style="margin-top:10px"><summary><span>Change log · last {{ match.change_log|length }}</span><span class="match-stats-chevron">⌄</span></summary><div class="match-stats-body">{% for entry in match.change_log %}<div class="past-result"><div class="past-result-date">{{ entry.detected_at }}</div><div class="past-result-score">{% for message in entry.messages %}<div>{{ message }}</div>{% endfor %}</div></div>{% endfor %}</div></details>{% endif %}
   {% if match.detail_error %}<p class="small" style="color:#fca5a5">Event detail unavailable: {{ match.detail_error }}</p>{% endif %}
 </div>
 {% endfor %}

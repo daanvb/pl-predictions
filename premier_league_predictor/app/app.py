@@ -10396,6 +10396,34 @@ def _live_football_test_scorers(goals, side):
     return [{"name": name, "goals": minutes} for name, minutes in grouped.items()]
 
 
+def _live_football_test_clock(minute, injury_time):
+    if minute is None:
+        return ""
+    return f"{minute}{'+' + str(injury_time) if injury_time else ''}'"
+
+
+def _live_football_test_change_messages(previous, current):
+    """Describe provider changes so latency can be checked from the test page."""
+    if not previous:
+        summary = f"Initial snapshot · {current['status_label']}"
+        if current["score"] != [None, None]:
+            summary += f" · score {current['score'][0] if current['score'][0] is not None else '–'}–{current['score'][1] if current['score'][1] is not None else '–'}"
+        return [summary, *current["events"].values()]
+    changes = []
+    if previous.get("status") != current["status"]:
+        changes.append(f"Status · {previous.get('status_label', 'unknown')} → {current['status_label']}")
+    if previous.get("score") != current["score"]:
+        changes.append(
+            f"Score · {previous.get('score', [None, None])[0] if previous.get('score') else '–'}–{previous.get('score', [None, None])[1] if previous.get('score') else '–'} → {current['score'][0] if current['score'][0] is not None else '–'}–{current['score'][1] if current['score'][1] is not None else '–'}"
+        )
+    if previous.get("clock") != current["clock"] and current["clock"]:
+        changes.append(f"Clock · {previous.get('clock') or '–'} → {current['clock']}")
+    for event_key, label in current["events"].items():
+        if event_key not in previous.get("events", {}):
+            changes.append(label)
+    return changes
+
+
 def _live_football_test_status_label(status, minute, injury_time, match_phase, match_date, kickoff):
     """Use the production label formatter, with safe list-response kickoff input."""
     if status == "SCHEDULED":
@@ -10584,24 +10612,48 @@ def live_football_api_test():
             and (home_score is not None or away_score is not None or goals or cards)
         )
         observation_key = f"live_football_test_observation_{provider_id}"
-        event_signature = [
-            _live_football_event_key(event)
-            for event in _live_football_events(provider_match)
-        ]
-        signature = json.dumps({
-            "status": status, "minute": minute, "injury_time": injury_time,
-            "home_score": home_score, "away_score": away_score,
-            "events": event_signature,
-        }, sort_keys=True)
+        status_label_value = _live_football_test_status_label(
+            status, minute, injury_time, match_phase, match_date, kickoff,
+        )
+        event_labels = {}
+        for goal in goals:
+            event_key = f"goal|{goal['side']}|{goal['player']}|{goal['minute']}|{goal['penalty']}"
+            event_labels[event_key] = f"Goal · {goal['player']} {goal['minute']}{' (Pen)' if goal['penalty'] else ''}"
+        for card in cards:
+            event_key = f"red|{card['side']}|{card['player']}|{card['minute']}"
+            event_labels[event_key] = f"Red card · {card['player']} {card['minute']}"
+        snapshot = {
+            "status": status,
+            "status_label": status_label_value,
+            "score": [home_score, away_score],
+            "clock": _live_football_test_clock(minute, injury_time),
+            "events": event_labels,
+        }
+        signature = json.dumps(snapshot, sort_keys=True)
         previous_observation = get_setting(observation_key)
         try:
             previous_observation = json.loads(previous_observation or "{}")
         except (TypeError, ValueError):
             previous_observation = {}
+        previous_snapshot = previous_observation.get("snapshot") or {}
+        change_log_key = f"live_football_test_change_log_{provider_id}"
+        try:
+            change_log = json.loads(get_setting(change_log_key) or "[]")
+        except (TypeError, ValueError):
+            change_log = []
         if previous_observation.get("signature") != signature:
+            messages = _live_football_test_change_messages(previous_snapshot, snapshot)
+            if messages:
+                change_log.insert(0, {
+                    "detected_at": local_timestamp(checked_at.isoformat()),
+                    "messages": messages,
+                })
+                change_log = change_log[:30]
+                set_setting(change_log_key, json.dumps(change_log))
             previous_observation = {
                 "signature": signature,
                 "changed_at": checked_at.isoformat(),
+                "snapshot": snapshot,
             }
             set_setting(observation_key, json.dumps(previous_observation))
         matches.append({
@@ -10613,9 +10665,7 @@ def live_football_api_test():
             "home_score": home_score,
             "away_score": away_score,
             "status": status,
-            "status_label": _live_football_test_status_label(
-                status, minute, injury_time, match_phase, match_date, kickoff,
-            ),
+            "status_label": status_label_value,
             "kickoff_label": local_datetime(
                 f"{match_date.isoformat()}T{kickoff_time}:00+00:00"
             ),
@@ -10629,6 +10679,7 @@ def live_football_api_test():
             "detail_error": detail_error,
             "data_mismatch": data_mismatch,
             "last_change_at": local_timestamp(previous_observation.get("changed_at")),
+            "change_log": change_log,
         })
     set_setting("last_live_football_api_test", now_utc().isoformat())
     return render_template(

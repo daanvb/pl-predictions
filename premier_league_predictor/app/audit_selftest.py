@@ -777,6 +777,17 @@ assert b"FT" in response.data
 assert b"(Pen)" in response.data
 assert b"Late Winner" in response.data
 
+# Provider change logs must preserve the observation time and identify new
+# clock and scorer events, rather than only retaining a single timestamp.
+change_messages = predictor._live_football_test_change_messages(
+    {"status": "IN_PLAY", "status_label": "LIVE 44'", "score": [0, 0],
+     "clock": "44'", "events": {}},
+    {"status": "IN_PLAY", "status_label": "LIVE 45+2'", "score": [1, 0],
+     "clock": "45+2'", "events": {"goal|home|Trial Scorer|45+2'|False": "Goal · Trial Scorer 45+2'"}},
+)
+assert any(message.startswith("Clock") for message in change_messages)
+assert any(message.startswith("Goal") for message in change_messages)
+
 original_badge_get = predictor.requests.get
 badge_calls = []
 
