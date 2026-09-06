@@ -1202,10 +1202,14 @@ assert retired_test_response.status_code == 302
 assert retired_test_response.headers["Location"].endswith("/dashboard")
 
 admin_response = client.get("/admin")
-assert b"API Settings" in admin_response.data
+assert b"System status" in admin_response.data
 assert b'href="/admin/settings"' in admin_response.data
+assert b'href="/admin/data"' in admin_response.data
 assert b"Database Health" in admin_response.data
 assert b">PREDICTIONS</div>" not in admin_response.data
+admin_data_response = client.get("/admin/data")
+assert admin_data_response.status_code == 200
+assert b"Data refresh &amp; tests" in admin_data_response.data
 health = predictor.database_health()
 assert health["database_bytes"] > 0
 assert health["page_count"] > 0

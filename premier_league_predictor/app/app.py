@@ -8141,6 +8141,13 @@ def predictions(matchday):
 
     conn = get_db()
 
+    premier_league_complete = conn.execute(
+        """SELECT COUNT(*) FROM fixtures
+           WHERE season = ? AND competition = 'premier_league' AND matchday = ?
+             AND status NOT IN ('FINISHED', 'CANCELLED')""",
+        (SEASON, matchday),
+    ).fetchone()[0] == 0
+
     fixtures = conn.execute(
         """
         SELECT
@@ -8155,12 +8162,17 @@ def predictions(matchday):
          AND p.player_id = ?
         WHERE f.season = ?
           AND f.matchday = ?
+          AND (
+              f.competition = 'premier_league'
+              OR (f.competition = 'champions_league' AND ?)
+          )
         ORDER BY f.utc_date
         """,
         (
             session["player_id"],
             SEASON,
-            matchday
+            matchday,
+            premier_league_complete,
         ),
     ).fetchall()
 
@@ -8507,6 +8519,7 @@ def predictions(matchday):
         locked_dp_fixture_id=locked_dp_fixture_id,
         fixture_stats=fixture_stats,
         show_match_stats=show_match_stats,
+        premier_league_complete=premier_league_complete,
     )
 
 
@@ -8630,16 +8643,23 @@ def leaderboard():
     refresh_points(conn)
     archive_completed_season(conn, SEASON)
     conn.commit()
-    settled_blocks = settled_premier_league_blocks(conn)
-    players = [dict(row) for row in overall_table_at_blocks(conn, settled_blocks)]
-    active_matchday = latest_settled_premier_league_matchday(conn, settled_blocks)
-    baseline_blocks = (
-        settled_premier_league_blocks_before_matchday(conn, active_matchday)
-        if active_matchday is not None else []
-    )
-    previous_positions = ranking_positions(
-        overall_table_at_blocks(conn, baseline_blocks)
-    )
+    completed_matchdays = [
+        row["matchday"]
+        for row in conn.execute(
+            """SELECT matchday FROM fixtures
+               WHERE season = ? AND competition = 'premier_league' AND matchday IS NOT NULL
+               GROUP BY matchday
+               HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
+                               THEN 1 ELSE 0 END) = 0
+               ORDER BY matchday""",
+            (SEASON,),
+        ).fetchall()
+    ]
+    settled_matchday = completed_matchdays[-1] if completed_matchdays else 0
+    players = [dict(row) for row in overall_table_at_matchday(conn, settled_matchday)]
+    previous_positions = ranking_positions(overall_table_at_matchday(
+        conn, completed_matchdays[-2] if len(completed_matchdays) > 1 else 0,
+    ))
 
     for position, player in enumerate(players, start=1):
         player["position"] = position
@@ -8649,21 +8669,6 @@ def leaderboard():
 
     # The graph deliberately remains a completed-gameweek history, rather
     # than reflecting every fixture block used by the live season table.
-    completed_matchdays = [
-        row["matchday"]
-        for row in conn.execute(
-            """
-            SELECT matchday
-            FROM fixtures
-            WHERE season = ? AND competition = 'premier_league' AND matchday IS NOT NULL
-            GROUP BY matchday
-            HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
-                            THEN 1 ELSE 0 END) = 0
-            ORDER BY matchday
-            """,
-            (SEASON,),
-        ).fetchall()
-    ]
     chart_players = {
         player["id"]: {
             "id": player["id"],
@@ -9029,6 +9034,12 @@ def admin():
 
     signal = signal_settings()
     signal_status = signal_connection_status()
+    system_status = [
+        ("football-data.org", bool(get_setting("football_api_token")), last_api_error),
+        ("API-Football", bool(get_setting("api_football_key")), ""),
+        ("Live Football API trial", bool(get_setting("live_football_api_key")), ""),
+        ("Signal", signal["enabled"], "" if signal_status.get("ok") else "Connection unavailable"),
+    ]
 
     return render_template(
         "admin.html",
@@ -9043,6 +9054,7 @@ def admin():
         ),
         signal=signal,
         signal_status=signal_status,
+        system_status=system_status,
         last_api_refresh=(
             local_timestamp(
                 last_api_refresh
@@ -9078,6 +9090,28 @@ def admin():
             if last_api_error_at
             else None
         ),
+    )
+
+
+@app.route("/admin/data")
+def admin_data():
+    """Keep manual refreshes and provider checks away from the status page."""
+    if not is_admin():
+        return redirect("/")
+
+    historical_results_last_refresh = get_setting("historical_results_last_refresh")
+    return render_template(
+        "admin_data.html",
+        last_api_refresh=(
+            local_timestamp(get_setting("last_api_refresh"))
+            if get_setting("last_api_refresh") else None
+        ),
+        historical_results_last_refresh=(
+            local_timestamp(historical_results_last_refresh)
+            if historical_results_last_refresh else None
+        ),
+        historical_results_last_sources=get_setting("historical_results_last_sources"),
+        historical_results_last_error=get_setting("historical_results_last_error"),
     )
 
 
@@ -10205,7 +10239,11 @@ def _live_football_test_events(record):
         minute, injury_time = parse_live_minute(event.get("time") or event.get("minute"))
         label = f"{minute}{'+' + str(injury_time) if injury_time else ''}'" if minute is not None else ""
         event_type = str(event.get("type") or "").casefold()
-        entry = {"player": player_name or "Unknown player", "minute": label, "side": event.get("side") or ""}
+        entry = {
+            "player": player_name or "Unknown player", "minute": label,
+            "side": event.get("side") or "",
+            "penalty": bool(detail.get("is_penalty")) or "penalty" in json.dumps(detail).casefold(),
+        }
         if "goal" in event_type:
             goals.append(entry)
         elif "red" in event_type or "second" in json.dumps(detail).casefold():
@@ -10215,6 +10253,8 @@ def _live_football_test_events(record):
 
 def _live_football_test_status_label(status, minute, injury_time, match_phase, match_date, kickoff):
     """Use the production label formatter, with safe list-response kickoff input."""
+    if status == "SCHEDULED":
+        return "● Upcoming"
     kickoff_match = re.search(r"\b(\d{1,2}:\d{2})\b", str(kickoff or ""))
     kickoff_time = kickoff_match.group(1) if kickoff_match else "00:00"
     fixture = {
@@ -10267,6 +10307,8 @@ def live_football_api_test():
         status = _live_football_status(provider_match, "SCHEDULED")
         match_phase = _live_football_match_phase(provider_match)
         kickoff = _live_football_value(provider_match, "kickoff", "kickoff_time", "start_time")
+        kickoff_match = re.search(r"\b(\d{1,2}:\d{2})\b", str(kickoff or ""))
+        kickoff_time = kickoff_match.group(1) if kickoff_match else "00:00"
         goals, cards = _live_football_test_events(provider_match)
         matches.append({
             "id": provider_id,
@@ -10279,6 +10321,9 @@ def live_football_api_test():
             "status": status,
             "status_label": _live_football_test_status_label(
                 status, minute, injury_time, match_phase, match_date, kickoff,
+            ),
+            "kickoff_label": local_datetime(
+                f"{match_date.isoformat()}T{kickoff_time}:00+00:00"
             ),
             "minute": minute,
             "injury_time": injury_time,
@@ -10406,7 +10451,7 @@ def admin_refresh_match_stats():
             "error"
         )
 
-    return redirect("/admin")
+    return redirect("/admin/data")
 
 
 @app.route("/admin/fixtures")

@@ -14,7 +14,14 @@
 
 <form method="POST">
 
+{% set current_competition = namespace(value='') %}
 {% for fixture in fixtures %}
+{% if fixture.competition != current_competition.value %}
+  {% set current_competition.value = fixture.competition %}
+  {% if fixture.competition == 'champions_league' %}
+  <div class="card muted" style="margin-top:18px">🏆 Champions League predictions are separate from Premier League predictions.</div>
+  {% endif %}
+{% endif %}
 {% set exact_score = fixture.predicted_home is not none
     and fixture.predicted_away is not none
     and fixture.home_score is not none
@@ -134,6 +141,10 @@
 </div>
 
 {% endfor %}
+
+{% if not premier_league_complete %}
+<div class="card muted">🏆 Champions League predictions unlock after this Premier League gameweek is complete.</div>
+{% endif %}
 
 <div class="save-bar">
 <button type="submit" aria-label="Save predictions">
