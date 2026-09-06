@@ -3620,6 +3620,8 @@ def normalized_team_name(name):
     )]
     value = " ".join(words)
     aliases = {
+        "atletico": "atletico madrid",
+        "atletico madrid": "atletico madrid",
         "atletico de madrid": "atletico madrid",
         "club atletico de madrid": "atletico madrid",
         "brighton hove albion": "brighton",
@@ -4434,11 +4436,13 @@ def _live_football_match_for_fixture(conn, stored, provider_matches):
     if mapping:
         return next((match for match in provider_matches
                      if str(_live_football_match_id(match)) == mapping["provider_fixture_id"]), None)
-    expected = (normalized_team_name(stored["home_team"]), normalized_team_name(stored["away_team"]))
+    # Match through the same club identity used by fixture cards and H2H.
+    # Provider lists often use a longer local name than the current fixture.
+    expected = (canonical_team_name(stored["home_team"]), canonical_team_name(stored["away_team"]))
     matches = [
         match for match in provider_matches
-        if (normalized_team_name(_live_football_team_name(match, "home")),
-            normalized_team_name(_live_football_team_name(match, "away"))) == expected
+        if (canonical_team_name(_live_football_team_name(match, "home")),
+            canonical_team_name(_live_football_team_name(match, "away"))) == expected
     ]
     if len(matches) != 1:
         return None
