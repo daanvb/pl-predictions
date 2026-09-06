@@ -61,6 +61,7 @@ from api_football import (
 )
 from live_football_api import (
     LiveFootballAPIError,
+    get_head_to_head as get_live_football_head_to_head,
     get_live_match_details as get_live_football_match_details,
     get_matches as get_live_football_matches,
     test_connection as test_live_football_connection,
@@ -4554,6 +4555,73 @@ def import_champions_league_live_from_live_football_api():
     return updated
 
 
+def import_champions_league_h2h_from_live_football_api():
+    """Store provider H2H history for the displayed CL fixtures on request."""
+    api_key = get_setting("live_football_api_key")
+    if not api_key:
+        raise LiveFootballAPIError("No Live Football API key is configured.")
+    conn = get_db()
+    imported = matched = 0
+    try:
+        matchday = champions_league_display_matchday(conn)
+        fixtures = conn.execute(
+            """SELECT * FROM fixtures WHERE season = ? AND competition = 'champions_league'
+               AND matchday = ? ORDER BY utc_date""",
+            (SEASON, matchday),
+        ).fetchall()
+        matches_by_date = {}
+        for fixture in fixtures:
+            match_date = parse_utc(fixture["utc_date"]).date().isoformat()
+            if match_date not in matches_by_date:
+                matches_by_date[match_date] = get_live_football_matches(api_key, match_date)
+        for fixture in fixtures:
+            match_date = parse_utc(fixture["utc_date"]).date().isoformat()
+            provider_match = _live_football_match_for_fixture(
+                conn, fixture, matches_by_date[match_date]
+            )
+            if not provider_match:
+                continue
+            provider_id = _live_football_match_id(provider_match)
+            if provider_id is None:
+                continue
+            matched += 1
+            payload = get_live_football_head_to_head(api_key, provider_id)
+            rows = payload.get("h2h") if isinstance(payload, dict) else []
+            for index, row in enumerate(rows if isinstance(rows, list) else []):
+                home = row.get("home") if isinstance(row, dict) else {}
+                away = row.get("away") if isinstance(row, dict) else {}
+                home_name = home.get("name") if isinstance(home, dict) else None
+                away_name = away.get("name") if isinstance(away, dict) else None
+                score = str(row.get("score") or "") if isinstance(row, dict) else ""
+                scores = re.match(r"^\s*(\d+)\s*[-–]\s*(\d+)\s*$", score)
+                played_at = parse_utc(str(row.get("date") or "").replace(" ", "T")) if isinstance(row, dict) else None
+                if not (home_name and away_name and scores and played_at):
+                    continue
+                season = played_at.year if played_at.month >= 7 else played_at.year - 1
+                identity = f"live-football-api-h2h|{fixture['id']}|{played_at.isoformat()}|{home_name}|{away_name}|{index}"
+                history_id = -(zlib.crc32(identity.encode("utf-8")) + 1)
+                conn.execute(
+                    """INSERT INTO historical_fixtures(
+                           id, season, matchday, utc_date, home_team, away_team,
+                           home_score, away_score, status, competition
+                       ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'FINISHED', ?)
+                       ON CONFLICT(id) DO UPDATE SET
+                           season = excluded.season, utc_date = excluded.utc_date,
+                           home_team = excluded.home_team, away_team = excluded.away_team,
+                           home_score = excluded.home_score, away_score = excluded.away_score,
+                           status = 'FINISHED', competition = excluded.competition""",
+                    (history_id, season, played_at.isoformat(), home_name, away_name,
+                     int(scores.group(1)), int(scores.group(2)),
+                     "Live Football API Champions League H2H"),
+                )
+                imported += 1
+        conn.commit()
+    finally:
+        conn.close()
+    set_setting("champions_league_h2h_last_refresh", now_utc().isoformat())
+    return imported, matched
+
+
 def _api_football_day():
     return now_utc().date().isoformat()
 
@@ -6639,7 +6707,23 @@ def champions_league():
             for fixture in fixtures
         ),
         last_refresh=get_setting("champions_league_last_refresh"),
+        champions_h2h_last_refresh=get_setting("champions_league_h2h_last_refresh"),
     )
+
+
+@app.route("/admin/champions-league/h2h/import", methods=["POST"])
+def import_champions_league_h2h():
+    if not is_admin():
+        return redirect("/")
+    try:
+        imported, matched = import_champions_league_h2h_from_live_football_api()
+        flash(
+            f"Live Football API checked {matched} Champions League fixture(s) and stored {imported} previous meeting(s).",
+            "success",
+        )
+    except LiveFootballAPIError as exc:
+        flash(str(exc), "error")
+    return redirect("/champions-league?h2h=1")
 
 
 @app.route("/admin/champions-league/import", methods=["POST"])

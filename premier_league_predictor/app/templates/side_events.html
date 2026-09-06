@@ -13,6 +13,7 @@
 <form class="champions-matchday-form" method="POST" action="/admin/champions-league/import">
 <button class="primary">Refresh current fixtures</button>
 </form>
+{% if show_champions_h2h %}<form class="champions-matchday-form" method="POST" action="/admin/champions-league/h2h/import" style="margin-top:10px"><button type="submit">Load provider head-to-head history</button><p class="small" style="margin:8px 0 0">Uses one Live Football API credit for each matched fixture.</p></form>{% endif %}
 {% endif %}
 </div>
 
@@ -29,6 +30,7 @@
 <details class="match-stats">
 <summary><span>📊 Head-to-head · last 5</span><span class="match-stats-chevron">⌄</span></summary>
 <div class="match-stats-body">
+{% if champions_h2h_last_refresh %}<p class="small muted" style="margin-top:0">Source: Live Football API · checked {{ champions_h2h_last_refresh }}</p>{% endif %}
 {% if fixture.h2h.head_to_head %}
 <div class="h2h-summary"><strong>{{ short_team_name(fixture.home_team) }}</strong> {{ fixture.h2h.h2h_home_wins }} wins <span>·</span> {{ fixture.h2h.h2h_draws }} draws <span>·</span> <strong>{{ short_team_name(fixture.away_team) }}</strong> {{ fixture.h2h.h2h_away_wins }} wins</div>
 <div class="past-results">{% for result in fixture.h2h.head_to_head %}<div class="past-result"><div class="past-result-date">{{ result.utc_date[:10] }}</div><div class="past-result-score">{{ short_team_name(result.home_team) }} <strong>{{ result.home_score }}–{{ result.away_score }}</strong> {{ short_team_name(result.away_team) }}</div></div>{% endfor %}</div>

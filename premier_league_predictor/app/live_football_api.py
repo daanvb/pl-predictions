@@ -75,6 +75,11 @@ def get_live_match_details(api_key, match_id):
     return _get(api_key, "/live_match_details", {"match_id": str(match_id)})
 
 
+def get_head_to_head(api_key, match_id):
+    """Return the provider's historical meetings for a fixture (one credit)."""
+    return _get(api_key, "/h2h", {"match_id": str(match_id)})
+
+
 def test_connection(api_key):
     """Use the documented match-list endpoint to validate a saved key."""
     return get_matches(api_key, date.today().isoformat())
