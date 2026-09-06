@@ -4572,12 +4572,13 @@ def import_champions_league_live_from_live_football_api():
 
 
 def import_champions_league_h2h_from_live_football_api():
-    """Store provider H2H history for the displayed CL fixtures on request."""
+    """Store every provider H2H record and keep a per-fixture import outcome."""
     api_key = get_setting("live_football_api_key")
     if not api_key:
         raise LiveFootballAPIError("No Live Football API key is configured.")
     conn = get_db()
     imported = matched = 0
+    outcomes = {}
     try:
         matchday = champions_league_display_matchday(conn)
         fixtures = conn.execute(
@@ -4590,20 +4591,49 @@ def import_champions_league_h2h_from_live_football_api():
             match_date = parse_utc(fixture["utc_date"]).date().isoformat()
             if match_date not in matches_by_date:
                 matches_by_date[match_date] = get_live_football_matches(api_key, match_date)
+        candidates = []
         for fixture in fixtures:
             match_date = parse_utc(fixture["utc_date"]).date().isoformat()
             provider_match = _live_football_match_for_fixture(
                 conn, fixture, matches_by_date[match_date]
             )
             if not provider_match:
+                outcomes[str(fixture["id"])] = {"outcome": "not_mapped"}
                 continue
             provider_id = _live_football_match_id(provider_match)
             if provider_id is None:
+                outcomes[str(fixture["id"])] = {"outcome": "missing_provider_id"}
                 continue
             matched += 1
-            payload = get_live_football_head_to_head(api_key, provider_id)
-            rows = payload.get("h2h") if isinstance(payload, dict) else []
-            for index, row in enumerate(rows if isinstance(rows, list) else []):
+            candidates.append((fixture, provider_id))
+
+        # The endpoint costs one credit per fixture. Run a small bounded batch
+        # so a full round remains responsive without bursting the provider.
+        payloads = {}
+        with ThreadPoolExecutor(max_workers=min(3, len(candidates) or 1)) as executor:
+            futures = {
+                executor.submit(get_live_football_head_to_head, api_key, provider_id): fixture
+                for fixture, provider_id in candidates
+            }
+            for future in as_completed(futures):
+                fixture = futures[future]
+                try:
+                    payloads[fixture["id"]] = future.result()
+                except LiveFootballAPIError as exc:
+                    outcomes[str(fixture["id"])] = {
+                        "outcome": "provider_error", "detail": str(exc),
+                    }
+
+        for fixture, _provider_id in candidates:
+            payload = payloads.get(fixture["id"])
+            if not isinstance(payload, dict):
+                continue
+            rows = payload.get("h2h")
+            if not isinstance(rows, list) or not rows:
+                outcomes[str(fixture["id"])] = {"outcome": "no_provider_history"}
+                continue
+            stored = rejected = 0
+            for index, row in enumerate(rows):
                 home = row.get("home") if isinstance(row, dict) else {}
                 away = row.get("away") if isinstance(row, dict) else {}
                 home_name = home.get("name") if isinstance(home, dict) else None
@@ -4612,6 +4642,7 @@ def import_champions_league_h2h_from_live_football_api():
                 scores = re.match(r"^\s*(\d+)\s*[-–]\s*(\d+)\s*$", score)
                 played_at = parse_utc(str(row.get("date") or "").replace(" ", "T")) if isinstance(row, dict) else None
                 if not (home_name and away_name and scores and played_at):
+                    rejected += 1
                     continue
                 season = played_at.year if played_at.month >= 7 else played_at.year - 1
                 identity = f"live-football-api-h2h|{fixture['id']}|{played_at.isoformat()}|{home_name}|{away_name}|{index}"
@@ -4630,11 +4661,20 @@ def import_champions_league_h2h_from_live_football_api():
                      int(scores.group(1)), int(scores.group(2)),
                      "Live Football API Champions League H2H"),
                 )
+                stored += 1
                 imported += 1
+            outcomes[str(fixture["id"])] = {
+                "outcome": "stored" if stored else "invalid_provider_history",
+                "returned": len(rows), "stored": stored, "rejected": rejected,
+            }
         conn.commit()
     finally:
         conn.close()
-    set_setting("champions_league_h2h_last_refresh", now_utc().isoformat())
+    checked_at = now_utc().isoformat()
+    for fixture_id, outcome in outcomes.items():
+        outcome["checked_at"] = checked_at
+        set_setting(f"champions_league_h2h_outcome_{fixture_id}", json.dumps(outcome))
+    set_setting("champions_league_h2h_last_refresh", checked_at)
     return imported, matched
 
 
@@ -6741,6 +6781,10 @@ def champions_league():
         )
         if show_champions_h2h:
             fixture["h2h"] = match_stats_for_fixture(conn, fixture)
+    h2h_provider_outcomes = {
+        str(fixture["id"]): json.loads(get_setting(f"champions_league_h2h_outcome_{fixture['id']}") or "{}")
+        for fixture in fixtures
+    } if show_champions_h2h else {}
     conn.close()
     return render_template(
         "side_events.html", fixtures=fixtures,
@@ -6751,6 +6795,7 @@ def champions_league():
         ),
         last_refresh=get_setting("champions_league_last_refresh"),
         champions_h2h_last_refresh=get_setting("champions_league_h2h_last_refresh"),
+        h2h_provider_outcomes=h2h_provider_outcomes,
     )
 
 
@@ -10320,6 +10365,26 @@ def test_live_football_api():
     return redirect("/admin/settings")
 
 
+def _live_football_test_reconciled_status(
+    status, match_date, kickoff, home_score, away_score, goals, cards, checked_at=None
+):
+    """Prevent a stale provider status from turning a completed scorecard into Upcoming."""
+    if status != "SCHEDULED" or not (
+        home_score is not None or away_score is not None or goals or cards
+    ):
+        return status
+    kickoff_match = re.search(r"\b(\d{1,2}:\d{2})\b", str(kickoff or ""))
+    if not kickoff_match:
+        return status
+    kickoff_at = parse_utc(f"{match_date.isoformat()}T{kickoff_match.group(1)}:00+00:00")
+    checked_at = checked_at or now_utc()
+    if not kickoff_at or checked_at < kickoff_at:
+        return status
+    # Two hours covers normal time, half-time and ordinary added time. The
+    # actual provider FT status still takes precedence whenever available.
+    return "FINISHED" if checked_at >= kickoff_at + timedelta(minutes=120) else "IN_PLAY"
+
+
 def _live_football_test_auto_refresh(provider_matches, match_date, day):
     """Refresh today's test only around a scheduled or active live match."""
     if day != "today":
@@ -10585,6 +10650,9 @@ def monitor_live_football_api_test():
         phase = _live_football_match_phase(provider_match)
         kickoff = _live_football_value(provider_match, "kickoff", "kickoff_time", "start_time")
         goals, cards = _live_football_test_events(provider_match)
+        status = _live_football_test_reconciled_status(
+            status, match_date, kickoff, home_score, away_score, goals, cards, checked_at
+        )
         labels = {}
         for goal in goals:
             key = f"goal|{goal['side']}|{goal['player']}|{goal['minute']}|{goal['penalty']}"
@@ -10763,13 +10831,9 @@ def live_football_api_test():
         kickoff_match = re.search(r"\b(\d{1,2}:\d{2})\b", str(kickoff or ""))
         kickoff_time = kickoff_match.group(1) if kickoff_match else "00:00"
         goals, cards = _live_football_test_events(provider_match)
-        # A completed historical result can occasionally retain a stale
-        # scheduled state in the provider list. Scores or incidents on the
-        # previous day's fixture are sufficient evidence for an FT test card.
-        if day == "yesterday" and status == "SCHEDULED" and (
-            home_score is not None or away_score is not None or goals or cards
-        ):
-            status = "FINISHED"
+        status = _live_football_test_reconciled_status(
+            status, match_date, kickoff, home_score, away_score, goals, cards, checked_at
+        )
         kickoff_at = parse_utc(f"{match_date.isoformat()}T{kickoff_time}:00:00+00:00")
         data_mismatch = (
             status == "SCHEDULED"
