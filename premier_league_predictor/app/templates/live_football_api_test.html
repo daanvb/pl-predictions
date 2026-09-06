@@ -3,21 +3,22 @@
 {% block content %}
 <div class="hero">
 <h1>🧪 Live Football API test</h1>
-<p>{{ 'Today' if day == 'today' else 'Yesterday' }} · {{ match_date }}</p>
+<p>{{ 'Today' if day == 'today' else 'Yesterday' }} · {{ 'Champions League' if competition == 'champions_league' else 'English Premier League' }} · {{ match_date }}</p>
 </div>
 
 <div class="nav">
 <a href="/admin">← Admin</a>
-<a href="/admin/live-football-api/test?day=today">Today</a>
-<a href="/admin/live-football-api/test?day=yesterday">Yesterday</a>
-{% if not include_details %}<a href="/admin/live-football-api/test?day={{ day }}&amp;details=1">Load scorer &amp; card events</a>{% else %}<a href="/admin/live-football-api/test?day={{ day }}">Scores &amp; status only</a>{% endif %}
+<a href="/admin/live-football-api/test?day=today">Premier League live matches</a>
+<a href="/admin/live-football-api/test?day=yesterday">Premier League yesterday</a>
+<a href="/admin/live-football-api/test?day=yesterday&amp;competition=champions_league">Champions League history test</a>
 </div>
 
 <div class="card">
-<p class="muted">Read-only Premier League provider check. It does not change any fixtures.</p>
-{% if not include_details %}<p class="small">Scores, time and status are shown below. “Load scorer &amp; card events” makes one extra request per English Premier League match.</p>{% endif %}
-{% if include_details %}<p class="small">Detailed check loaded: final/current score and returned goal/card events. Event checks run three at a time.</p>{% endif %}
+<p class="muted">{{ 'Champions League historical provider check. This view is read-only.' if competition == 'champions_league' else 'Premier League provider check. Yesterday’s verified completed results can be imported into matching Preddies fixtures.' }}</p>
+<p class="small">Full score, scorer and card-event data is loaded by default. Event checks run three at a time.</p>
+<p class="small">Last provider check: <strong>{{ checked_at }}</strong>. “Last change seen” updates when the provider changes its status, score or events.</p>
 {% if auto_refresh %}<p class="small">● Auto-refreshing every 60 seconds while a Premier League match is live, or in the five minutes before kick-off.</p>{% endif %}
+{% if day == 'yesterday' and competition == 'premier_league' %}<form method="POST" action="/admin/live-football-api/test/import-yesterday" style="margin-top:12px"><button class="primary" type="submit">Import yesterday’s verified results</button><p class="small" style="margin:8px 0 0">Only completed English Premier League matches already in Preddies are updated.</p></form>{% endif %}
 </div>
 
 {% if matches %}
@@ -35,10 +36,17 @@
     </div>
   </div>
   {% if match.data_mismatch %}<p class="small" style="color:#fca5a5;margin:10px 0 0">⚠ Provider inconsistency: it reports Upcoming before kick-off alongside score or event data. These details are not being treated as a valid live result.</p>{% endif %}
+  <p class="small muted" style="margin:10px 0 0">Last provider change seen: {{ match.last_change_at }}</p>
   {% if match.goals or match.cards %}
-  <div class="small" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
-    {% for goal in match.goals %}<div style="display:grid;grid-template-columns:1.25em minmax(0,1fr);gap:4px"><span aria-hidden="true">⚽</span><span>{{ goal.player }} {{ goal.minute }}{% if goal.penalty %} (Pen){% endif %}{% if goal.side %} · {{ goal.side }}{% endif %}</span></div>{% endfor %}
-    {% for card in match.cards %}<div style="display:grid;grid-template-columns:1.25em minmax(0,1fr);gap:4px"><span aria-hidden="true">🟥</span><span>{{ card.player }} {{ card.minute }}{% if card.side %} · {{ card.side }}{% endif %}</span></div>{% endfor %}
+  <div class="fixture-scorers" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+    <div class="fixture-scorers-home">
+      {% for goal in match.goals if goal.side == 'home' %}<span><span aria-hidden="true">⚽</span> {{ goal.player }} {{ goal.minute }}{% if goal.penalty %} (Pen){% endif %}</span>{% endfor %}
+      {% for card in match.cards if card.side == 'home' %}<span class="fixture-red-card">🟥 {{ card.player }} {{ card.minute }}</span>{% endfor %}
+    </div>
+    <div class="fixture-scorers-away">
+      {% for goal in match.goals if goal.side == 'away' %}<span><span aria-hidden="true">⚽</span> {{ goal.player }} {{ goal.minute }}{% if goal.penalty %} (Pen){% endif %}</span>{% endfor %}
+      {% for card in match.cards if card.side == 'away' %}<span class="fixture-red-card">🟥 {{ card.player }} {{ card.minute }}</span>{% endfor %}
+    </div>
   </div>
   {% endif %}
   {% if match.detail_error %}<p class="small" style="color:#fca5a5">Event detail unavailable: {{ match.detail_error }}</p>{% endif %}

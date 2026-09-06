@@ -4296,7 +4296,7 @@ def _live_football_status(record, fallback="SCHEDULED"):
     value = re.sub(r"[^a-z]+", "", str(status or "").casefold())
     if value in ("inplay", "live", "firsthalf", "secondhalf", "extratime", "penalties"):
         return "IN_PLAY"
-    if value in ("halftime", "half", "break", "interval", "extratimehalftime"):
+    if value in ("halftime", "half", "ht", "break", "interval", "extratimehalftime"):
         return "PAUSED"
     if value in ("finished", "fulltime", "ft", "afterextratime", "penaltyshootout", "completed", "complete", "ended", "final"):
         return "FINISHED"
@@ -10251,6 +10251,31 @@ def _live_football_test_matches_for_premier_league(provider_matches, match_date)
     ]
 
 
+def _live_football_test_matches_for_champions_league(provider_matches, match_date):
+    """Limit an historical CL test to fixtures that Preddies already knows."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT home_team, away_team FROM fixtures
+               WHERE season = ? AND competition = 'champions_league'
+                 AND substr(utc_date, 1, 10) = ?""",
+            (SEASON, match_date.isoformat()),
+        ).fetchall()
+    finally:
+        conn.close()
+    expected_pairs = {
+        (normalized_team_name(row["home_team"]), normalized_team_name(row["away_team"]))
+        for row in rows
+    }
+    return [
+        match for match in provider_matches
+        if (
+            normalized_team_name(_live_football_team_name(match, "home")),
+            normalized_team_name(_live_football_team_name(match, "away")),
+        ) in expected_pairs
+    ]
+
+
 def _live_football_test_events(record):
     goals, cards = [], []
     for event in _live_football_events(record):
@@ -10289,6 +10314,89 @@ def _live_football_test_status_label(status, minute, injury_time, match_phase, m
     return status_label(fixture)
 
 
+def import_yesterdays_premier_league_results_from_live_football_api():
+    """Import verified, completed PL results from the isolated admin test."""
+    api_key = get_setting("live_football_api_key")
+    if not api_key:
+        raise LiveFootballAPIError("Please save a Live Football API key first.")
+    match_date = now_utc().date() - timedelta(days=1)
+    provider_matches = _live_football_test_matches_for_premier_league(
+        get_live_football_matches(api_key, match_date.isoformat()), match_date
+    )
+    details_by_id = {}
+    with ThreadPoolExecutor(max_workers=min(3, len(provider_matches) or 1)) as executor:
+        futures = {
+            executor.submit(get_live_football_match_details, api_key, provider_id): provider_id
+            for match in provider_matches
+            if (provider_id := _live_football_match_id(match)) is not None
+        }
+        for future in as_completed(futures):
+            provider_id = futures[future]
+            try:
+                details_by_id[provider_id] = future.result()
+            except LiveFootballAPIError:
+                # A partial provider response is never enough to import a result.
+                continue
+
+    conn = get_db()
+    imported = 0
+    try:
+        fixtures = conn.execute(
+            """SELECT * FROM fixtures WHERE season = ? AND competition = 'premier_league'
+               AND substr(utc_date, 1, 10) = ?""",
+            (SEASON, match_date.isoformat()),
+        ).fetchall()
+        checked_at = now_utc().isoformat()
+        for stored in fixtures:
+            provider_match = _live_football_match_for_fixture(conn, stored, provider_matches)
+            if not provider_match:
+                continue
+            provider_id = _live_football_match_id(provider_match)
+            details = details_by_id.get(provider_id)
+            if not isinstance(details, dict):
+                continue
+            detail_match = details.get("match")
+            if not isinstance(detail_match, dict):
+                detail_match = details
+            provider_match = {**provider_match, **detail_match}
+            if "events" in details:
+                provider_match["events"] = details["events"]
+            home_score, away_score = _live_football_scores(provider_match)
+            status = _live_football_status(provider_match, "SCHEDULED")
+            events = _live_football_events(provider_match)
+            if status == "SCHEDULED" and (
+                home_score is not None or away_score is not None or events
+            ):
+                status = "FINISHED"
+            if status != "FINISHED" or home_score is None or away_score is None:
+                continue
+            minute, injury_time = _live_football_minute(provider_match)
+            phase = _live_football_match_phase(provider_match)
+            home_penalties, away_penalties = _live_football_penalty_scores(provider_match)
+            goals = [goal for goal in (_live_football_goal_event(event, stored) for event in events) if goal]
+            cards = [card for card in (_live_football_card_event(event, stored) for event in events) if card]
+            conn.execute(
+                """UPDATE fixtures SET status = 'FINISHED', home_score = ?, away_score = ?,
+                       minute = COALESCE(?, minute),
+                       injury_time = CASE WHEN ? IS NOT NULL THEN ? ELSE injury_time END,
+                       match_phase = COALESCE(?, match_phase),
+                       home_penalty_score = COALESCE(?, home_penalty_score),
+                       away_penalty_score = COALESCE(?, away_penalty_score),
+                       goals_json = ?, incidents_json = ?, last_updated = ?,
+                       live_data_source = 'Live Football API' WHERE id = ?""",
+                (home_score, away_score, minute, injury_time, injury_time, phase,
+                 home_penalties, away_penalties, json.dumps(goals), json.dumps(cards),
+                 checked_at, stored["id"]),
+            )
+            imported += 1
+        if imported:
+            refresh_points(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    return imported
+
+
 @app.route("/admin/live-football-api/test")
 def live_football_api_test():
     """Read-only diagnostic for today or yesterday's provider match list."""
@@ -10297,7 +10405,12 @@ def live_football_api_test():
     day = request.args.get("day", "today")
     if day not in ("today", "yesterday"):
         day = "today"
-    include_details = request.args.get("details") == "1"
+    competition = request.args.get("competition", "premier_league")
+    if competition not in ("premier_league", "champions_league"):
+        competition = "premier_league"
+    # The live test is for scorer and incident verification, so detailed data
+    # is the default. Yesterday remains a manual historical check.
+    include_details = request.args.get("details") != "0"
     match_date = now_utc().date() - timedelta(days=1 if day == "yesterday" else 0)
     try:
         provider_matches = get_live_football_matches(
@@ -10307,9 +10420,15 @@ def live_football_api_test():
         flash(str(exc), "error")
         return redirect("/admin")
 
-    provider_matches = _live_football_test_matches_for_premier_league(
-        provider_matches, match_date
-    )
+    if competition == "champions_league":
+        provider_matches = _live_football_test_matches_for_champions_league(
+            provider_matches, match_date
+        )
+    else:
+        provider_matches = _live_football_test_matches_for_premier_league(
+            provider_matches, match_date
+        )
+    checked_at = now_utc()
     detail_results = {}
     if include_details:
         # Event requests are optional and capped so a manual check remains
@@ -10352,6 +10471,13 @@ def live_football_api_test():
         kickoff_match = re.search(r"\b(\d{1,2}:\d{2})\b", str(kickoff or ""))
         kickoff_time = kickoff_match.group(1) if kickoff_match else "00:00"
         goals, cards = _live_football_test_events(provider_match)
+        # A completed historical result can occasionally retain a stale
+        # scheduled state in the provider list. Scores or incidents on the
+        # previous day's fixture are sufficient evidence for an FT test card.
+        if day == "yesterday" and status == "SCHEDULED" and (
+            home_score is not None or away_score is not None or goals or cards
+        ):
+            status = "FINISHED"
         kickoff_at = parse_utc(f"{match_date.isoformat()}T{kickoff_time}:00:00+00:00")
         data_mismatch = (
             status == "SCHEDULED"
@@ -10359,6 +10485,27 @@ def live_football_api_test():
             and kickoff_at > now_utc()
             and (home_score is not None or away_score is not None or goals or cards)
         )
+        observation_key = f"live_football_test_observation_{provider_id}"
+        event_signature = [
+            _live_football_event_key(event)
+            for event in _live_football_events(provider_match)
+        ]
+        signature = json.dumps({
+            "status": status, "minute": minute, "injury_time": injury_time,
+            "home_score": home_score, "away_score": away_score,
+            "events": event_signature,
+        }, sort_keys=True)
+        previous_observation = get_setting(observation_key)
+        try:
+            previous_observation = json.loads(previous_observation or "{}")
+        except (TypeError, ValueError):
+            previous_observation = {}
+        if previous_observation.get("signature") != signature:
+            previous_observation = {
+                "signature": signature,
+                "changed_at": checked_at.isoformat(),
+            }
+            set_setting(observation_key, json.dumps(previous_observation))
         matches.append({
             "id": provider_id,
             "home_team": _live_football_team_name(provider_match, "home") or "Unknown home team",
@@ -10381,13 +10528,27 @@ def live_football_api_test():
             "cards": cards,
             "detail_error": detail_error,
             "data_mismatch": data_mismatch,
+            "last_change_at": local_timestamp(previous_observation.get("changed_at")),
         })
     set_setting("last_live_football_api_test", now_utc().isoformat())
     return render_template(
         "live_football_api_test.html", match_date=match_date.isoformat(),
-        day=day, matches=matches, include_details=include_details,
+        day=day, competition=competition, matches=matches, include_details=include_details,
         auto_refresh=_live_football_test_auto_refresh(provider_matches, match_date, day),
+        checked_at=local_timestamp(checked_at.isoformat()),
     )
+
+
+@app.route("/admin/live-football-api/test/import-yesterday", methods=["POST"])
+def import_live_football_api_yesterday():
+    if not is_admin():
+        return redirect("/")
+    try:
+        imported = import_yesterdays_premier_league_results_from_live_football_api()
+        flash(f"Imported {imported} verified English Premier League result(s) from Live Football API.", "success")
+    except LiveFootballAPIError as exc:
+        flash(str(exc), "error")
+    return redirect("/admin/live-football-api/test?day=yesterday")
 
 
 @app.route("/admin/settings/live-football-api/today", methods=["POST"])

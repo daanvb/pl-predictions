@@ -2490,6 +2490,24 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
 <body>
 
 {% if is_logged_in %}
+<button class="dashboard-menu-toggle" id="dashboard-menu-toggle" type="button" aria-controls="dashboard-menu" aria-expanded="false" aria-label="Open navigation menu">
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+</button>
+<div class="dashboard-menu-backdrop" id="dashboard-menu-backdrop" hidden></div>
+<aside class="dashboard-menu-drawer" id="dashboard-menu" aria-label="Main navigation" aria-hidden="true">
+<div class="dashboard-menu-heading"><strong>Menu</strong><button id="dashboard-menu-close" type="button" aria-label="Close navigation menu">×</button></div>
+<nav>
+<a href="/leaderboard"><span><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> Premier League</span></a>
+<a href="/champions-league"><span><span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League</span></a>
+<a href="/head-to-head"><span><span class="competition-icon competition-icon-h2h"><img src="/static/fa-cup-trophy.png" alt=""></span> MCFG Cockfight Cup</span></a>
+<a href="/stats">📊 Your Stats</a>
+<a href="/history">🕘 Previous GW History</a>
+<a href="/rules">📘 Rules</a>
+<a href="/prize-structure">💷 Prize Structure</a>
+<a href="/seasons">👑 Past Winners</a>
+<a href="/changelog">📝 Changelog{% if changelog_has_update %}<span class="badge live">NEW</span>{% endif %}</a>
+</nav>
+</aside>
 <div class="corner-controls">
 {% block corner_actions %}{% endblock %}
 <button class="theme-toggle theme-toggle-corner" id="theme-toggle" type="button"
@@ -2555,6 +2573,32 @@ Preddies v{{ app_version }}
   }
 })();
 </script>
+
+{% if is_logged_in %}
+<script>
+(function () {
+  const toggle = document.getElementById('dashboard-menu-toggle');
+  const drawer = document.getElementById('dashboard-menu');
+  const close = document.getElementById('dashboard-menu-close');
+  const backdrop = document.getElementById('dashboard-menu-backdrop');
+  if (!toggle || !drawer || !close || !backdrop) return;
+  function setOpen(open) {
+    drawer.classList.toggle('is-open', open);
+    drawer.setAttribute('aria-hidden', String(!open));
+    toggle.setAttribute('aria-expanded', String(open));
+    backdrop.hidden = !open;
+    document.body.classList.toggle('dashboard-menu-open', open);
+    if (open) close.focus();
+  }
+  toggle.addEventListener('click', function () { setOpen(true); });
+  close.addEventListener('click', function () { setOpen(false); toggle.focus(); });
+  backdrop.addEventListener('click', function () { setOpen(false); });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false);
+  });
+})();
+</script>
+{% endif %}
 
 </body>
 </html>

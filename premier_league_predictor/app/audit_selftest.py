@@ -2109,8 +2109,8 @@ assert predictor.resolve_reigning_champion_name("TROPiC", [{
 assert 'button.appendChild(document.createTextNode(chartName));' in gameweek_template
 assert 'button.appendChild(document.createTextNode(String(player.name || "").trim().split(/\\s+/)[0]));' in dashboard_live_summary_template
 assert 'display_player_name' not in league_stats_template
-assert 'href="/champions-league"' in dashboard_template
-assert 'href="/head-to-head"' in dashboard_template
+assert 'href="/champions-league"' in base_template
+assert 'href="/head-to-head"' in base_template
 with open(
     os.path.join(templates_dir, "head_to_head.html"),
     "r",
@@ -2133,9 +2133,9 @@ assert "one Double Points fixture" in champions_league_template
 assert "wins the competition and the £20 prize" in champions_league_template
 assert "champions-matchday-select" not in champions_league_template
 assert "Refresh current fixtures" in champions_league_template
-assert dashboard_template.index('href="/leaderboard"') < dashboard_template.index('href="/champions-league"') < dashboard_template.index('href="/head-to-head"') < dashboard_template.index('href="/stats"')
-assert 'id="dashboard-menu-toggle"' in dashboard_template
-assert 'id="dashboard-menu"' in dashboard_template
+assert base_template.index('href="/leaderboard"') < base_template.index('href="/champions-league"') < base_template.index('href="/head-to-head"') < base_template.index('href="/stats"')
+assert 'id="dashboard-menu-toggle"' in base_template
+assert 'id="dashboard-menu"' in base_template
 assert 'class="corner-action" href="/account"' in dashboard_template
 assert 'class="corner-action" href="/tegrity"' in dashboard_template
 assert 'class="corner-action" href="/admin"' in dashboard_template
