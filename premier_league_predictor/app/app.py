@@ -10175,6 +10175,20 @@ def _live_football_test_events(record):
     return goals, cards
 
 
+def _live_football_test_status_label(status, minute, injury_time, match_phase, match_date, kickoff):
+    """Use the production label formatter, with safe list-response kickoff input."""
+    kickoff_match = re.search(r"\b(\d{1,2}:\d{2})\b", str(kickoff or ""))
+    kickoff_time = kickoff_match.group(1) if kickoff_match else "00:00"
+    fixture = {
+        "status": status,
+        "minute": minute,
+        "injury_time": injury_time,
+        "match_phase": match_phase,
+        "utc_date": f"{match_date.isoformat()}T{kickoff_time}:00+00:00",
+    }
+    return status_label(fixture)
+
+
 @app.route("/admin/live-football-api/test")
 def live_football_api_test():
     """Read-only diagnostic for today or yesterday's provider match list."""
@@ -10216,7 +10230,6 @@ def live_football_api_test():
         status = _live_football_status(provider_match, "SCHEDULED")
         match_phase = _live_football_match_phase(provider_match)
         kickoff = _live_football_value(provider_match, "kickoff", "kickoff_time", "start_time")
-        kickoff_at = f"{match_date.isoformat()}T{kickoff or '00:00'}:00+00:00"
         goals, cards = _live_football_test_events(provider_match)
         matches.append({
             "id": provider_id,
@@ -10225,13 +10238,9 @@ def live_football_api_test():
             "home_score": home_score,
             "away_score": away_score,
             "status": status,
-            "status_label": status_label({
-                "status": status,
-                "minute": minute,
-                "injury_time": injury_time,
-                "match_phase": match_phase,
-                "utc_date": kickoff_at,
-            }),
+            "status_label": _live_football_test_status_label(
+                status, minute, injury_time, match_phase, match_date, kickoff,
+            ),
             "minute": minute,
             "injury_time": injury_time,
             "event_count": len(_live_football_events(provider_match)),
@@ -10243,7 +10252,7 @@ def live_football_api_test():
     return render_template(
         "live_football_api_test.html", match_date=match_date.isoformat(),
         day=day, matches=matches, include_details=include_details,
-        auto_refresh=live_football_test_auto_refresh(provider_matches, match_date, day),
+        auto_refresh=_live_football_test_auto_refresh(provider_matches, match_date, day),
     )
 
 

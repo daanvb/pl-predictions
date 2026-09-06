@@ -695,6 +695,33 @@ with client.session_transaction() as sess:
     sess["player_name"] = admin["name"]
     sess["admin"] = True
 
+# The isolated provider diagnostic must render from the documented list shape,
+# filter non-Premier-League matches, and reuse the normal LIVE added-time label.
+original_test_matches = predictor.get_live_football_matches
+predictor.get_live_football_matches = lambda _key, _date: [
+    {
+        "id": "test-premier-league", "league": {
+            "id": "lfa-premier-league", "name": "Premier League",
+        },
+        "kickoff": "14:00", "status": {"state": "inPlay", "display": "45+2'"},
+        "home": {"name": "Home FC", "score": 1},
+        "away": {"name": "Away FC", "score": 0},
+    },
+    {
+        "id": "test-other-league", "league": {"id": "other", "name": "Other"},
+        "home": {"name": "Other Home", "score": 0},
+        "away": {"name": "Other Away", "score": 0},
+    },
+]
+try:
+    response = client.get("/admin/live-football-api/test?day=today")
+finally:
+    predictor.get_live_football_matches = original_test_matches
+assert response.status_code == 200
+assert b"LIVE 45+2&#39;" in response.data
+assert b"Home FC" in response.data
+assert b"Other Home" not in response.data
+
 original_badge_get = predictor.requests.get
 badge_calls = []
 
