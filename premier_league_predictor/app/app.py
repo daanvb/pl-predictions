@@ -64,6 +64,7 @@ from live_football_api import (
     LiveFootballAPIError,
     get_head_to_head as get_live_football_head_to_head,
     get_live_match_details as get_live_football_match_details,
+    get_league_fixtures as get_live_football_league_fixtures,
     get_matches as get_live_football_matches,
     get_team_matches as get_live_football_team_matches,
     search_teams as search_live_football_teams,
@@ -4610,24 +4611,31 @@ def import_champions_league_live_from_live_football_api():
     return updated
 
 
+def _live_football_provider_names_match(left, right):
+    """Compare provider team labels without needing a manual club alias list."""
+    ignored = {"ac", "afc", "as", "cf", "fc", "fk", "sc", "sk"}
+    left_parts = [part for part in canonical_team_name(left).split() if part not in ignored]
+    right_parts = [part for part in canonical_team_name(right).split() if part not in ignored]
+    if left_parts == right_parts:
+        return True
+    if len(left_parts) == 1 and len(left_parts[0]) >= 2:
+        return left_parts[0] == "".join(part[0] for part in right_parts)
+    if len(right_parts) == 1 and len(right_parts[0]) >= 2:
+        return right_parts[0] == "".join(part[0] for part in left_parts)
+    if len(left_parts) != len(right_parts) or not left_parts:
+        return False
+    return all(
+        first == second
+        or (
+            min(len(first), len(second)) >= 3
+            and max(first, second).startswith(min(first, second))
+        )
+        for first, second in zip(left_parts, right_parts)
+    )
+
+
 def _live_football_team_history_h2h_rows(api_key, fixture, provider_match=None):
     """Resolve clubs from provider search, then match their history by provider IDs."""
-    def provider_names_match(left, right):
-        """Accept a safe provider abbreviation when an old club ID changed."""
-        left_parts = canonical_team_name(left).split()
-        right_parts = canonical_team_name(right).split()
-        if left_parts == right_parts:
-            return True
-        if len(left_parts) != len(right_parts) or not left_parts:
-            return False
-        return all(
-            first == second
-            or (
-                min(len(first), len(second)) >= 3
-                and max(first, second).startswith(min(first, second))
-            )
-            for first, second in zip(left_parts, right_parts)
-        )
 
     def provider_team(name):
         teams = search_live_football_teams(api_key, name)
@@ -4702,15 +4710,15 @@ def _live_football_team_history_h2h_rows(api_key, fixture, provider_match=None):
             in_home_order = (
                 provider_pair == (str(home_id), str(away_id))
                 or (
-                    provider_names_match(home_name, fixture["home_team"])
-                    and provider_names_match(away_name, fixture["away_team"])
+                    _live_football_provider_names_match(home_name, fixture["home_team"])
+                    and _live_football_provider_names_match(away_name, fixture["away_team"])
                 )
             )
             in_away_order = (
                 provider_pair == (str(away_id), str(home_id))
                 or (
-                    provider_names_match(home_name, fixture["away_team"])
-                    and provider_names_match(away_name, fixture["home_team"])
+                    _live_football_provider_names_match(home_name, fixture["away_team"])
+                    and _live_football_provider_names_match(away_name, fixture["home_team"])
                 )
             )
             if not (in_home_order or in_away_order):
@@ -4736,11 +4744,43 @@ def _live_football_team_history_h2h_rows(api_key, fixture, provider_match=None):
                 away = home_match.get("away") if isinstance(home_match, dict) else {}
                 in_home_order = (
                     str(home.get("id") or "") == str(home_id)
-                    or provider_names_match(home.get("name") or "", fixture["home_team"])
+                    or _live_football_provider_names_match(home.get("name") or "", fixture["home_team"])
                 )
                 add_row(home_match, in_home_order)
             if len(rows) >= 5:
                 break
+    rows.sort(key=lambda row: str(row.get("date") or ""), reverse=True)
+    return rows[:5]
+
+
+def _live_football_league_history_h2h_rows(fixture, league_matches):
+    """Extract a pair's latest five meetings from shared CL season catalogues."""
+    rows = []
+    for match in league_matches:
+        home = match.get("home") if isinstance(match, dict) else {}
+        away = match.get("away") if isinstance(match, dict) else {}
+        home_name = home.get("name") if isinstance(home, dict) else ""
+        away_name = away.get("name") if isinstance(away, dict) else ""
+        in_home_order = (
+            _live_football_provider_names_match(home_name, fixture["home_team"])
+            and _live_football_provider_names_match(away_name, fixture["away_team"])
+        )
+        in_away_order = (
+            _live_football_provider_names_match(home_name, fixture["away_team"])
+            and _live_football_provider_names_match(away_name, fixture["home_team"])
+        )
+        if not (in_home_order or in_away_order):
+            continue
+        home_score = home.get("score") if isinstance(home, dict) else None
+        away_score = away.get("score") if isinstance(away, dict) else None
+        if home_score is None or away_score is None:
+            continue
+        rows.append({
+            "date": match.get("date"),
+            "home": {"name": fixture["home_team"] if in_home_order else fixture["away_team"]},
+            "away": {"name": fixture["away_team"] if in_home_order else fixture["home_team"]},
+            "score": f"{home_score}-{away_score}",
+        })
     rows.sort(key=lambda row: str(row.get("date") or ""), reverse=True)
     return rows[:5]
 
@@ -4783,6 +4823,17 @@ def import_champions_league_h2h_from_live_football_api():
             match_date = parse_utc(fixture["utc_date"]).date().isoformat()
             if match_date not in matches_by_date:
                 matches_by_date[match_date] = get_live_football_matches(api_key, match_date)
+        provider_league_id = next(
+            (
+                (match.get("league") or {}).get("id")
+                for matches in matches_by_date.values()
+                for match in matches
+                if "champions league" in canonical_team_name(
+                    (match.get("league") or {}).get("name")
+                )
+            ),
+            None,
+        )
         candidates = []
         unmapped_fixtures = []
         for fixture in lookup_fixtures:
@@ -4867,13 +4918,36 @@ def import_champions_league_h2h_from_live_football_api():
                 "returned": len(rows), "stored": stored, "rejected": rejected,
             }
 
-        # Upcoming CL fixtures are not always published in the provider's
-        # day list. Recover their H2H from the club's verified past results.
-        # Keep this bounded like the direct H2H requests: it cuts a whole
-        # matchday's wait substantially without overloading the provider.
+        # The provider's direct H2H endpoint can be incomplete. Its league
+        # catalogue is fetched once per season for the entire round, which is
+        # both more complete and far cheaper than per-club history lookups.
         fallback_targets = unmapped_fixtures + fallback_fixtures
         fallback_rows = {}
-        with ThreadPoolExecutor(max_workers=min(3, len(fallback_targets) or 1)) as executor:
+        league_history_matches = []
+        if provider_league_id and fallback_targets:
+            for years_back in range(1, 11):
+                season = f"{SEASON - years_back}/{SEASON - years_back + 1}"
+                try:
+                    league_history_matches.extend(
+                        get_live_football_league_fixtures(
+                            api_key, provider_league_id, season
+                        )
+                    )
+                except LiveFootballAPIError:
+                    break
+        unresolved_fallbacks = []
+        for fixture in fallback_targets:
+            rows = _live_football_league_history_h2h_rows(
+                fixture, league_history_matches
+            )
+            if rows:
+                fallback_rows[fixture["id"]] = rows
+            else:
+                unresolved_fallbacks.append(fixture)
+
+        # Fall back to the two club histories only when the shared catalogue
+        # genuinely has no record for the pair.
+        with ThreadPoolExecutor(max_workers=min(3, len(unresolved_fallbacks) or 1)) as executor:
             futures = {
                 executor.submit(
                     _live_football_team_history_h2h_rows,
@@ -4881,7 +4955,7 @@ def import_champions_league_h2h_from_live_football_api():
                     fixture,
                     fallback_provider_matches.get(fixture["id"]),
                 ): fixture
-                for fixture in fallback_targets
+                for fixture in unresolved_fallbacks
             }
             for future in as_completed(futures):
                 fixture = futures[future]

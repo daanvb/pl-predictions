@@ -89,6 +89,22 @@ def get_team_matches(api_key, team_id, season):
     return data.get("matches") or [] if isinstance(data, dict) else []
 
 
+def get_league_fixtures(api_key, league_id, season):
+    """Return every fixture in a provider league season."""
+    data = _get(api_key, "/league_fixtures", {
+        "league_id": str(league_id), "season": str(season),
+    })
+    if not isinstance(data, dict):
+        return []
+    return [
+        match
+        for week in data.get("weeks") or []
+        if isinstance(week, dict)
+        for match in week.get("matches") or []
+        if isinstance(match, dict)
+    ]
+
+
 def get_head_to_head(api_key, match_id):
     """Return the provider's historical meetings for a fixture (one credit)."""
     return _get(api_key, "/h2h", {"match_id": str(match_id)})

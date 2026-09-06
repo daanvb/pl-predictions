@@ -171,6 +171,32 @@ with predictor.app.test_client() as client:
 assert predictor.news_cache["fetched_at"] == 0.0
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
+
+# Champions League H2H fallback: provider history uses old IDs and shortened
+# labels, so it must match the pair from the shared league catalogue.
+liverpool_atletico_history = predictor._live_football_league_history_h2h_rows(
+    {"home_team": "Liverpool", "away_team": "Atlético Madrid"},
+    [{
+        "id": "historic-liv-atl",
+        "date": "2025-09-17 19:00:00",
+        "home": {"id": "old-liverpool", "name": "Liverpool", "score": "3"},
+        "away": {"id": "old-atletico", "name": "Atl. Madrid", "score": "2"},
+    }],
+)
+assert len(liverpool_atletico_history) == 1
+assert liverpool_atletico_history[0]["score"] == "3-2"
+real_inter_history = predictor._live_football_league_history_h2h_rows(
+    {"home_team": "Real Madrid CF", "away_team": "Inter"},
+    [{
+        "id": "historic-real-inter",
+        "date": "2025-11-03 20:00:00",
+        "home": {"id": "old-real", "name": "Real Madrid", "score": "2"},
+        "away": {"id": "old-inter", "name": "Inter", "score": "1"},
+    }],
+)
+assert len(real_inter_history) == 1
+assert real_inter_history[0]["score"] == "2-1"
+
 news_now = datetime(2026, 9, 1, 22, 0, tzinfo=timezone.utc)
 news_items = predictor._parse_premier_league_news("""<?xml version="1.0"?>
 <rss><channel>
