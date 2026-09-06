@@ -4612,6 +4612,23 @@ def import_champions_league_live_from_live_football_api():
 
 def _live_football_team_history_h2h_rows(api_key, fixture, provider_match=None):
     """Resolve clubs from provider search, then match their history by provider IDs."""
+    def provider_names_match(left, right):
+        """Accept a safe provider abbreviation when an old club ID changed."""
+        left_parts = canonical_team_name(left).split()
+        right_parts = canonical_team_name(right).split()
+        if left_parts == right_parts:
+            return True
+        if len(left_parts) != len(right_parts) or not left_parts:
+            return False
+        return all(
+            first == second
+            or (
+                min(len(first), len(second)) >= 3
+                and max(first, second).startswith(min(first, second))
+            )
+            for first, second in zip(left_parts, right_parts)
+        )
+
     def provider_team(name):
         teams = search_live_football_teams(api_key, name)
         target = canonical_team_name(name)
@@ -4644,35 +4661,86 @@ def _live_football_team_history_h2h_rows(api_key, fixture, provider_match=None):
     if not home_id or not away_id:
         return []
     rows = []
+    stored_match_ids = set()
+
+    def add_row(match, in_home_order):
+        match_id = str(match.get("id") or "") if isinstance(match, dict) else ""
+        if not match_id or match_id in stored_match_ids:
+            return
+        home = match.get("home") if isinstance(match, dict) else {}
+        away = match.get("away") if isinstance(match, dict) else {}
+        home_score = home.get("score") if isinstance(home, dict) else None
+        away_score = away.get("score") if isinstance(away, dict) else None
+        if home_score is None or away_score is None:
+            return
+        stored_match_ids.add(match_id)
+        rows.append({
+            "date": match.get("date"),
+            "home": {"name": fixture["home_team"] if in_home_order else fixture["away_team"]},
+            "away": {"name": fixture["away_team"] if in_home_order else fixture["home_team"]},
+            "score": f"{home_score}-{away_score}",
+        })
+
+    home_history_by_match_id = {}
     # The provider exposes seasons separately. Look back ten campaigns so
     # pairs with infrequent European meetings can still supply their latest
     # five results.
     for years_back in range(1, 11):
         season = f"{SEASON - years_back}/{SEASON - years_back + 1}"
         for match in get_live_football_team_matches(api_key, home_id, season):
+            match_id = str(match.get("id") or "") if isinstance(match, dict) else ""
+            if match_id:
+                home_history_by_match_id[match_id] = match
             home = match.get("home") if isinstance(match, dict) else {}
             away = match.get("away") if isinstance(match, dict) else {}
             provider_pair = (
                 str(home.get("id") or "") if isinstance(home, dict) else "",
                 str(away.get("id") or "") if isinstance(away, dict) else "",
             )
-            if provider_pair not in ((str(home_id), str(away_id)), (str(away_id), str(home_id))):
-                continue
-            home_score = home.get("score") if isinstance(home, dict) else None
-            away_score = away.get("score") if isinstance(away, dict) else None
-            if home_score is None or away_score is None:
+            home_name = home.get("name") if isinstance(home, dict) else ""
+            away_name = away.get("name") if isinstance(away, dict) else ""
+            in_home_order = (
+                provider_pair == (str(home_id), str(away_id))
+                or (
+                    provider_names_match(home_name, fixture["home_team"])
+                    and provider_names_match(away_name, fixture["away_team"])
+                )
+            )
+            in_away_order = (
+                provider_pair == (str(away_id), str(home_id))
+                or (
+                    provider_names_match(home_name, fixture["away_team"])
+                    and provider_names_match(away_name, fixture["home_team"])
+                )
+            )
+            if not (in_home_order or in_away_order):
                 continue
             # Persist the app's own club names, leaving H2H display and stats
             # independent from a provider abbreviation such as "Atl. Madrid".
-            app_home = fixture["home_team"] if provider_pair[0] == str(home_id) else fixture["away_team"]
-            app_away = fixture["away_team"] if provider_pair[1] == str(away_id) else fixture["home_team"]
-            rows.append({
-                "date": match.get("date"),
-                "home": {"name": app_home}, "away": {"name": app_away},
-                "score": f"{home_score}-{away_score}",
-            })
+            add_row(match, in_home_order)
         if len(rows) >= 5:
             break
+
+    # If a provider changed a club ID *and* shortened its old name too much
+    # to compare safely, the same historical match ID appears in both clubs'
+    # fixture histories. That joins every club pair without a manual alias.
+    if len(rows) < 5:
+        for years_back in range(1, 11):
+            season = f"{SEASON - years_back}/{SEASON - years_back + 1}"
+            for match in get_live_football_team_matches(api_key, away_id, season):
+                match_id = str(match.get("id") or "") if isinstance(match, dict) else ""
+                home_match = home_history_by_match_id.get(match_id)
+                if not home_match:
+                    continue
+                home = home_match.get("home") if isinstance(home_match, dict) else {}
+                away = home_match.get("away") if isinstance(home_match, dict) else {}
+                in_home_order = (
+                    str(home.get("id") or "") == str(home_id)
+                    or provider_names_match(home.get("name") or "", fixture["home_team"])
+                )
+                add_row(home_match, in_home_order)
+            if len(rows) >= 5:
+                break
     rows.sort(key=lambda row: str(row.get("date") or ""), reverse=True)
     return rows[:5]
 
