@@ -109,6 +109,8 @@ API_FOOTBALL_MINIMUM_INTERVAL_SECONDS = 120
 API_FOOTBALL_DAILY_CALL_CAP = 75
 API_FOOTBALL_STALE_MINUTES = 2
 LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS = 5 * 60
+CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_WEEKDAY = 4  # Friday in Europe/London
+CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_HOUR = 9
 FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
@@ -3198,6 +3200,36 @@ def import_historical_results(
 
 
 
+def refresh_champions_league_fixture_schedule_automatically():
+    """Keep the displayed CL round and its successor ready for predictions."""
+    token = get_setting("football_api_token")
+    if not token:
+        return 0
+    now_london = now_utc().astimezone(UK)
+    if (
+        now_london.weekday() != CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_WEEKDAY
+        or now_london.hour < CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_HOUR
+    ):
+        return 0
+    last_refresh = parse_utc(get_setting("champions_league_schedule_auto_refresh"))
+    if last_refresh and last_refresh.astimezone(UK).date() == now_london.date():
+        return 0
+    conn = get_db()
+    try:
+        current = champions_league_display_matchday(conn)
+    finally:
+        conn.close()
+    try:
+        current = int(current)
+    except (TypeError, ValueError):
+        current = 1
+    imported = 0
+    for matchday in (current, current + 1):
+        imported += import_champions_league_matches(matchday)
+    set_setting("champions_league_schedule_auto_refresh", now_utc().isoformat())
+    return imported
+
+
 def _champions_league_fixture_id(conn, source_fixture_id):
     """Allocate a stable local ID without conflicting with Premier League IDs."""
     existing = conn.execute(
@@ -4606,9 +4638,11 @@ def _live_football_team_history_h2h_rows(api_key, fixture):
     if not home_id or not away_id:
         return []
     rows = []
-    # The provider exposes seasons separately. These three cover the previous
-    # three completed campaigns, enough to fill the five-result H2H display.
-    for season in (f"{SEASON - 1}/{SEASON}", f"{SEASON - 2}/{SEASON - 1}", f"{SEASON - 3}/{SEASON - 2}"):
+    # The provider exposes seasons separately. Look back ten campaigns so
+    # pairs with infrequent European meetings can still supply their latest
+    # five results.
+    for years_back in range(1, 11):
+        season = f"{SEASON - years_back}/{SEASON - years_back + 1}"
         for match in get_live_football_team_matches(api_key, home_id, season):
             home = match.get("home") if isinstance(match, dict) else {}
             away = match.get("away") if isinstance(match, dict) else {}
@@ -4631,7 +4665,8 @@ def _live_football_team_history_h2h_rows(api_key, fixture):
                 "home": {"name": app_home}, "away": {"name": app_away},
                 "score": f"{home_score}-{away_score}",
             })
-    return rows
+    rows.sort(key=lambda row: str(row.get("date") or ""), reverse=True)
+    return rows[:5]
 
 
 def import_champions_league_h2h_from_live_football_api():
@@ -4674,6 +4709,7 @@ def import_champions_league_h2h_from_live_football_api():
         # The endpoint costs one credit per fixture. Run a small bounded batch
         # so a full round remains responsive without bursting the provider.
         payloads = {}
+        fallback_fixtures = []
         with ThreadPoolExecutor(max_workers=min(3, len(candidates) or 1)) as executor:
             futures = {
                 executor.submit(get_live_football_head_to_head, api_key, provider_id): fixture
@@ -4694,7 +4730,10 @@ def import_champions_league_h2h_from_live_football_api():
                 continue
             rows = payload.get("h2h")
             if not isinstance(rows, list) or not rows:
-                outcomes[str(fixture["id"])] = {"outcome": "no_provider_history"}
+                # A matched upcoming fixture can still have an empty /h2h
+                # response. Its clubs' completed-match history remains the
+                # fallback source for the five H2H records we display.
+                fallback_fixtures.append(fixture)
                 continue
             stored = rejected = 0
             for index, row in enumerate(rows):
@@ -4734,7 +4773,7 @@ def import_champions_league_h2h_from_live_football_api():
 
         # Upcoming CL fixtures are not always published in the provider's
         # day list. Recover their H2H from the club's verified past results.
-        for fixture in unmapped_fixtures:
+        for fixture in unmapped_fixtures + fallback_fixtures:
             try:
                 rows = _live_football_team_history_h2h_rows(api_key, fixture)
             except LiveFootballAPIError as exc:
@@ -5340,6 +5379,7 @@ def api_refresh_worker():
                 and not football_data_rate_limit_active()
             ):
                 imported = import_matches_from_api()
+                champions_imported = refresh_champions_league_fixture_schedule_automatically()
 
                 set_setting(
                     "last_api_error",
@@ -5348,7 +5388,7 @@ def api_refresh_worker():
 
                 print(
                     f"[auto-refresh] "
-                    f"Updated {imported} fixture(s)",
+                    f"Updated {imported} Premier League and {champions_imported} Champions League fixture(s)",
                     flush=True
                 )
 
