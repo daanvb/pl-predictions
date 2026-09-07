@@ -78,7 +78,8 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.1"
+APP_VERSION = "1.7.2"
+APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -2836,15 +2837,28 @@ def _historical_source_rows(
         (before_utc,),
     ).fetchall()
 
-    # Prevent accidental duplicate API match IDs if data has been imported
-    # into both tables.
-    by_id = {}
+    # A completed fixture can be present in both the active fixture table and
+    # a historical import with different provider IDs. Deduplicate by the
+    # match itself, not only its source ID, so league records, recent form and
+    # H2H rows do not count the same result twice. Active fixtures are applied
+    # last and therefore win if their richer live data differs.
+    by_match = {}
+
+    def match_identity(row):
+        played_at = parse_utc(row["utc_date"])
+        return (
+            played_at.isoformat() if played_at else str(row["utc_date"]),
+            canonical_team_name(row["home_team"]),
+            canonical_team_name(row["away_team"]),
+            row["home_score"],
+            row["away_score"],
+        )
 
     for row in list(history_rows) + list(current_rows):
-        by_id[row["id"]] = row
+        by_match[match_identity(row)] = row
 
     return sorted(
-        by_id.values(),
+        by_match.values(),
         key=lambda row: row["utc_date"],
         reverse=True
     )
@@ -7718,6 +7732,11 @@ def read_app_changelog():
             )
 
             if match:
+                # Keep the in-app page quick on mobile. The complete release
+                # history remains in the repository, while the app renders
+                # only the newest entries people are likely to need.
+                if len(releases) >= APP_CHANGELOG_RELEASE_LIMIT:
+                    break
                 release = {
                     "version": match.group(1),
                     "date": match.group(2) or "",

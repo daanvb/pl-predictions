@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.2] - 2026-09-07
+
+### Fixes
+- Removed duplicate completed fixtures from Premier League match records, recent form and head-to-head calculations.
+- Limited the in-app Changelog to the latest twelve releases for faster mobile loading; the full history remains in the repository.
+
 ## [1.7.1] - 2026-09-07
 
 ### Fixes

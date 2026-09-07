@@ -1518,6 +1518,7 @@ kickoff = (
     datetime.now(timezone.utc)
     + timedelta(days=2)
 ).isoformat()
+alpha_gamma_utc = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
 conn.execute(
     """INSERT INTO fixtures(
@@ -1528,10 +1529,7 @@ conn.execute(
     (
         9201,
         season,
-        (
-            datetime.now(timezone.utc)
-            - timedelta(days=7)
-        ).isoformat(),
+        alpha_gamma_utc,
     )
 )
 
@@ -1591,6 +1589,17 @@ conn.execute(
             - timedelta(days=300)
         ).isoformat(),
     )
+)
+
+# The same completed fixture may be retained by both local data sources with
+# different IDs. It must remain one result in PL record, form and H2H views.
+conn.execute(
+    """INSERT INTO historical_fixtures(
+        id, season, matchday, utc_date,
+        home_team, away_team, home_score, away_score, status, competition
+    )
+    VALUES (?, ?, 2, ?, 'Alpha', 'Gamma', 2, 0, 'FINISHED', 'E0')""",
+    (8203, season, alpha_gamma_utc),
 )
 
 # Current-season Champions League history must not enter Premier League form
@@ -3040,6 +3049,19 @@ assert patch_releases[0]["sections"] == [{
     "items": ["Corrected mobile card alignment."],
     "groups": [{"title": "UI", "items": ["Corrected mobile card alignment."]}],
 }]
+
+limited_changelog = "\n\n".join(
+    f"## [{index}.0.0] - 2026-09-07\n\n### Fixes\n- Release {index}."
+    for index in range(20, 0, -1)
+)
+with patch.object(predictor.os.path, "exists", return_value=True), patch(
+    "builtins.open", mock_open(read_data=limited_changelog),
+):
+    limited_releases = predictor.read_app_changelog()
+assert len(limited_releases) == predictor.APP_CHANGELOG_RELEASE_LIMIT
+assert limited_releases[0]["version"] == "20.0.0"
+assert limited_releases[-1]["version"] == "9.0.0"
+
 sample_sections = predictor.normalise_changelog_sections([
     {"title": "Fixed", "items": [
         "Corrected mobile card alignment.",
