@@ -2847,7 +2847,10 @@ def _historical_source_rows(
     def match_identity(row):
         played_at = parse_utc(row["utc_date"])
         return (
-            played_at.isoformat() if played_at else str(row["utc_date"]),
+            # Historical CSV data records only the match date (midnight),
+            # while live fixtures include the true kick-off. A completed
+            # match's calendar date is therefore the stable shared value.
+            played_at.date().isoformat() if played_at else str(row["utc_date"])[:10],
             canonical_team_name(row["home_team"]),
             canonical_team_name(row["away_team"]),
             row["home_score"],

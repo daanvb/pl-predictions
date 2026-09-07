@@ -1519,6 +1519,9 @@ kickoff = (
     + timedelta(days=2)
 ).isoformat()
 alpha_gamma_utc = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+alpha_gamma_archive_utc = datetime.fromisoformat(alpha_gamma_utc).replace(
+    hour=0, minute=0, second=0, microsecond=0
+).isoformat()
 
 conn.execute(
     """INSERT INTO fixtures(
@@ -1599,7 +1602,7 @@ conn.execute(
         home_team, away_team, home_score, away_score, status, competition
     )
     VALUES (?, ?, 2, ?, 'Alpha', 'Gamma', 2, 0, 'FINISHED', 'E0')""",
-    (8203, season, alpha_gamma_utc),
+    (8203, season, alpha_gamma_archive_utc),
 )
 
 # Current-season Champions League history must not enter Premier League form
