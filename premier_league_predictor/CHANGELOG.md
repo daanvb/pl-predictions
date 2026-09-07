@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.1] - 2026-09-07
+
+### Fixes
+- Retried older cached Champions League head-to-head misses against the provider's direct fixture endpoint before using fallbacks.
+- Stored Champions League head-to-head results locally, retained only the last three years, and kept Premier League head-to-head displays to the latest five meetings.
+- Excluded Champions League history from current-season Premier League match-stat records and form.
+
 ## [1.7.0] - 2026-09-06
 
 ### New

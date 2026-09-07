@@ -196,6 +196,16 @@ real_inter_history = predictor._live_football_league_history_h2h_rows(
 )
 assert len(real_inter_history) == 1
 assert real_inter_history[0]["score"] == "2-1"
+assert predictor._is_current_premier_league_result({
+    "season": 2026,
+    "utc_date": "2026-09-06T12:00:00+00:00",
+    "competition": "premier_league",
+})
+assert not predictor._is_current_premier_league_result({
+    "season": 2026,
+    "utc_date": "2026-09-06T12:00:00+00:00",
+    "competition": "Live Football API Champions League H2H",
+})
 
 news_now = datetime(2026, 9, 1, 22, 0, tzinfo=timezone.utc)
 news_items = predictor._parse_premier_league_news("""<?xml version="1.0"?>
@@ -1583,6 +1593,22 @@ conn.execute(
     )
 )
 
+# Current-season Champions League history must not enter Premier League form
+# or record calculations on the prediction cards.
+conn.execute(
+    """INSERT INTO historical_fixtures(
+        id, season, matchday, utc_date,
+        home_team, away_team, home_score, away_score, status, competition
+    )
+    VALUES (?, ?, 1, ?, 'Alpha', 'Delta', 4, 0, 'FINISHED',
+            'Live Football API Champions League H2H')""",
+    (
+        8202,
+        season,
+        (datetime.now(timezone.utc) - timedelta(days=3)).isoformat(),
+    )
+)
+
 fixture = {
     "id": 9999,
     "season": season,
@@ -1598,6 +1624,7 @@ stats = predictor.match_stats_for_fixture(
 )
 
 assert stats["home_record"]["wins"] == 2
+assert stats["home_record"]["played"] == 2
 assert stats["home_record"]["gf"] == 3
 assert stats["away_record"]["draws"] == 1
 assert stats["away_record"]["wins"] == 1

@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.7.1"
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
 
@@ -110,6 +110,8 @@ API_FOOTBALL_MINIMUM_INTERVAL_SECONDS = 120
 API_FOOTBALL_DAILY_CALL_CAP = 75
 API_FOOTBALL_STALE_MINUTES = 2
 LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS = 5 * 60
+CHAMPIONS_LEAGUE_H2H_HISTORY_DAYS = 365 * 3
+CHAMPIONS_LEAGUE_H2H_IMPORT_REVISION = 2
 CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_WEEKDAY = 4  # Friday in Europe/London
 CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_HOUR = 9
 FINAL_SCORER_BACKFILL_PER_REFRESH = 8
@@ -2804,7 +2806,8 @@ def _historical_source_rows(
             home_team,
             away_team,
             home_score,
-            away_score
+            away_score,
+            competition
         FROM fixtures
         WHERE home_score IS NOT NULL
           AND away_score IS NOT NULL
@@ -2823,7 +2826,8 @@ def _historical_source_rows(
             home_team,
             away_team,
             home_score,
-            away_score
+            away_score,
+            competition
         FROM historical_fixtures
         WHERE home_score IS NOT NULL
           AND away_score IS NOT NULL
@@ -2858,6 +2862,15 @@ def _is_current_season_result(row):
     return season_start <= played_at < season_end
 
 
+def _is_current_premier_league_result(row):
+    """Exclude CL, cup and friendly history from the PL form and record."""
+    if not _is_current_season_result(row):
+        return False
+    return str(row["competition"] or "").casefold() in (
+        "", "e0", "premier league", "premier_league",
+    )
+
+
 def match_stats_for_fixture(
     conn,
     fixture
@@ -2877,7 +2890,7 @@ def match_stats_for_fixture(
     form_rows = list(all_prior)
     current_result = conn.execute(
         """SELECT id, season, matchday, utc_date, home_team, away_team,
-                  home_score, away_score
+                  home_score, away_score, competition
            FROM fixtures
            WHERE id = ? AND utc_date <= ?
              AND home_score IS NOT NULL AND away_score IS NOT NULL""",
@@ -2903,7 +2916,7 @@ def match_stats_for_fixture(
     home_record_rows = [
         row
         for row in all_prior
-        if _is_current_season_result(row)
+        if _is_current_premier_league_result(row)
         and (
             canonical_team_name(row["home_team"]) == home_key
             or canonical_team_name(row["away_team"]) == home_key
@@ -2913,7 +2926,7 @@ def match_stats_for_fixture(
     away_record_rows = [
         row
         for row in all_prior
-        if _is_current_season_result(row)
+        if _is_current_premier_league_result(row)
         and (
             canonical_team_name(row["home_team"]) == away_key
             or canonical_team_name(row["away_team"]) == away_key
@@ -2923,7 +2936,7 @@ def match_stats_for_fixture(
     home_form_rows = [
         row
         for row in form_rows
-        if _is_current_season_result(row)
+        if _is_current_premier_league_result(row)
         and (
             canonical_team_name(
                 row["home_team"]
@@ -2937,7 +2950,7 @@ def match_stats_for_fixture(
     away_form_rows = [
         row
         for row in form_rows
-        if _is_current_season_result(row)
+        if _is_current_premier_league_result(row)
         and (
             canonical_team_name(
                 row["home_team"]
@@ -4634,6 +4647,14 @@ def _live_football_provider_names_match(left, right):
     )
 
 
+def _within_champions_league_h2h_window(value):
+    played_at = parse_utc(str(value or "").replace(" ", "T"))
+    return bool(
+        played_at
+        and played_at >= now_utc() - timedelta(days=CHAMPIONS_LEAGUE_H2H_HISTORY_DAYS)
+    )
+
+
 def _live_football_team_history_h2h_rows(api_key, fixture, provider_match=None):
     """Resolve clubs from provider search, then match their history by provider IDs."""
 
@@ -4690,12 +4711,13 @@ def _live_football_team_history_h2h_rows(api_key, fixture, provider_match=None):
         })
 
     home_history_by_match_id = {}
-    # The provider exposes seasons separately. Look back ten campaigns so
-    # pairs with infrequent European meetings can still supply their latest
-    # five results.
-    for years_back in range(1, 11):
+    # The provider exposes seasons separately. Keep only the last three
+    # campaigns, which is the H2H window shown in the app.
+    for years_back in range(1, 4):
         season = f"{SEASON - years_back}/{SEASON - years_back + 1}"
         for match in get_live_football_team_matches(api_key, home_id, season):
+            if not _within_champions_league_h2h_window(match.get("date")):
+                continue
             match_id = str(match.get("id") or "") if isinstance(match, dict) else ""
             if match_id:
                 home_history_by_match_id[match_id] = match
@@ -4733,9 +4755,11 @@ def _live_football_team_history_h2h_rows(api_key, fixture, provider_match=None):
     # to compare safely, the same historical match ID appears in both clubs'
     # fixture histories. That joins every club pair without a manual alias.
     if len(rows) < 5:
-        for years_back in range(1, 11):
+        for years_back in range(1, 4):
             season = f"{SEASON - years_back}/{SEASON - years_back + 1}"
             for match in get_live_football_team_matches(api_key, away_id, season):
+                if not _within_champions_league_h2h_window(match.get("date")):
+                    continue
                 match_id = str(match.get("id") or "") if isinstance(match, dict) else ""
                 home_match = home_history_by_match_id.get(match_id)
                 if not home_match:
@@ -4757,6 +4781,8 @@ def _live_football_league_history_h2h_rows(fixture, league_matches):
     """Extract a pair's latest five meetings from shared CL season catalogues."""
     rows = []
     for match in league_matches:
+        if not _within_champions_league_h2h_window(match.get("date")):
+            continue
         home = match.get("home") if isinstance(match, dict) else {}
         away = match.get("away") if isinstance(match, dict) else {}
         home_name = home.get("name") if isinstance(home, dict) else ""
@@ -4794,6 +4820,15 @@ def import_champions_league_h2h_from_live_football_api():
     imported = matched = 0
     outcomes = {}
     try:
+        h2h_cutoff = (
+            now_utc() - timedelta(days=CHAMPIONS_LEAGUE_H2H_HISTORY_DAYS)
+        ).isoformat()
+        conn.execute(
+            """DELETE FROM historical_fixtures
+               WHERE competition LIKE 'Live Football API Champions League%'
+                 AND utc_date < ?""",
+            (h2h_cutoff,),
+        )
         matchday = champions_league_display_matchday(conn)
         fixtures = conn.execute(
             """SELECT * FROM fixtures WHERE season = ? AND competition = 'champions_league'
@@ -4812,7 +4847,7 @@ def import_champions_league_h2h_from_live_football_api():
             # refreshes rather than charging the same provider calls again.
             if previous.get("outcome") == "stored" or (
                 previous.get("outcome") == "no_provider_history"
-                and previous.get("source") == "team_history"
+                and previous.get("import_revision") == CHAMPIONS_LEAGUE_H2H_IMPORT_REVISION
             ):
                 outcomes[str(fixture["id"])] = previous
                 continue
@@ -4835,6 +4870,8 @@ def import_champions_league_h2h_from_live_football_api():
             None,
         )
         candidates = []
+        fallback_fixtures = []
+        fallback_provider_matches = {}
         unmapped_fixtures = []
         for fixture in lookup_fixtures:
             match_date = parse_utc(fixture["utc_date"]).date().isoformat()
@@ -4854,8 +4891,6 @@ def import_champions_league_h2h_from_live_football_api():
         # The endpoint costs one credit per fixture. Run a small bounded batch
         # so a full round remains responsive without bursting the provider.
         payloads = {}
-        fallback_fixtures = []
-        fallback_provider_matches = {}
         with ThreadPoolExecutor(max_workers=min(3, len(candidates) or 1)) as executor:
             futures = {
                 executor.submit(get_live_football_head_to_head, api_key, provider_id): fixture
@@ -4874,7 +4909,11 @@ def import_champions_league_h2h_from_live_football_api():
             payload = payloads.get(fixture["id"])
             if not isinstance(payload, dict):
                 continue
-            rows = payload.get("h2h")
+            rows = [
+                row for row in (payload.get("h2h") or [])
+                if isinstance(row, dict)
+                and _within_champions_league_h2h_window(row.get("date"))
+            ]
             if not isinstance(rows, list) or not rows:
                 # A matched upcoming fixture can still have an empty /h2h
                 # response. Its clubs' completed-match history remains the
@@ -4924,8 +4963,9 @@ def import_champions_league_h2h_from_live_football_api():
         fallback_targets = unmapped_fixtures + fallback_fixtures
         fallback_rows = {}
         league_history_matches = []
+        league_history_error = None
         if provider_league_id and fallback_targets:
-            for years_back in range(1, 11):
+            for years_back in range(1, 4):
                 season = f"{SEASON - years_back}/{SEASON - years_back + 1}"
                 try:
                     league_history_matches.extend(
@@ -4933,7 +4973,8 @@ def import_champions_league_h2h_from_live_football_api():
                             api_key, provider_league_id, season
                         )
                     )
-                except LiveFootballAPIError:
+                except LiveFootballAPIError as exc:
+                    league_history_error = str(exc)
                     break
         unresolved_fallbacks = []
         for fixture in fallback_targets:
@@ -5016,6 +5057,7 @@ def import_champions_league_h2h_from_live_football_api():
         conn.close()
     checked_at = now_utc().isoformat()
     for fixture_id, outcome in outcomes.items():
+        outcome["import_revision"] = CHAMPIONS_LEAGUE_H2H_IMPORT_REVISION
         outcome["checked_at"] = checked_at
         set_setting(f"champions_league_h2h_outcome_{fixture_id}", json.dumps(outcome))
     set_setting("champions_league_h2h_last_refresh", checked_at)
