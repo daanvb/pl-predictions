@@ -2264,6 +2264,10 @@ with open(os.path.join(templates_dir, "stats.html"), "r", encoding="utf-8") as h
     stats_template = handle.read()
 assert "Your Champions League Stats" in stats_template
 assert "nav-trophy-icon" in champions_league_template
+assert "visibilitychange" in champions_league_template
+assert "setInterval(refreshLiveView, 60000)" in champions_league_template
+assert '_fixture_prediction_rows.html' in champions_league_template
+assert "fixture_players=fixture_players" in inspect.getsource(predictor.champions_league)
 assert 'champions_league_stats' in inspect.getsource(predictor)
 assert 'return redirect("/champions-league/league")' in inspect.getsource(predictor.champions_league_stats)
 assert 'return redirect("/champions-league")' in inspect.getsource(predictor.champions_league_live)

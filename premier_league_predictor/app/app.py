@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.6"
+APP_VERSION = "1.7.7"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -7494,17 +7494,33 @@ def champions_league():
     fixtures = [dict(row) for row in fixtures]
     live_table = []
     position_chart = {"snapshots": [], "players": []}
+    players = []
+    predictions = []
+    prediction_map = {}
+    reveal_map = {}
+    fixture_players = {}
     live_gameweek_visible = bool(fixtures and any(
         item["status"] in ("LIVE", "IN_PLAY", "PAUSED") for item in fixtures
     ))
-    if live_gameweek_visible:
-        refresh_points(conn)
+    if fixtures:
         players = conn.execute("SELECT id, name FROM players ORDER BY name COLLATE NOCASE").fetchall()
         predictions = conn.execute("""SELECT p.player_id, p.fixture_id, p.home_score, p.away_score, COALESCE(p.dp, 0) AS dp FROM predictions p JOIN fixtures f ON f.id=p.fixture_id WHERE f.season=? AND f.competition='champions_league' AND f.matchday=?""", (SEASON, selected_matchday)).fetchall()
-        live_table = build_live_table(fixtures, players, predictions, overall_table_at_matchday(conn, selected_matchday - 1, "champions_league"))
-        record_competition_live_position_snapshot(conn, "champions_league", selected_matchday)
-        position_chart = competition_live_position_chart(conn, "champions_league", selected_matchday)
-        conn.commit()
+        prediction_map = {(row["player_id"], row["fixture_id"]): row for row in predictions}
+        reveal_map = {fixture["id"]: fixture_is_locked(fixture) for fixture in fixtures}
+        previous_league = overall_table_at_matchday(conn, selected_matchday - 1, "champions_league")
+        if live_gameweek_visible:
+            refresh_points(conn)
+            live_table = build_live_table(fixtures, players, predictions, previous_league)
+            record_competition_live_position_snapshot(conn, "champions_league", selected_matchday)
+            position_chart = competition_live_position_chart(conn, "champions_league", selected_matchday)
+            conn.commit()
+        league_positions = {row["id"]: row["position"] for row in (live_table or previous_league)}
+        fixture_players = {
+            fixture["id"]: order_players_for_fixture(
+                players, fixture, prediction_map, reveal_map[fixture["id"]], league_positions,
+            )
+            for fixture in fixtures
+        }
     show_champions_h2h = request.args.get("h2h") == "1"
     for fixture in fixtures:
         if (
@@ -7542,6 +7558,10 @@ def champions_league():
         position_chart=position_chart,
         gameweek_progress=gameweek_progress_label(fixtures),
         competition="champions_league",
+        players=players,
+        prediction_map=prediction_map,
+        reveal_map=reveal_map,
+        fixture_players=fixture_players,
     )
 
 

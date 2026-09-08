@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.7] - 2026-09-08
+
+### Added
+- Show each player’s prediction and current points beneath a Champions League fixture once it kicks off.
+
+### Changed
+- Keep Champions League live cards refreshed every minute and refresh immediately when a mobile browser returns to the app.
 ## [1.7.6] - 2026-09-08
 
 ### Fixes

@@ -19,6 +19,7 @@
 {% for fixture in fixtures %}
 <div class="fixture fixture-set champions-fixture-card{% if fixture.status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
 {% include "_fixture_card_core.html" %}
+{% include "_fixture_prediction_rows.html" %}
 {% if show_champions_h2h %}
 <details class="match-stats">
 <summary><span>📊 Head-to-head · last 5</span><span class="match-stats-chevron">⌄</span></summary>
@@ -47,7 +48,26 @@
 <p class="muted" style="margin-bottom:0">Fixtures, predictions and the competition table will appear here when the knockout stage begins.</p>
 {% endif %}
 </div>
-{% if has_live_fixtures %}<script>window.setTimeout(function () { window.location.reload(); }, 60000);</script>{% endif %}
+{% if has_live_fixtures %}
+<script>
+(() => {
+  let reloadRequested = false;
+  const refreshLiveView = () => {
+    if (reloadRequested) return;
+    reloadRequested = true;
+    window.location.reload();
+  };
+  // Keep the visible live view in step with the 60-second background feed.
+  window.setInterval(refreshLiveView, 60000);
+  // Mobile web views can pause timers in the background. Refresh as soon as
+  // the player returns, rather than waiting for them to press refresh.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshLiveView();
+  });
+  window.addEventListener("focus", refreshLiveView);
+})();
+</script>
+{% endif %}
 
 <div class="card">
 <h2>⚽ Competition format</h2>
