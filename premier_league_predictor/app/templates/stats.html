@@ -13,6 +13,20 @@
 <div class="stat"><div class="small">CORRECT SCORES WITH DP</div><div class="stat-number">{{ personal.dp_exact_scores }}</div></div>
 <div class="stat"><div class="small">BEST GAMEWEEK</div><div class="stat-number">{% if best_gameweek %}{{ best_gameweek.points }}{% else %}—{% endif %}</div>{% if best_gameweek %}<div class="muted">{{ "R" if competition == "champions_league" else "GW" }}{{ best_gameweek.matchday }}</div>{% endif %}</div>
 </div></div>
+{% if champions_personal %}
+<div class="card">
+<h2><span class="competition-icon competition-icon-cl stats-cl-trophy"><img src="/static/champions-league-trophy.png" alt=""></span> Your Champions League Stats</h2>
+<div class="grid">
+<div class="stat"><div class="small">TOTAL POINTS</div><div class="stat-number">{{ champions_personal.total_points }}</div></div>
+<div class="stat"><div class="small">AVG POINTS / MATCH</div><div class="stat-number">{{ champions_personal.avg_points }}</div></div>
+<div class="stat"><div class="small">CORRECT DRAWS</div><div class="stat-number">{{ champions_personal.exact_draws }}</div></div>
+<div class="stat"><div class="small">CORRECT SCORES</div><div class="stat-number">{{ champions_personal.exact_scores }}</div></div>
+<div class="stat"><div class="small">CORRECT WINNERS</div><div class="stat-number">{{ champions_personal.correct_results }}</div></div>
+<div class="stat"><div class="small">CORRECT SCORES WITH DP</div><div class="stat-number">{{ champions_personal.dp_exact_scores }}</div></div>
+</div>
+<p class="muted" style="margin-bottom:0">Champions League points are separate from the Premier League season table.</p>
+</div>
+{% endif %}
 <div class="card muted">Updated after every settled game block.</div>
 </div>
 {% endblock %}

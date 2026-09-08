@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.4"
+APP_VERSION = "1.7.5"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -8319,34 +8319,8 @@ def late_goal_points_lost(conn, fixture_ids=None):
 
 @app.route("/champions-league/stats")
 def champions_league_stats():
-    if not logged_in():
-        return redirect("/")
-    conn = get_db()
-    try:
-        refresh_points(conn)
-        personal = conn.execute(
-            """SELECT COALESCE(SUM(p.points), 0) AS total_points, COUNT(p.id) AS predictions_made,
-                      COALESCE(SUM(CASE WHEN p.home_score=f.home_score AND p.away_score=f.away_score AND f.home_score=f.away_score THEN 1 ELSE 0 END), 0) AS exact_draws,
-                      COALESCE(SUM(CASE WHEN p.home_score=f.home_score AND p.away_score=f.away_score AND f.home_score!=f.away_score THEN 1 ELSE 0 END), 0) AS exact_scores,
-                      COALESCE(SUM(CASE WHEN NOT (p.home_score=f.home_score AND p.away_score=f.away_score) AND ((f.home_score=f.away_score AND p.home_score=p.away_score) OR (f.home_score>f.away_score AND p.home_score>p.away_score) OR (f.home_score<f.away_score AND p.home_score<p.away_score)) THEN 1 ELSE 0 END), 0) AS correct_results,
-                      COALESCE(SUM(CASE WHEN COALESCE(p.dp,0)=1 AND p.home_score=f.home_score AND p.away_score=f.away_score THEN 1 ELSE 0 END), 0) AS dp_exact_scores
-               FROM predictions p JOIN fixtures f ON f.id=p.fixture_id
-               WHERE p.player_id=? AND f.competition='champions_league' AND f.status='FINISHED'""",
-            (session["player_id"],),
-        ).fetchone()
-        best_gameweek = conn.execute(
-            """SELECT f.matchday, COALESCE(SUM(p.points), 0) AS points
-               FROM predictions p JOIN fixtures f ON f.id=p.fixture_id
-               WHERE p.player_id=? AND f.competition='champions_league' AND f.status='FINISHED'
-               GROUP BY f.matchday ORDER BY points DESC, f.matchday ASC LIMIT 1""",
-            (session["player_id"],),
-        ).fetchone()
-    finally:
-        conn.close()
-    avg_points = round(personal["total_points"] / personal["predictions_made"], 2) if personal["predictions_made"] else 0
-    return render_template("stats.html", personal=personal, best_gameweek=best_gameweek,
-                           avg_points=avg_points, competition="champions_league",
-                           competition_title="Champions League")
+    """Competition-wide Champions League standings and progression."""
+    return redirect("/champions-league/league")
 
 
 @app.route("/stats")
@@ -8451,6 +8425,21 @@ def stats():
         ),
     ).fetchone()
 
+    champions_personal = conn.execute(
+        """SELECT COALESCE(SUM(p.points), 0) AS total_points, COUNT(p.id) AS predictions_made,
+                  COALESCE(SUM(CASE WHEN p.home_score=f.home_score AND p.away_score=f.away_score AND f.home_score=f.away_score THEN 1 ELSE 0 END), 0) AS exact_draws,
+                  COALESCE(SUM(CASE WHEN p.home_score=f.home_score AND p.away_score=f.away_score AND f.home_score!=f.away_score THEN 1 ELSE 0 END), 0) AS exact_scores,
+                  COALESCE(SUM(CASE WHEN NOT (p.home_score=f.home_score AND p.away_score=f.away_score) AND ((f.home_score=f.away_score AND p.home_score=p.away_score) OR (f.home_score>f.away_score AND p.home_score>p.away_score) OR (f.home_score<f.away_score AND p.home_score<p.away_score)) THEN 1 ELSE 0 END), 0) AS correct_results,
+                  COALESCE(SUM(CASE WHEN COALESCE(p.dp,0)=1 AND p.home_score=f.home_score AND p.away_score=f.away_score THEN 1 ELSE 0 END), 0) AS dp_exact_scores
+           FROM predictions p JOIN fixtures f ON f.id=p.fixture_id
+           WHERE p.player_id=? AND f.competition='champions_league' AND f.status='FINISHED'""",
+        (session["player_id"],),
+    ).fetchone()
+    champions_personal = dict(champions_personal)
+    champions_personal["avg_points"] = round(
+        champions_personal["total_points"] / champions_personal["predictions_made"], 2
+    ) if champions_personal["predictions_made"] else 0
+
     best_gameweek = conn.execute(
         """
         SELECT
@@ -8494,6 +8483,7 @@ def stats():
             personal=personal,
             best_gameweek=best_gameweek,
             avg_points=avg_points,
+            champions_personal=champions_personal,
         )
 
     # --------------------------------------------------------

@@ -2,6 +2,15 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.5] - 2026-09-08
+
+### Added
+- Added each player’s separate Champions League record to Your Stats.
+
+### Changed
+- Made the Champions League stats link open competition-wide standings and position history.
+- Replaced Champions League competition-table emoji links with the aligned trophy asset.
+
 ## [1.7.4] - 2026-09-08
 
 ### Added

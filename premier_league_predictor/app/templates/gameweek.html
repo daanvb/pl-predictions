@@ -15,7 +15,7 @@
 <div class="nav">
 <a href="{{ '/champions-league' if is_champions else '/dashboard' }}">← {{ 'Champions League' if is_champions else 'Dashboard' }}</a>
 <a href="{{ '/champions-league/predict' if is_champions else '/predict/' ~ matchday }}">✍️ My Predictions</a>
-{% if is_champions %}<a href="/champions-league/league">🏆 Competition table</a>{% endif %}
+{% if is_champions %}<a href="/champions-league/league"><span class="nav-trophy-icon"><img src="/static/champions-league-trophy.png" alt=""></span> Competition table</a>{% endif %}
 </div>
 
 {% if live_gameweek_visible %}
