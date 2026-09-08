@@ -2257,7 +2257,8 @@ assert "begin with the Champions League knockout stage" in champions_league_temp
 assert "one Double Points fixture" in champions_league_template
 assert "wins the competition and the £20 prize" in champions_league_template
 assert "champions-matchday-select" not in champions_league_template
-assert "Refresh current fixtures" in champions_league_template
+assert "Make Predictions" in champions_league_template
+assert "Refresh current fixtures" not in champions_league_template
 assert base_template.index('href="/leaderboard"') < base_template.index('href="/champions-league"') < base_template.index('href="/head-to-head"') < base_template.index('href="/stats"')
 assert 'id="dashboard-menu-toggle"' in base_template
 assert 'id="dashboard-menu"' in base_template
