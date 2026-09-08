@@ -31,6 +31,13 @@
 </div>
 
 <div class="card">
+<h2>🏆 Champions League data</h2>
+<p class="muted">Refresh the current Champions League fixtures or load the stored head-to-head history used on fixture cards.</p>
+<form method="POST" action="/admin/champions-league/import"><button class="primary" type="submit">Refresh current CL fixtures</button></form>
+<form method="POST" action="/admin/champions-league/h2h/import" style="margin-top:10px"><button type="submit">Load CL head-to-head history</button></form>
+</div>
+
+<div class="card">
 <h2>⚽ Fixture refresh</h2>
 <p class="muted">The background refresh updates live fixtures automatically. The last successful refresh is shown here.</p>
 {% if last_api_refresh %}<p>Last API refresh: <strong>{{ last_api_refresh }}</strong></p>{% else %}<p class="muted">No API refresh recorded yet.</p>{% endif %}
