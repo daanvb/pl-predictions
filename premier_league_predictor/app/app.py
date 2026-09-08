@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.7"
+APP_VERSION = "1.7.8"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -475,6 +475,18 @@ def goal_minute_label(goal):
     if injury_time:
         return f"{minute}+{injury_time}'"
     return f"{minute}'"
+
+
+def display_added_time(minute, injury_time):
+    """Keep added-time notation to the end of a half or extra-time period."""
+    try:
+        minute = int(minute)
+        injury_time = int(injury_time)
+    except (TypeError, ValueError):
+        return None
+    if injury_time <= 0 or minute not in (45, 90, 105, 120):
+        return None
+    return injury_time
 
 
 def parse_live_minute(value):
@@ -2117,6 +2129,7 @@ def status_label(fixture):
 
         if minute:
             prefix = "ET" if match_phase == "EXTRA_TIME" else "LIVE"
+            injury_time = display_added_time(minute, injury_time)
             if injury_time:
                 return f"{prefix} {minute}+{injury_time}'"
             return f"{prefix} {minute}'"

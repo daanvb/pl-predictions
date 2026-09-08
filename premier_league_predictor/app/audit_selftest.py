@@ -1117,6 +1117,9 @@ assert predictor.status_label({
 assert predictor.status_label({
     "status": "IN_PLAY", "minute": 90, "injury_time": 6, "match_phase": None,
 }) == "LIVE 90+6'"
+assert predictor.status_label({
+    "status": "IN_PLAY", "minute": 83, "injury_time": 2, "match_phase": None,
+}) == "LIVE 83'"
 assert predictor.sportscore_team_slug("Nottingham Forest FC") == "nottingham-forest"
 assert predictor.sportscore_team_slug("Manchester United FC") == "manchester-united"
 assert predictor.safe_team_logo_url("https://sportscore.com/media/team.png")
@@ -1204,6 +1207,13 @@ assert predictor.status_label({
     "match_phase": "EXTRA_TIME",
     "utc_date": datetime.now(timezone.utc).isoformat(),
 }) == "ET 105+2'"
+assert predictor.status_label({
+    "status": "IN_PLAY",
+    "minute": 83,
+    "injury_time": 2,
+    "match_phase": None,
+    "utc_date": datetime.now(timezone.utc).isoformat(),
+}) == "LIVE 83'"
 assert predictor.status_label({
     "status": "PAUSED",
     "minute": 105,

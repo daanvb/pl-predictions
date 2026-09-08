@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.8] - 2026-09-08
+
+### Fixes
+- Restrict live added-time labels to the end of normal and extra-time periods, preventing invalid clocks such as `83+2`.
 ## [1.7.7] - 2026-09-08
 
 ### Added
