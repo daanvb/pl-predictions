@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.9"
+APP_VERSION = "1.7.10"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -7536,7 +7536,10 @@ def champions_league():
             record_competition_live_position_snapshot(conn, "champions_league", selected_matchday)
             position_chart = competition_live_position_chart(conn, "champions_league", selected_matchday)
             conn.commit()
-        league_positions = {row["id"]: row["position"] for row in (live_table or previous_league)}
+        # `live_table` carries a rendered position, whereas the saved
+        # pre-round standings are ordered rows. Rank either source here so
+        # the fixture prediction rows still render after the final whistle.
+        league_positions = ranking_positions(live_table or previous_league)
         fixture_players = {
             fixture["id"]: order_players_for_fixture(
                 players, fixture, prediction_map, reveal_map[fixture["id"]], league_positions,

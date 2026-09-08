@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.10] - 2026-09-08
+
+### Fixes
+- Restored the Champions League hub after completed fixtures leave the live table, keeping prediction rows ordered from the settled standings.
 ## [1.7.9] - 2026-09-08
 
 ### Fixes
