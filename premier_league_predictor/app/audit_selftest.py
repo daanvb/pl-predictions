@@ -2508,6 +2508,9 @@ assert predictor._champions_league_tv_teams_match(
 assert predictor._champions_league_tv_teams_match(
     "Club Atlético de Madrid", "Atl. Madrid"
 )
+assert predictor._live_football_provider_names_match("AEK", "AEK Athens")
+assert predictor._live_football_provider_names_match("Lille", "Lille OSC")
+assert predictor._live_football_provider_names_match("Atl. Madrid", "Atlético Madrid")
 assert predictor.confirmed_champions_league_broadcaster({
     "home_team": "Manchester United", "away_team": "Sabah",
 }) == "TNT Sports 1"

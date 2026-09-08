@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.6] - 2026-09-08
+
+### Fixes
+- Matched abbreviated Champions League club names to live providers so live score cards receive their actual clock, score and events.
+- Aligned personal Premier League and Champions League stats headings with their competition trophy assets.
+
 ## [1.7.5] - 2026-09-08
 
 ### Added

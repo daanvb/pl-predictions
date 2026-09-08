@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.5"
+APP_VERSION = "1.7.6"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -4442,10 +4442,11 @@ def import_champions_league_live_from_sportscore():
                     if "HTTP 404" in str(exc):
                         continue
                     raise
-                actual = (normalized_team_name(candidate.get("home")), normalized_team_name(candidate.get("away")))
+                actual = (candidate.get("home"), candidate.get("away"))
                 candidate_kickoff = parse_utc(candidate.get("time"))
                 if (
-                    actual == expected
+                    _live_football_provider_names_match(actual[0], stored["home_team"])
+                    and _live_football_provider_names_match(actual[1], stored["away_team"])
                     and (
                         candidate_kickoff is None
                         or (kickoff and abs((candidate_kickoff - kickoff).total_seconds()) <= 3 * 60 * 60)
@@ -4681,11 +4682,13 @@ def _live_football_match_for_fixture(conn, stored, provider_matches):
                      if str(_live_football_match_id(match)) == mapping["provider_fixture_id"]), None)
     # Match through the same club identity used by fixture cards and H2H.
     # Provider lists often use a longer local name than the current fixture.
-    expected = (canonical_team_name(stored["home_team"]), canonical_team_name(stored["away_team"]))
     matches = [
         match for match in provider_matches
-        if (canonical_team_name(_live_football_team_name(match, "home")),
-            canonical_team_name(_live_football_team_name(match, "away"))) == expected
+        if _live_football_provider_names_match(
+            _live_football_team_name(match, "home"), stored["home_team"]
+        ) and _live_football_provider_names_match(
+            _live_football_team_name(match, "away"), stored["away_team"]
+        )
     ]
     if len(matches) != 1:
         return None
@@ -4826,18 +4829,33 @@ def _live_football_provider_names_match(left, right):
     if left_parts == right_parts:
         return True
     if len(left_parts) == 1 and len(left_parts[0]) >= 2:
-        return left_parts[0] == "".join(part[0] for part in right_parts)
+        if left_parts[0] == "".join(part[0] for part in right_parts):
+            return True
     if len(right_parts) == 1 and len(right_parts[0]) >= 2:
-        return right_parts[0] == "".join(part[0] for part in left_parts)
-    if len(left_parts) != len(right_parts) or not left_parts:
+        if right_parts[0] == "".join(part[0] for part in left_parts):
+            return True
+    if not left_parts or not right_parts:
         return False
-    return all(
-        first == second
-        or (
-            min(len(first), len(second)) >= 3
-            and max(first, second).startswith(min(first, second))
+    if len(left_parts) == len(right_parts):
+        return all(
+            first == second
+            or (
+                min(len(first), len(second)) >= 3
+                and max(first, second).startswith(min(first, second))
+            )
+            for first, second in zip(left_parts, right_parts)
         )
-        for first, second in zip(left_parts, right_parts)
+    # Providers often omit a local suffix (for example "AEK" rather than
+    # "AEK Athens"). This helper is only used alongside the opposing club and
+    # the match date, so accepting that contained identity is unambiguous.
+    shorter, longer = sorted((left_parts, right_parts), key=len)
+    return all(
+        any(
+            token == candidate
+            or (min(len(token), len(candidate)) >= 3 and max(token, candidate).startswith(min(token, candidate)))
+            for candidate in longer
+        )
+        for token in shorter
     )
 
 

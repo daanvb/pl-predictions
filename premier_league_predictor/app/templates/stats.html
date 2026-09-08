@@ -2,9 +2,9 @@
 {% block title %}{{ competition_title if competition == "champions_league" else "Your" }} Stats{% endblock %}
 {% block content %}
 <div class="compact-page stats-page">
-<div class="hero"><h1>📈 {{ competition_title if competition == "champions_league" else "Your" }} Stats</h1><p>Your personal {{ "Champions League" if competition == "champions_league" else "season" }} record at a glance.</p></div>
+<div class="hero"><h1>📈 {{ competition_title if competition == "champions_league" else "Your" }} Stats</h1><p>{{ "Your personal Champions League record at a glance." if competition == "champions_league" else "Your personal Premier League and Champions League records at a glance." }}</p></div>
 <div class="nav"><a href="{{ "/champions-league" if competition == "champions_league" else "/dashboard" }}">← {{ "Champions League" if competition == "champions_league" else "Dashboard" }}</a><a href="{{ "/champions-league/league" if competition == "champions_league" else "/league-stats" }}">🏅 {{ "Competition table" if competition == "champions_league" else "League Stats" }}</a></div>
-<div class="card"><div class="grid">
+<div class="card"><h2 class="stats-competition-heading"><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> Your Premier League Stats</h2><div class="grid">
 <div class="stat"><div class="small">TOTAL POINTS</div><div class="stat-number">{{ personal.total_points }}</div></div>
 <div class="stat"><div class="small">AVG POINTS / MATCH</div><div class="stat-number">{{ avg_points }}</div></div>
 <div class="stat"><div class="small">CORRECT DRAWS</div><div class="stat-number">{{ personal.exact_draws }}</div></div>
@@ -15,7 +15,7 @@
 </div></div>
 {% if champions_personal %}
 <div class="card">
-<h2><span class="competition-icon competition-icon-cl stats-cl-trophy"><img src="/static/champions-league-trophy.png" alt=""></span> Your Champions League Stats</h2>
+<h2 class="stats-competition-heading"><span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Your Champions League Stats</h2>
 <div class="grid">
 <div class="stat"><div class="small">TOTAL POINTS</div><div class="stat-number">{{ champions_personal.total_points }}</div></div>
 <div class="stat"><div class="small">AVG POINTS / MATCH</div><div class="stat-number">{{ champions_personal.avg_points }}</div></div>
