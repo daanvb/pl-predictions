@@ -1245,6 +1245,7 @@ assert predictor.status_label({
 for route in [
     "/dashboard",
     "/champions-league",
+    "/champions-league/stats",
     "/head-to-head",
     "/prize-structure",
     "/tegrity",
@@ -2282,8 +2283,9 @@ assert "setInterval(refreshLiveView, 60000)" in champions_league_template
 assert '_fixture_prediction_rows.html' in champions_league_template
 assert "fixture_players=fixture_players" in inspect.getsource(predictor.champions_league)
 assert "ranking_positions(live_table or previous_league)" in inspect.getsource(predictor.champions_league)
+assert "overall_table_at_matchday(conn, settled_matchday)" in inspect.getsource(predictor.dashboard)
 assert 'champions_league_stats' in inspect.getsource(predictor)
-assert 'return redirect("/champions-league/league")' in inspect.getsource(predictor.champions_league_stats)
+assert 'champions_league_stats.html' in inspect.getsource(predictor.champions_league_stats)
 assert 'return redirect("/champions-league")' in inspect.getsource(predictor.champions_league_live)
 assert 'admin_signal_send_champions_league' in inspect.getsource(predictor)
 assert base_template.index('href="/leaderboard"') < base_template.index('href="/champions-league"') < base_template.index('href="/head-to-head"') < base_template.index('href="/stats"')

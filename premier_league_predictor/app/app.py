@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.10"
+APP_VERSION = "1.7.11"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -8382,8 +8382,68 @@ def late_goal_points_lost(conn, fixture_ids=None):
 
 @app.route("/champions-league/stats")
 def champions_league_stats():
-    """Competition-wide Champions League standings and progression."""
-    return redirect("/champions-league/league")
+    """Show competition-wide Champions League records separately from the table."""
+    if not logged_in():
+        return redirect("/")
+    conn = get_db()
+    try:
+        refresh_points(conn)
+        conn.commit()
+        matchday = conn.execute(
+            """SELECT MAX(matchday) AS matchday FROM fixtures
+               WHERE season = ? AND competition = 'champions_league'""",
+            (SEASON,),
+        ).fetchone()["matchday"] or 0
+        standings = overall_table_at_matchday(
+            conn, matchday, "champions_league"
+        )
+        leader_value = standings[0]["points"] if standings else 0
+        leaders = [
+            row for row in standings if row["points"] == leader_value
+        ]
+
+        def record_rows(condition):
+            return conn.execute(
+                f"""SELECT pl.id, pl.name, COUNT(*) AS total
+                    FROM predictions p
+                    JOIN players pl ON pl.id = p.player_id
+                    JOIN fixtures f ON f.id = p.fixture_id
+                    WHERE f.season = ? AND f.competition = 'champions_league'
+                      AND f.status = 'FINISHED' AND ({condition})
+                    GROUP BY pl.id
+                    ORDER BY total DESC, pl.name COLLATE NOCASE""",
+                (SEASON,),
+            ).fetchall()
+
+        def leaders_for(rows):
+            value = rows[0]["total"] if rows else 0
+            return [row for row in rows if row["total"] == value], value
+
+        exact_draws, exact_draw_value = leaders_for(record_rows(
+            "p.home_score = f.home_score AND p.away_score = f.away_score "
+            "AND f.home_score = f.away_score"
+        ))
+        exact_scores, exact_score_value = leaders_for(record_rows(
+            "p.home_score = f.home_score AND p.away_score = f.away_score "
+            "AND f.home_score != f.away_score"
+        ))
+        correct_winners, correct_winner_value = leaders_for(record_rows(
+            "NOT (p.home_score = f.home_score AND p.away_score = f.away_score) "
+            "AND ((f.home_score = f.away_score AND p.home_score = p.away_score) "
+            "OR (f.home_score > f.away_score AND p.home_score > p.away_score) "
+            "OR (f.home_score < f.away_score AND p.home_score < p.away_score))"
+        ))
+    finally:
+        conn.close()
+    return render_template(
+        "champions_league_stats.html",
+        records=[
+            ("CURRENT LEADER", leaders, leader_value, " pts"),
+            ("MOST CORRECT DRAWS", exact_draws, exact_draw_value, ""),
+            ("MOST CORRECT SCORES", exact_scores, exact_score_value, ""),
+            ("MOST CORRECT WINNERS", correct_winners, correct_winner_value, ""),
+        ],
+    )
 
 
 @app.route("/stats")
@@ -8945,98 +9005,27 @@ def dashboard():
             for fixture in current_fixtures
         }
 
-    row = conn.execute(
-        """
-        SELECT COALESCE(
-            SUM(points),
-            0
-        ) AS total
-        FROM predictions
-        WHERE player_id = ?
-        """,
-        (
-            session["player_id"],
-        ),
-    ).fetchone()
-
-    # Current league position, using exactly the same ranking rules
-    # as the Season Leaderboard.
-    league_rows = conn.execute(
-        """
-        SELECT
-            pl.id,
-            pl.name,
-
-            COALESCE(
-                SUM(p.points),
-                0
-            ) AS points,
-
-            COALESCE(
-                SUM(
-                    CASE
-                    WHEN
-                        f.status = 'FINISHED'
-                        AND p.home_score = f.home_score
-                        AND p.away_score = f.away_score
-                        AND f.home_score = f.away_score
-                    THEN 1 ELSE 0
-                    END
-                ),
-                0
-            ) AS exact_draws,
-
-            COALESCE(
-                SUM(
-                    CASE
-                    WHEN
-                        f.status = 'FINISHED'
-                        AND p.home_score = f.home_score
-                        AND p.away_score = f.away_score
-                        AND f.home_score != f.away_score
-                    THEN 1 ELSE 0
-                    END
-                ),
-                0
-            ) AS exact_scores,
-
-            COALESCE(
-                SUM(
-                    CASE
-                    WHEN f.status = 'FINISHED'
-                     AND NOT (
-                        p.home_score = f.home_score
-                        AND p.away_score = f.away_score
-                     )
-                     AND (
-                        (f.home_score = f.away_score AND p.home_score = p.away_score)
-                        OR (f.home_score > f.away_score AND p.home_score > p.away_score)
-                        OR (f.home_score < f.away_score AND p.home_score < p.away_score)
-                     )
-                    THEN 1 ELSE 0
-                    END
-                ),
-                0
-            ) AS correct_results
-
-        FROM players pl
-
-        LEFT JOIN predictions p
-          ON p.player_id = pl.id
-
-        LEFT JOIN fixtures f
-          ON f.id = p.fixture_id
-
-        GROUP BY pl.id
-
-        ORDER BY
-            points DESC,
-            exact_draws DESC,
-            exact_scores DESC,
-            correct_results DESC,
-            pl.name COLLATE NOCASE
-        """
-    ).fetchall()
+    # The dashboard is the Premier League home screen. Match the settled
+    # Premier League leaderboard exactly; Champions League points stay in
+    # their separate competition throughout the live round.
+    completed_matchdays = [
+        row["matchday"]
+        for row in conn.execute(
+            """SELECT matchday FROM fixtures
+               WHERE season = ? AND competition = 'premier_league' AND matchday IS NOT NULL
+               GROUP BY matchday
+               HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
+                               THEN 1 ELSE 0 END) = 0
+               ORDER BY matchday""",
+            (SEASON,),
+        ).fetchall()
+    ]
+    settled_matchday = completed_matchdays[-1] if completed_matchdays else 0
+    league_rows = overall_table_at_matchday(conn, settled_matchday)
+    current_player = next(
+        (player for player in league_rows if player["id"] == session["player_id"]),
+        None,
+    )
 
     league_position = None
     league_size = len(
@@ -9071,7 +9060,7 @@ def dashboard():
         show_news_ticker=show_news_ticker,
         current_matchday=current_matchday,
         current_fixtures=current_fixtures,
-        total_points=row["total"],
+        total_points=current_player["points"] if current_player else 0,
         league_position=league_position,
         league_size=league_size,
         dashboard_has_live_fixtures=any(

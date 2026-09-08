@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.11] - 2026-09-08
+
+### Fixes
+- Made the Premier League dashboard total and league position use the same settled Premier League record as the season table, excluding Champions League points.
+
+### Added
+- Added a separate Champions League competition-statistics page for current leaders and scoring records.
 ## [1.7.10] - 2026-09-08
 
 ### Fixes
