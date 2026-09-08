@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.8"
+APP_VERSION = "1.7.9"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -4568,14 +4568,23 @@ def _live_football_status(record, fallback="SCHEDULED"):
     if isinstance(record, dict) and isinstance(record.get("header"), dict):
         status = record["header"].get("status") or status
     if isinstance(status, dict):
-        status = status.get("state") or status.get("name") or status.get("status")
-    value = re.sub(r"[^a-z]+", "", str(status or "").casefold())
-    if value in ("inplay", "live", "firsthalf", "secondhalf", "extratime", "penalties"):
-        return "IN_PLAY"
-    if value in ("halftime", "half", "ht", "break", "interval", "extratimehalftime"):
-        return "PAUSED"
-    if value in ("finished", "fulltime", "ft", "afterextratime", "penaltyshootout", "completed", "complete", "ended", "final"):
-        return "FINISHED"
+        # `status` is the provider's outcome while `state` is its UI phase
+        # (for example, postGame). Read the outcome first so FT replaces a
+        # previously stored LIVE state.
+        values = (
+            status.get("status"), status.get("name"), status.get("display"),
+            status.get("state"),
+        )
+    else:
+        values = (status,)
+    for candidate in values:
+        value = re.sub(r"[^a-z]+", "", str(candidate or "").casefold())
+        if value in ("inplay", "live", "firsthalf", "secondhalf", "extratime", "penalties"):
+            return "IN_PLAY"
+        if value in ("halftime", "half", "ht", "break", "interval", "extratimehalftime"):
+            return "PAUSED"
+        if value in ("finished", "fulltime", "ft", "afterextratime", "penaltyshootout", "completed", "complete", "ended", "final"):
+            return "FINISHED"
     return fallback
 
 

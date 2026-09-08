@@ -1117,6 +1117,9 @@ assert predictor.status_label({
 assert predictor.status_label({
     "status": "IN_PLAY", "minute": 90, "injury_time": 6, "match_phase": None,
 }) == "LIVE 90+6'"
+assert predictor._live_football_status({
+    "status": {"status": "finished", "display": "FT", "state": "postGame"},
+}, "IN_PLAY") == "FINISHED"
 assert predictor.status_label({
     "status": "IN_PLAY", "minute": 83, "injury_time": 2, "match_phase": None,
 }) == "LIVE 83'"

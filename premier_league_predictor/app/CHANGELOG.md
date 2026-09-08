@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.9] - 2026-09-08
+
+### Fixes
+- Recognise the Live Football API `finished` status before its `postGame` phase so completed Champions League fixtures transition to FT and settle correctly.
 ## [1.7.8] - 2026-09-08
 
 ### Fixes
