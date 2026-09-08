@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.3"
+APP_VERSION = "1.7.4"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -7475,11 +7475,18 @@ def champions_league():
     ).fetchall()
     fixtures = [dict(row) for row in fixtures]
     live_table = []
-    if fixtures and any(item["status"] in ("LIVE", "IN_PLAY", "PAUSED") for item in fixtures):
+    position_chart = {"snapshots": [], "players": []}
+    live_gameweek_visible = bool(fixtures and any(
+        item["status"] in ("LIVE", "IN_PLAY", "PAUSED") for item in fixtures
+    ))
+    if live_gameweek_visible:
         refresh_points(conn)
         players = conn.execute("SELECT id, name FROM players ORDER BY name COLLATE NOCASE").fetchall()
         predictions = conn.execute("""SELECT p.player_id, p.fixture_id, p.home_score, p.away_score, COALESCE(p.dp, 0) AS dp FROM predictions p JOIN fixtures f ON f.id=p.fixture_id WHERE f.season=? AND f.competition='champions_league' AND f.matchday=?""", (SEASON, selected_matchday)).fetchall()
         live_table = build_live_table(fixtures, players, predictions, overall_table_at_matchday(conn, selected_matchday - 1, "champions_league"))
+        record_competition_live_position_snapshot(conn, "champions_league", selected_matchday)
+        position_chart = competition_live_position_chart(conn, "champions_league", selected_matchday)
+        conn.commit()
     show_champions_h2h = request.args.get("h2h") == "1"
     for fixture in fixtures:
         if (
@@ -7513,6 +7520,10 @@ def champions_league():
         champions_h2h_last_refresh=get_setting("champions_league_h2h_last_refresh"),
         h2h_provider_outcomes=h2h_provider_outcomes,
         live_table=live_table,
+        live_gameweek_visible=live_gameweek_visible,
+        position_chart=position_chart,
+        gameweek_progress=gameweek_progress_label(fixtures),
+        competition="champions_league",
     )
 
 
@@ -8308,11 +8319,34 @@ def late_goal_points_lost(conn, fixture_ids=None):
 
 @app.route("/champions-league/stats")
 def champions_league_stats():
-    if not logged_in(): return redirect("/")
-    conn=get_db(); refresh_points(conn)
-    personal=conn.execute("""SELECT COALESCE(SUM(p.points),0) total_points, COUNT(p.id) predictions_made FROM predictions p JOIN fixtures f ON f.id=p.fixture_id WHERE p.player_id=? AND f.competition='champions_league' AND f.status='FINISHED'""",(session["player_id"],)).fetchone()
-    conn.close()
-    return render_template("stats.html", personal={**dict(personal),"exact_draws":0,"exact_scores":0,"correct_results":0,"dp_exact_scores":0}, best_gameweek=None, avg_points=round(personal["total_points"]/personal["predictions_made"],2) if personal["predictions_made"] else 0, competition="champions_league")
+    if not logged_in():
+        return redirect("/")
+    conn = get_db()
+    try:
+        refresh_points(conn)
+        personal = conn.execute(
+            """SELECT COALESCE(SUM(p.points), 0) AS total_points, COUNT(p.id) AS predictions_made,
+                      COALESCE(SUM(CASE WHEN p.home_score=f.home_score AND p.away_score=f.away_score AND f.home_score=f.away_score THEN 1 ELSE 0 END), 0) AS exact_draws,
+                      COALESCE(SUM(CASE WHEN p.home_score=f.home_score AND p.away_score=f.away_score AND f.home_score!=f.away_score THEN 1 ELSE 0 END), 0) AS exact_scores,
+                      COALESCE(SUM(CASE WHEN NOT (p.home_score=f.home_score AND p.away_score=f.away_score) AND ((f.home_score=f.away_score AND p.home_score=p.away_score) OR (f.home_score>f.away_score AND p.home_score>p.away_score) OR (f.home_score<f.away_score AND p.home_score<p.away_score)) THEN 1 ELSE 0 END), 0) AS correct_results,
+                      COALESCE(SUM(CASE WHEN COALESCE(p.dp,0)=1 AND p.home_score=f.home_score AND p.away_score=f.away_score THEN 1 ELSE 0 END), 0) AS dp_exact_scores
+               FROM predictions p JOIN fixtures f ON f.id=p.fixture_id
+               WHERE p.player_id=? AND f.competition='champions_league' AND f.status='FINISHED'""",
+            (session["player_id"],),
+        ).fetchone()
+        best_gameweek = conn.execute(
+            """SELECT f.matchday, COALESCE(SUM(p.points), 0) AS points
+               FROM predictions p JOIN fixtures f ON f.id=p.fixture_id
+               WHERE p.player_id=? AND f.competition='champions_league' AND f.status='FINISHED'
+               GROUP BY f.matchday ORDER BY points DESC, f.matchday ASC LIMIT 1""",
+            (session["player_id"],),
+        ).fetchone()
+    finally:
+        conn.close()
+    avg_points = round(personal["total_points"] / personal["predictions_made"], 2) if personal["predictions_made"] else 0
+    return render_template("stats.html", personal=personal, best_gameweek=best_gameweek,
+                           avg_points=avg_points, competition="champions_league",
+                           competition_title="Champions League")
 
 
 @app.route("/stats")
@@ -9617,60 +9651,8 @@ def leaderboard():
 
 @app.route("/champions-league/live")
 def champions_league_live():
-    if not logged_in():
-        return redirect("/")
-    conn = get_db()
-    matchday = champions_league_display_matchday(conn)
-    fixtures = conn.execute(
-        """SELECT * FROM fixtures
-           WHERE season = ? AND competition = 'champions_league' AND matchday = ?
-           ORDER BY utc_date""",
-        (SEASON, matchday),
-    ).fetchall()
-    if not fixtures:
-        conn.close()
-        flash("No Champions League fixture round is available yet.", "error")
-        return redirect("/champions-league")
-    refresh_points(conn)
-    players = conn.execute(
-        "SELECT id, name FROM players ORDER BY name COLLATE NOCASE"
-    ).fetchall()
-    predictions = conn.execute(
-        """SELECT p.player_id, p.fixture_id, p.home_score, p.away_score,
-                  COALESCE(p.dp, 0) AS dp
-           FROM predictions p JOIN fixtures f ON f.id = p.fixture_id
-           WHERE f.season = ? AND f.competition = 'champions_league' AND f.matchday = ?""",
-        (SEASON, matchday),
-    ).fetchall()
-    previous_league = overall_table_at_matchday(
-        conn, matchday - 1, "champions_league"
-    )
-    live_table = build_live_table(fixtures, players, predictions, previous_league)
-    league_positions = {row["id"]: row["position"] for row in live_table}
-    prediction_map = {(row["player_id"], row["fixture_id"]): row for row in predictions}
-    reveal_map = {fixture["id"]: fixture_is_locked(fixture) for fixture in fixtures}
-    fixture_players = {
-        fixture["id"]: order_players_for_fixture(
-            players, fixture, prediction_map, reveal_map[fixture["id"]], league_positions,
-        )
-        for fixture in fixtures
-    }
-    visible = live_gameweek_visible(fixtures)
-    record_competition_live_position_snapshot(conn, "champions_league", matchday)
-    position_chart = competition_live_position_chart(
-        conn, "champions_league", matchday
-    )
-    conn.commit()
-    conn.close()
-    return render_template(
-        "gameweek.html", matchday=matchday, fixtures=fixtures, players=players,
-        fixture_players=fixture_players, prediction_map=prediction_map,
-        reveal_map=reveal_map, live_table=live_table,
-        gameweek_progress=gameweek_progress_label(fixtures),
-        live_gameweek_visible=visible, position_chart=position_chart,
-        competition="champions_league", competition_title="Champions League",
-        competition_icon="champions-league-trophy.png",
-    )
+    """Keep old bookmarks working; the live table and chart now live on the CL hub."""
+    return redirect("/champions-league")
 
 
 @app.route("/champions-league/league")
@@ -9999,6 +9981,37 @@ def admin_signal_send_results():
     finally:
         conn.close()
 
+    return redirect("/admin/signal")
+
+
+@app.route("/admin/signal/send-cl/<message_type>", methods=["POST"])
+def admin_signal_send_champions_league(message_type):
+    if not is_admin():
+        return redirect("/")
+    conn = get_db()
+    try:
+        round_number, fixtures = signal_champions_league_round(conn)
+        active = [fixture for fixture in fixtures if fixture["status"] != "CANCELLED"]
+        if not active:
+            flash("No Champions League round is available.", "error")
+        elif message_type == "open":
+            send_signal_message("\n".join([
+                f"🏆 Champions League R{round_number} — Put Your Pre-Dicks In", "",
+                f"First kick-off: {local_datetime(active[0]['utc_date'])}", "",
+                "https://predictions.battleship.live/champions-league/predict",
+            ]))
+            set_setting("signal_last_cl_open_round", str(round_number))
+            flash(f"Champions League R{round_number} opening message sent.", "success")
+        elif message_type == "results":
+            send_signal_message(signal_champions_results_message(round_number, conn))
+            set_setting("signal_last_cl_results_round", str(round_number))
+            flash(f"Champions League R{round_number} results sent.", "success")
+        else:
+            flash("Unknown Champions League Signal message.", "error")
+    except Exception as exc:
+        flash(f"Champions League Signal message failed: {exc}", "error")
+    finally:
+        conn.close()
     return redirect("/admin/signal")
 
 

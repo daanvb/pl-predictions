@@ -2259,6 +2259,11 @@ assert "wins the competition and the £20 prize" in champions_league_template
 assert "champions-matchday-select" not in champions_league_template
 assert "Make Predictions" in champions_league_template
 assert "Refresh current fixtures" not in champions_league_template
+assert '{% include "_dashboard_live_summary.html" %}' in champions_league_template
+assert 'champions_league_stats' in inspect.getsource(predictor)
+assert "f.competition='champions_league'" in inspect.getsource(predictor.champions_league_stats)
+assert 'return redirect("/champions-league")' in inspect.getsource(predictor.champions_league_live)
+assert 'admin_signal_send_champions_league' in inspect.getsource(predictor)
 assert base_template.index('href="/leaderboard"') < base_template.index('href="/champions-league"') < base_template.index('href="/head-to-head"') < base_template.index('href="/stats"')
 assert 'id="dashboard-menu-toggle"' in base_template
 assert 'id="dashboard-menu"' in base_template

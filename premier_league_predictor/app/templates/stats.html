@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Your Stats{% endblock %}
+{% block title %}{{ competition_title if competition == "champions_league" else "Your" }} Stats{% endblock %}
 {% block content %}
 <div class="compact-page stats-page">
-<div class="hero"><h1>📈 Your Stats</h1><p>Your personal season at a glance.</p></div>
-<div class="nav"><a href="/dashboard">← Dashboard</a><a href="/league-stats">🏅 League Stats</a></div>
+<div class="hero"><h1>📈 {{ competition_title if competition == "champions_league" else "Your" }} Stats</h1><p>Your personal {{ "Champions League" if competition == "champions_league" else "season" }} record at a glance.</p></div>
+<div class="nav"><a href="{{ "/champions-league" if competition == "champions_league" else "/dashboard" }}">← {{ "Champions League" if competition == "champions_league" else "Dashboard" }}</a><a href="{{ "/champions-league/league" if competition == "champions_league" else "/league-stats" }}">🏅 {{ "Competition table" if competition == "champions_league" else "League Stats" }}</a></div>
 <div class="card"><div class="grid">
 <div class="stat"><div class="small">TOTAL POINTS</div><div class="stat-number">{{ personal.total_points }}</div></div>
 <div class="stat"><div class="small">AVG POINTS / MATCH</div><div class="stat-number">{{ avg_points }}</div></div>
@@ -11,7 +11,7 @@
 <div class="stat"><div class="small">CORRECT SCORES</div><div class="stat-number">{{ personal.exact_scores }}</div></div>
 <div class="stat"><div class="small">CORRECT WINNERS</div><div class="stat-number">{{ personal.correct_results }}</div></div>
 <div class="stat"><div class="small">CORRECT SCORES WITH DP</div><div class="stat-number">{{ personal.dp_exact_scores }}</div></div>
-<div class="stat"><div class="small">BEST GAMEWEEK</div><div class="stat-number">{% if best_gameweek %}{{ best_gameweek.points }}{% else %}—{% endif %}</div>{% if best_gameweek %}<div class="muted">GW{{ best_gameweek.matchday }}</div>{% endif %}</div>
+<div class="stat"><div class="small">BEST GAMEWEEK</div><div class="stat-number">{% if best_gameweek %}{{ best_gameweek.points }}{% else %}—{% endif %}</div>{% if best_gameweek %}<div class="muted">{{ "R" if competition == "champions_league" else "GW" }}{{ best_gameweek.matchday }}</div>{% endif %}</div>
 </div></div>
 <div class="card muted">Updated after every settled game block.</div>
 </div>

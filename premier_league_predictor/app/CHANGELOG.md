@@ -2,6 +2,15 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.4] - 2026-09-08
+
+### Added
+- Completed the Champions League hub with the live table and live position graph used during a round.
+- Added full personal Champions League prediction statistics and manual Signal sends for opening and results messages.
+
+### Fixes
+- Redirected the former separate Champions League live page to the competition hub.
+
 ## [1.7.3] - 2026-09-08
 
 ### Added

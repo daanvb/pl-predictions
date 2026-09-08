@@ -9,7 +9,7 @@
 
 <div class="card" style="text-align:center;padding:24px"><div class="small">CURRENT ROUND</div><h2>Champions League · Round {{ fixtures[0].matchday if fixtures else '—' }}</h2><a href="/champions-league/predict"><button class="primary" type="button">✍️ Make Predictions</button></a></div>
 
-{% if live_table %}<div class="card live-table-card"><h2>🏆 Live Champions League Table</h2>{% for player in live_table %}<div class="leader-row"><div class="rank">{{ player.position }}</div><strong class="live-player-name">{{ player.name }}</strong><strong class="leader-points">{{ player.season_points }}</strong><div class="small live-player-points">{{ player.points }} round pts</div></div>{% endfor %}</div>{% endif %}
+{% include "_dashboard_live_summary.html" %}
 {% if fixtures %}
 <div class="card">
 <div>

@@ -1,7 +1,8 @@
 {% from "_player_badges.html" import display_player_name with context %}
+{% set is_champions = competition == "champions_league" %}
 {% if live_gameweek_visible and live_table %}
 <div class="card live-table-card" id="live-gameweek">
-<h2><span class="competition-icon competition-icon-pl live-table-title-icon" aria-hidden="true"><img src="/static/premier-league-trophy.png" alt=""></span> Live Gameweek Table</h2>
+<h2><span class="competition-icon {{ "competition-icon-cl" if is_champions else "competition-icon-pl" }} live-table-title-icon" aria-hidden="true"><img src="/static/{{ "champions-league-trophy.png" if is_champions else "premier-league-trophy.png" }}" alt=""></span> Live {{ "Champions League" if is_champions else "Gameweek" }} Table</h2>
 {% for player in live_table %}
 <div class="leader-row">
 <div class="rank">{% if player.position == 1 %}🥇{% elif player.position == 2 %}🥈{% elif player.position == 3 %}🥉{% elif player.position == 4 %}💩{% else %}{{ player.position }}{% endif %}</div>
@@ -9,13 +10,13 @@
 <strong class="live-player-name">{{ display_player_name(player.name) }}</strong>
 {% if gameweek_progress %}<div class="small live-player-progress">{{ gameweek_progress }}</div>{% endif %}
 <strong class="leader-points">{{ player.season_points }}</strong>
-<div class="small live-player-points">{{ player.points }} GW pts</div>
+<div class="small live-player-points">{{ player.points }} {{ "round" if is_champions else "GW" }} pts</div>
 </div>
 {% endfor %}
 
 {% if position_chart.snapshots|length > 0 %}
 <section class="position-chart" aria-labelledby="dashboard-position-chart-title">
-<div class="position-chart-heading"><div><h3 id="dashboard-position-chart-title">Position during this gameweek</h3><p class="small">Only settled positional changes are shown.</p></div><div class="position-chart-legend" id="dashboard-position-chart-legend"></div></div>
+<div class="position-chart-heading"><div><h3 id="dashboard-position-chart-title">Position during this {{ "Champions League round" if is_champions else "gameweek" }}</h3><p class="small">Only settled positional changes are shown.</p></div><div class="position-chart-legend" id="dashboard-position-chart-legend"></div></div>
 <div class="position-chart-stage"><svg id="dashboard-position-chart-svg" role="img" aria-label="League position changes during this gameweek"></svg></div>
 {% if position_chart.snapshots|length == 1 %}<p class="small position-chart-no-changes">No settled position changes yet.</p>{% endif %}
 {% if position_chart.snapshots|length > 1 %}<p class="position-chart-scroll-hint is-visible">← Swipe for earlier updates</p>{% endif %}
