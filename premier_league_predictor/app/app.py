@@ -7474,6 +7474,12 @@ def champions_league():
         (SEASON, selected_matchday),
     ).fetchall()
     fixtures = [dict(row) for row in fixtures]
+    live_table = []
+    if fixtures and any(item["status"] in ("LIVE", "IN_PLAY", "PAUSED") for item in fixtures):
+        refresh_points(conn)
+        players = conn.execute("SELECT id, name FROM players ORDER BY name COLLATE NOCASE").fetchall()
+        predictions = conn.execute("""SELECT p.player_id, p.fixture_id, p.home_score, p.away_score, COALESCE(p.dp, 0) AS dp FROM predictions p JOIN fixtures f ON f.id=p.fixture_id WHERE f.season=? AND f.competition='champions_league' AND f.matchday=?""", (SEASON, selected_matchday)).fetchall()
+        live_table = build_live_table(fixtures, players, predictions, overall_table_at_matchday(conn, selected_matchday - 1, "champions_league"))
     show_champions_h2h = request.args.get("h2h") == "1"
     for fixture in fixtures:
         if (
@@ -7506,6 +7512,7 @@ def champions_league():
         last_refresh=get_setting("champions_league_last_refresh"),
         champions_h2h_last_refresh=get_setting("champions_league_h2h_last_refresh"),
         h2h_provider_outcomes=h2h_provider_outcomes,
+        live_table=live_table,
     )
 
 

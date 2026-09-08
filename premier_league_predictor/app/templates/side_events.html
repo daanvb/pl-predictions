@@ -5,7 +5,7 @@
 <h1><span class="competition-icon competition-icon-cl champions-title-trophy"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League</h1>
 </div>
 
-<div class="nav"><a href="/dashboard">← Dashboard</a><a href="/champions-league/predict">✍️ My predictions</a><a href="/champions-league/live">📊 Live table</a><a href="/champions-league/league">🏆 Competition table</a>{% if show_champions_h2h %}<a href="/champions-league">Hide head-to-head</a>{% else %}<a href="/champions-league?h2h=1">Head-to-head results</a>{% endif %}</div>
+<div class="nav"><a href="/dashboard">← Dashboard</a><a class="primary" href="/champions-league/predict">✍️ Make Predictions</a><a href="/champions-league/league">🏆 Competition table</a>{% if show_champions_h2h %}<a href="/champions-league">Hide head-to-head</a>{% else %}<a href="/champions-league?h2h=1">Head-to-head results</a>{% endif %}</div>
 
 <div class="card" style="text-align:center;padding:34px 24px">
 <img src="/static/champions-league-trophy.png" alt="Champions League trophy" style="width:72px;height:72px;object-fit:contain;margin-bottom:12px">
@@ -17,6 +17,7 @@
 {% endif %}
 </div>
 
+{% if live_table %}<div class="card live-table-card"><h2>🏆 Live Champions League Table</h2>{% for player in live_table %}<div class="leader-row"><div class="rank">{{ player.position }}</div><strong class="live-player-name">{{ player.name }}</strong><strong class="leader-points">{{ player.season_points }}</strong><div class="small live-player-points">{{ player.points }} round pts</div></div>{% endfor %}</div>{% endif %}
 {% if fixtures %}
 <div class="card">
 <div>
