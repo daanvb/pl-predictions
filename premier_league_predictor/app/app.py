@@ -8306,6 +8306,15 @@ def late_goal_points_lost(conn, fixture_ids=None):
     return sorted(losses.values(), key=lambda row: (-row["total"], row["name"].casefold()))
 
 
+@app.route("/champions-league/stats")
+def champions_league_stats():
+    if not logged_in(): return redirect("/")
+    conn=get_db(); refresh_points(conn)
+    personal=conn.execute("""SELECT COALESCE(SUM(p.points),0) total_points, COUNT(p.id) predictions_made FROM predictions p JOIN fixtures f ON f.id=p.fixture_id WHERE p.player_id=? AND f.competition='champions_league' AND f.status='FINISHED'""",(session["player_id"],)).fetchone()
+    conn.close()
+    return render_template("stats.html", personal={**dict(personal),"exact_draws":0,"exact_scores":0,"correct_results":0,"dp_exact_scores":0}, best_gameweek=None, avg_points=round(personal["total_points"]/personal["predictions_made"],2) if personal["predictions_made"] else 0, competition="champions_league")
+
+
 @app.route("/stats")
 @app.route("/league-stats")
 def stats():
