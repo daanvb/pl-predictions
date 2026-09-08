@@ -331,6 +331,38 @@ def init_db(seed_default_player=True):
         ON live_position_snapshots(season, matchday, captured_at)
     """)
 
+    # Champions League position history is stored separately, keeping the
+    # existing Premier League snapshot keys and charts unchanged.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS competition_live_position_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            competition TEXT NOT NULL,
+            season INTEGER NOT NULL,
+            matchday INTEGER NOT NULL,
+            captured_at TEXT NOT NULL,
+            state_signature TEXT NOT NULL,
+            cause_label TEXT,
+            UNIQUE(competition, season, matchday, state_signature)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS competition_live_position_snapshot_rows (
+            snapshot_id INTEGER NOT NULL,
+            player_id INTEGER NOT NULL,
+            player_name TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            season_points INTEGER NOT NULL,
+            round_points INTEGER NOT NULL,
+            PRIMARY KEY (snapshot_id, player_id),
+            FOREIGN KEY(snapshot_id)
+                REFERENCES competition_live_position_snapshots(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_competition_live_position_snapshots
+        ON competition_live_position_snapshots(competition, season, matchday, captured_at)
+    """)
+
 
     conn.execute("DROP TABLE IF EXISTS bigballs_shadow_samples")
     conn.execute("DROP TABLE IF EXISTS predictor_live_samples")

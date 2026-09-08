@@ -8,7 +8,7 @@
 </div>
 <div class="fixture-centre">
 {% if fixture.status in ('LIVE','IN_PLAY','PAUSED','FINISHED') and fixture.home_score is not none and fixture.away_score is not none %}
-<span class="fixture-scoreline"><span>{{ fixture.home_score }}</span><span class="fixture-score-dash">–</span><span>{{ fixture.away_score }}</span></span>
+<span class="fixture-scoreline"><span>{{ fixture.home_score }}{% if fixture.aggregate %} <small class="fixture-aggregate">({{ fixture.aggregate.home }})</small>{% endif %}</span><span class="fixture-score-dash">–</span><span>{{ fixture.away_score }}{% if fixture.aggregate %} <small class="fixture-aggregate">({{ fixture.aggregate.away }})</small>{% endif %}</span></span>
 {% else %}
 v
 {% endif %}

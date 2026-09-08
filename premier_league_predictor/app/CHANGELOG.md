@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.3] - 2026-09-08
+
+### Added
+- Added separate Champions League predictions, live table, position graph and competition standings.
+- Added Champions League Signal notifications for opening, reminders and settled-round results.
+- Added Champions League match statistics, knockout aggregate displays and shootout-aware settlement.
+
 ## [1.7.2] - 2026-09-07
 
 ### Fixes

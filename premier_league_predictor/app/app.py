@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.2"
+APP_VERSION = "1.7.3"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -882,6 +882,19 @@ def gameweek_predictions_open(fixtures):
     return bool(kickoffs and now_utc() < max(kickoffs))
 
 
+def premier_league_gameweek_complete(conn, matchday):
+    """Return true only when a populated Premier League gameweek is settled."""
+    row = conn.execute(
+        """SELECT COUNT(*) AS total,
+                  SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
+                           THEN 1 ELSE 0 END) AS unfinished
+           FROM fixtures
+           WHERE season = ? AND competition = 'premier_league' AND matchday = ?""",
+        (SEASON, matchday),
+    ).fetchone()
+    return bool(row and row["total"] and not row["unfinished"])
+
+
 def season_label(season):
     return f"{season}/{str(season + 1)[-2:]}"
 
@@ -996,7 +1009,8 @@ def archive_completed_season(conn, season):
 
 def overall_table_at_matchday(
     conn,
-    matchday
+    matchday,
+    competition="premier_league",
 ):
     """
     Reconstruct the season table at a completed-Gameweek boundary using the
@@ -1098,6 +1112,7 @@ def overall_table_at_matchday(
         LEFT JOIN fixtures f
           ON f.id = p.fixture_id
          AND f.season = ?
+         AND f.competition = ?
 
         GROUP BY pl.id
 
@@ -1113,7 +1128,8 @@ def overall_table_at_matchday(
             matchday,
             matchday,
             matchday,
-            SEASON
+            SEASON,
+            competition,
         ),
     ).fetchall()
 
@@ -1545,6 +1561,124 @@ def record_live_position_snapshot(conn, matchday):
         cause_fixture_id=cause_fixture_id,
         cause_label=cause_label,
     )
+
+
+def competition_live_position_chart(conn, competition, matchday):
+    rows = conn.execute(
+        """SELECT s.captured_at, s.cause_label, r.player_id, r.player_name,
+                  r.position, r.season_points, r.round_points
+           FROM competition_live_position_snapshots s
+           JOIN competition_live_position_snapshot_rows r ON r.snapshot_id = s.id
+           WHERE s.competition = ? AND s.season = ? AND s.matchday = ?
+           ORDER BY s.captured_at, s.id, r.position""",
+        (competition, SEASON, matchday),
+    ).fetchall()
+    snapshots_by_time = {}
+    snapshots = []
+    players = {}
+    for row in rows:
+        key = (row["captured_at"], row["cause_label"] or "")
+        snapshot = snapshots_by_time.get(key)
+        if snapshot is None:
+            captured = parse_utc(row["captured_at"])
+            snapshot = {
+                "label": captured.astimezone(UK).strftime("%H:%M") if captured else "",
+                "cause_label": row["cause_label"] or "Position change",
+                "rows": [],
+            }
+            if not snapshots:
+                snapshot["milestone"] = "KO"
+            snapshots_by_time[key] = snapshot
+            snapshots.append(snapshot)
+        snapshot["rows"].append({
+            "player_id": row["player_id"],
+            "position": row["position"],
+            "season_points": row["season_points"],
+            "gameweek_points": row["round_points"],
+        })
+        players[row["player_id"]] = {"id": row["player_id"], "name": row["player_name"]}
+    return {"players": list(players.values()), "snapshots": snapshots}
+
+
+def record_competition_live_position_snapshot(conn, competition, matchday):
+    fixtures = conn.execute(
+        """SELECT * FROM fixtures
+           WHERE season = ? AND competition = ? AND matchday = ?
+           ORDER BY utc_date""",
+        (SEASON, competition, matchday),
+    ).fetchall()
+    if not fixtures or not any(
+        fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED", "FINISHED")
+        for fixture in fixtures
+    ):
+        return False
+    players = conn.execute(
+        "SELECT id, name FROM players ORDER BY name COLLATE NOCASE"
+    ).fetchall()
+    predictions = conn.execute(
+        """SELECT p.player_id, p.fixture_id, p.home_score, p.away_score,
+                  COALESCE(p.dp, 0) AS dp
+           FROM predictions p JOIN fixtures f ON f.id = p.fixture_id
+           WHERE f.season = ? AND f.competition = ? AND f.matchday = ?""",
+        (SEASON, competition, matchday),
+    ).fetchall()
+    previous = overall_table_at_matchday(conn, matchday - 1, competition)
+    live_table = build_live_table(fixtures, players, predictions, previous)
+    existing = conn.execute(
+        """SELECT COUNT(*) FROM competition_live_position_snapshots
+           WHERE competition = ? AND season = ? AND matchday = ?""",
+        (competition, SEASON, matchday),
+    ).fetchone()[0]
+    rows = live_table
+    if not existing:
+        baseline = [
+            {"id": row["id"], "name": row["name"], "position": position,
+             "season_points": row["points"], "points": 0}
+            for position, row in enumerate(previous, start=1)
+        ]
+        _insert_competition_position_snapshot(
+            conn, competition, matchday, fixtures[0]["utc_date"], "baseline", baseline, "Kick-off"
+        )
+    signature = json.dumps([[row["id"], row["position"]] for row in rows], separators=(",", ":"))
+    latest = conn.execute(
+        """SELECT s.id FROM competition_live_position_snapshots s
+           WHERE s.competition = ? AND s.season = ? AND s.matchday = ?
+           ORDER BY s.captured_at DESC, s.id DESC LIMIT 1""",
+        (competition, SEASON, matchday),
+    ).fetchone()
+    if latest:
+        previous_positions = [
+            [row["player_id"], row["position"]]
+            for row in conn.execute(
+                """SELECT player_id, position FROM competition_live_position_snapshot_rows
+                   WHERE snapshot_id = ? ORDER BY player_id""", (latest["id"],)
+            ).fetchall()
+        ]
+        if previous_positions == sorted([[row["id"], row["position"]] for row in rows]):
+            return False
+    _, cause = _position_snapshot_cause(fixtures)
+    return _insert_competition_position_snapshot(
+        conn, competition, matchday, now_utc().isoformat(), signature, rows, cause
+    )
+
+
+def _insert_competition_position_snapshot(conn, competition, matchday, captured_at, signature, rows, cause_label):
+    cursor = conn.execute(
+        """INSERT OR IGNORE INTO competition_live_position_snapshots
+           (competition, season, matchday, captured_at, state_signature, cause_label)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (competition, SEASON, matchday, captured_at, signature, cause_label),
+    )
+    if cursor.rowcount != 1:
+        return False
+    conn.executemany(
+        """INSERT INTO competition_live_position_snapshot_rows
+           (snapshot_id, player_id, player_name, position, season_points, round_points)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [(cursor.lastrowid, row["id"], row["name"], row["position"],
+          row["season_points"], row.get("points", 0)) for row in rows],
+    )
+    return True
 
 
 def _position_snapshot_state(snapshot):
@@ -2243,6 +2377,23 @@ def broadcaster_dark_logo_url(broadcaster):
     return None
 
 
+def calculate_fixture_prediction_points(prediction, fixture):
+    """Use the shootout winner for knockout result points, never exact-score points."""
+    if (fixture.get("competition") == "champions_league"
+            and fixture.get("home_penalty_score") is not None
+            and fixture.get("away_penalty_score") is not None
+            and fixture["home_penalty_score"] != fixture["away_penalty_score"]):
+        predicted_home_win = prediction["home_score"] > prediction["away_score"]
+        predicted_away_win = prediction["home_score"] < prediction["away_score"]
+        actual_home_win = fixture["home_penalty_score"] > fixture["away_penalty_score"]
+        points = 3 if ((predicted_home_win and actual_home_win) or (predicted_away_win and not actual_home_win)) else 0
+        return points * 2 if bool(prediction.get("dp", 0)) else points
+    return calculate_prediction_points(
+        prediction["home_score"], prediction["away_score"],
+        fixture["home_score"], fixture["away_score"], bool(prediction.get("dp", 0)),
+    )
+
+
 def refresh_points(conn):
     predictions = conn.execute(
         """
@@ -2254,7 +2405,7 @@ def refresh_points(conn):
             COALESCE(p.dp, 0) AS dp,
             f.home_score AS actual_home,
             f.away_score AS actual_away,
-            f.status
+            f.status, f.competition, f.home_penalty_score, f.away_penalty_score
         FROM predictions p
         JOIN fixtures f
           ON f.id = p.fixture_id
@@ -2268,12 +2419,10 @@ def refresh_points(conn):
         points = 0
 
         if prediction["status"] == "FINISHED":
-            points = calculate_prediction_points(
-                prediction["predicted_home"],
-                prediction["predicted_away"],
-                prediction["actual_home"],
-                prediction["actual_away"],
-                bool(prediction["dp"]),
+            points = calculate_fixture_prediction_points(
+                {"home_score": prediction["predicted_home"], "away_score": prediction["predicted_away"], "dp": prediction["dp"]},
+                {"home_score": prediction["actual_home"], "away_score": prediction["actual_away"],
+                 "competition": prediction["competition"], "home_penalty_score": prediction["home_penalty_score"], "away_penalty_score": prediction["away_penalty_score"]},
             )
 
         if points != prediction["stored_points"]:
@@ -2888,18 +3037,35 @@ def _is_current_premier_league_result(row):
     )
 
 
+def _is_current_competition_result(row, competition):
+    if competition == "champions_league":
+        return (
+            _is_current_season_result(row)
+            and str(row["competition"] or "").casefold() == "champions_league"
+        )
+    return _is_current_premier_league_result(row)
+
+
 def match_stats_for_fixture(
     conn,
-    fixture
+    fixture,
+    source_rows=None,
 ):
     home_team = fixture["home_team"]
     away_team = fixture["away_team"]
     kickoff = fixture["utc_date"]
+    competition = fixture["competition"] if "competition" in fixture.keys() else "premier_league"
+    record_label = "CHAMPIONS LEAGUE" if competition == "champions_league" else "LEAGUE"
 
-    all_prior = _historical_source_rows(
-        conn,
-        kickoff
-    )
+    if source_rows is None:
+        all_prior = _historical_source_rows(conn, kickoff)
+    else:
+        # The prediction page shares one completed-history query between all
+        # cards. Retain the exact per-fixture pre-kick-off cut-off here.
+        all_prior = [
+            row for row in source_rows
+            if row["utc_date"] < kickoff
+        ]
 
     # Venue records remain the pre-match numbers for the whole gameweek. The
     # current result may update recent form, but it must not enter home/away
@@ -2933,7 +3099,7 @@ def match_stats_for_fixture(
     home_record_rows = [
         row
         for row in all_prior
-        if _is_current_premier_league_result(row)
+        if _is_current_competition_result(row, competition)
         and (
             canonical_team_name(row["home_team"]) == home_key
             or canonical_team_name(row["away_team"]) == home_key
@@ -2943,7 +3109,7 @@ def match_stats_for_fixture(
     away_record_rows = [
         row
         for row in all_prior
-        if _is_current_premier_league_result(row)
+        if _is_current_competition_result(row, competition)
         and (
             canonical_team_name(row["home_team"]) == away_key
             or canonical_team_name(row["away_team"]) == away_key
@@ -2953,7 +3119,7 @@ def match_stats_for_fixture(
     home_form_rows = [
         row
         for row in form_rows
-        if _is_current_premier_league_result(row)
+        if _is_current_competition_result(row, competition)
         and (
             canonical_team_name(
                 row["home_team"]
@@ -2967,7 +3133,7 @@ def match_stats_for_fixture(
     away_form_rows = [
         row
         for row in form_rows
-        if _is_current_premier_league_result(row)
+        if _is_current_competition_result(row, competition)
         and (
             canonical_team_name(
                 row["home_team"]
@@ -3038,6 +3204,12 @@ def match_stats_for_fixture(
         "h2h_home_wins": home_h2h_wins,
         "h2h_away_wins": away_h2h_wins,
         "h2h_draws": h2h_draws,
+        "record_label": record_label,
+        "record_note": (
+            "Current-season Champions League record for each team, across all home and away matches."
+            if competition == "champions_league"
+            else "Current-season Premier League record for each team, across all home and away matches."
+        ),
     }
 
 
@@ -3045,10 +3217,15 @@ def build_fixture_stats(
     conn,
     fixtures
 ):
+    if not fixtures:
+        return {}
+    latest_kickoff = max(fixture["utc_date"] for fixture in fixtures)
+    source_rows = _historical_source_rows(conn, latest_kickoff)
     return {
         fixture["id"]: match_stats_for_fixture(
             conn,
-            fixture
+            fixture,
+            source_rows,
         )
         for fixture in fixtures
     }
@@ -5744,6 +5921,20 @@ def api_refresh_worker():
                 set_setting("last_api_football_error_at", now_utc().isoformat())
                 print(f"[API-Football] {exc}", flush=True)
 
+        try:
+            snapshot_conn = get_db()
+            try:
+                snapshot_matchday = champions_league_display_matchday(snapshot_conn)
+                if snapshot_matchday is not None:
+                    record_competition_live_position_snapshot(
+                        snapshot_conn, "champions_league", snapshot_matchday
+                    )
+                    snapshot_conn.commit()
+            finally:
+                snapshot_conn.close()
+        except Exception as exc:
+            print(f"[champions-league-chart] {exc}", flush=True)
+
         print(
             f"[auto-refresh] "
             f"Next check in {delay}s",
@@ -6499,7 +6690,7 @@ def signal_gw_open_message(matchday, fixtures):
         return None
 
     return "\n".join([
-        f"GW {matchday} - Put Your Pre-Dicks In",
+        f"Premier League GW {matchday} - Put Your Pre-Dicks In",
         "",
         f"First Kick Off: {local_datetime(fixtures[0]['utc_date'])}",
         "",
@@ -6784,6 +6975,91 @@ def signal_results_message(matchday, gw_table, overall_table):
     return "\n".join(lines)
 
 
+def signal_champions_league_round(conn):
+    round_number = champions_league_display_matchday(conn)
+    if round_number is None:
+        return None, []
+    fixtures = conn.execute(
+        """SELECT * FROM fixtures
+           WHERE season = ? AND competition = 'champions_league' AND matchday = ?
+           ORDER BY utc_date""", (SEASON, round_number)
+    ).fetchall()
+    return round_number, fixtures
+
+
+def signal_submission_status_for_fixtures(conn, fixtures):
+    fixture_ids = [fixture["id"] for fixture in fixtures if fixture["status"] != "CANCELLED"]
+    players = conn.execute("SELECT id, name FROM players ORDER BY name COLLATE NOCASE").fetchall()
+    if not fixture_ids:
+        return [{"name": player["name"], "count": 0, "total": 0, "complete": False, "has_dp": False} for player in players]
+    placeholders = ",".join("?" for _ in fixture_ids)
+    return [dict(conn.execute(
+        f"""SELECT ? AS name, COUNT(p.id) AS count,
+                   COALESCE(SUM(CASE WHEN COALESCE(p.dp, 0) = 1 THEN 1 ELSE 0 END), 0) AS dp_count
+            FROM predictions p WHERE p.player_id = ? AND p.fixture_id IN ({placeholders})""",
+        (player["name"], player["id"], *fixture_ids),
+    ).fetchone()) | {"total": len(fixture_ids), "complete": False, "has_dp": False}
+        for player in players]
+
+
+def signal_champions_results_message(round_number, conn):
+    round_rows = conn.execute(
+        """SELECT pl.name, COALESCE(SUM(CASE WHEN f.id IS NOT NULL THEN p.points ELSE 0 END), 0) AS points
+           FROM players pl LEFT JOIN predictions p ON p.player_id = pl.id
+           LEFT JOIN fixtures f ON f.id = p.fixture_id
+             AND f.season = ? AND f.competition = 'champions_league' AND f.matchday = ?
+           GROUP BY pl.id ORDER BY points DESC, pl.name COLLATE NOCASE""",
+        (SEASON, round_number),
+    ).fetchall()
+    overall = overall_table_at_matchday(conn, round_number, "champions_league")
+    lines = [f"🏆 Champions League Round {round_number} Results", ""]
+    lines += [f"{index}. {row['name']} — {row['points']} pts" for index, row in enumerate(round_rows, 1)]
+    lines += ["", "📊 Champions League table", ""]
+    lines += [f"{index}. {row['name']} — {row['points']} pts" for index, row in enumerate(overall, 1)]
+    lines += ["", "https://predictions.battleship.live/champions-league"]
+    return "\n".join(lines)
+
+
+def process_champions_league_signal_notifications(conn, settings):
+    round_number, fixtures = signal_champions_league_round(conn)
+    if not fixtures:
+        return
+    active = [fixture for fixture in fixtures if fixture["status"] != "CANCELLED"]
+    if not active:
+        return
+    first_kickoff = parse_utc(active[0]["utc_date"])
+    round_key = str(round_number)
+    if settings["notify_gw_open"] and get_setting("signal_last_cl_open_round") != round_key:
+        send_signal_message("\n".join([
+            f"🏆 Champions League R{round_number} — Put Your Pre-Dicks In", "",
+            f"First kick-off: {local_datetime(active[0]['utc_date'])}", "",
+            "https://predictions.battleship.live/champions-league/predict",
+        ]))
+        set_setting("signal_last_cl_open_round", round_key)
+    if first_kickoff and settings["notify_reminder"]:
+        remaining = first_kickoff - now_utc()
+        statuses = signal_submission_status_for_fixtures(conn, active)
+        for status in statuses:
+            status["complete"] = status["count"] >= status["total"] > 0
+            status["has_dp"] = bool(status["dp_count"])
+        for hours, key, label, include_dp in (
+            (24, "signal_last_cl_reminder_24_round", "24-hour", False),
+            (2, "signal_last_cl_reminder_2_round", "2-hour final", True),
+        ):
+            lower = timedelta(hours=2) if hours == 24 else timedelta(0)
+            if lower < remaining <= timedelta(hours=hours) and get_setting(key) != round_key:
+                message = signal_reminder_message(
+                    f"CL R{round_number}", active, statuses, label, include_dp
+                )
+                if message:
+                    send_signal_message(message.replace("GWCL", "Champions League"))
+                set_setting(key, round_key)
+    complete = all(fixture["status"] in ("FINISHED", "CANCELLED") for fixture in active)
+    if settings["notify_results"] and complete and get_setting("signal_last_cl_results_round") != round_key:
+        send_signal_message(signal_champions_results_message(round_number, conn))
+        set_setting("signal_last_cl_results_round", round_key)
+
+
 def process_signal_notifications():
     settings = signal_settings()
 
@@ -6901,6 +7177,8 @@ def process_signal_notifications():
                     "signal_last_results_at",
                     now_utc().isoformat()
                 )
+
+        process_champions_league_signal_notifications(conn, settings)
 
         set_setting(
             "signal_last_notification_error",
@@ -7148,6 +7426,33 @@ def login():
     )
 
 
+def champions_league_aggregate(conn, fixture):
+    """Return a two-leg aggregate only for a completed reverse fixture."""
+    if fixture.get("competition") != "champions_league":
+        return None
+    prior = conn.execute(
+        """SELECT * FROM fixtures
+           WHERE season = ? AND competition = 'champions_league'
+             AND status = 'FINISHED' AND utc_date < ?
+             AND home_score IS NOT NULL AND away_score IS NOT NULL
+           ORDER BY utc_date DESC""",
+        (SEASON, fixture["utc_date"]),
+    ).fetchall()
+    home_key = canonical_team_name(fixture["home_team"])
+    away_key = canonical_team_name(fixture["away_team"])
+    for leg in prior:
+        if (canonical_team_name(leg["home_team"]) == away_key
+                and canonical_team_name(leg["away_team"]) == home_key):
+            current_home = fixture.get("home_score") or 0
+            current_away = fixture.get("away_score") or 0
+            return {
+                "home": int(leg["away_score"]) + int(current_home),
+                "away": int(leg["home_score"]) + int(current_away),
+            }
+    return None
+
+
+
 @app.route("/side-events")
 def side_events():
     if not logged_in():
@@ -7183,6 +7488,7 @@ def champions_league():
         fixture["red_cards"] = fixture_red_cards(
             fixture.get("incidents_json"), fixture["home_team"], fixture["away_team"],
         )
+        fixture["aggregate"] = champions_league_aggregate(conn, fixture)
         if show_champions_h2h:
             fixture["h2h"] = match_stats_for_fixture(conn, fixture)
     h2h_provider_outcomes = {
@@ -8727,12 +9033,9 @@ def predictions(matchday):
 
     conn = get_db()
 
-    premier_league_complete = conn.execute(
-        """SELECT COUNT(*) FROM fixtures
-           WHERE season = ? AND competition = 'premier_league' AND matchday = ?
-             AND status NOT IN ('FINISHED', 'CANCELLED')""",
-        (SEASON, matchday),
-    ).fetchone()[0] == 0
+    competition = request.args.get("competition", "premier_league")
+    if competition not in ("premier_league", "champions_league"):
+        competition = "premier_league"
 
     fixtures = list(conn.execute(
         """
@@ -8748,34 +9051,16 @@ def predictions(matchday):
          AND p.player_id = ?
         WHERE f.season = ?
           AND f.matchday = ?
-          AND f.competition = 'premier_league'
+          AND f.competition = ?
         ORDER BY f.utc_date
         """,
         (
             session["player_id"],
             SEASON,
             matchday,
+            competition,
         ),
     ).fetchall())
-
-    # After the active Premier League round settles, add the next Champions
-    # League fixture block even though its provider matchday number differs.
-    # Keeping both sections in one form preserves each fixture's own lock time.
-    if premier_league_complete:
-        champions_matchday = champions_league_display_matchday(conn)
-        if champions_matchday is not None:
-            fixtures.extend(conn.execute(
-                """
-                SELECT f.*, p.home_score AS predicted_home, p.away_score AS predicted_away,
-                       p.points, COALESCE(p.dp, 0) AS predicted_dp
-                FROM fixtures f
-                LEFT JOIN predictions p ON p.fixture_id = f.id AND p.player_id = ?
-                WHERE f.season = ? AND f.competition = 'champions_league'
-                  AND f.matchday = ?
-                ORDER BY f.utc_date
-                """,
-                (session["player_id"], SEASON, champions_matchday),
-            ).fetchall())
 
     if not fixtures:
         conn.close()
@@ -9002,12 +9287,14 @@ def predictions(matchday):
                       AND p.fixture_id = ?
                       AND f.season = ?
                       AND f.matchday = ?
+                      AND f.competition = ?
                     """,
                     (
                         session["player_id"],
                         requested_dp_id,
                         SEASON,
-                        matchday
+                        matchday,
+                        competition,
                     )
                 ).fetchone()
 
@@ -9022,12 +9309,14 @@ def predictions(matchday):
                               FROM fixtures
                               WHERE season = ?
                                 AND matchday = ?
+                                AND competition = ?
                           )
                         """,
                         (
                             session["player_id"],
                             SEASON,
-                            matchday
+                            matchday,
+                            competition,
                         )
                     )
 
@@ -9101,7 +9390,7 @@ def predictions(matchday):
         conn.close()
 
         return redirect(
-            f"/predict/{matchday}"
+            f"/predict/{matchday}?competition={competition}"
         )
 
     # Match stats are part of every live prediction card. History keeps its
@@ -9122,8 +9411,21 @@ def predictions(matchday):
         locked_dp_fixture_id=locked_dp_fixture_id,
         fixture_stats=fixture_stats,
         show_match_stats=show_match_stats,
-        premier_league_complete=premier_league_complete,
+        competition=competition,
     )
+
+
+@app.route("/champions-league/predict")
+def champions_league_predictions():
+    if not logged_in():
+        return redirect("/")
+    conn = get_db()
+    matchday = champions_league_display_matchday(conn)
+    conn.close()
+    if matchday is None:
+        flash("No Champions League fixture round is available yet.", "error")
+        return redirect("/champions-league")
+    return redirect(f"/predict/{matchday}?competition=champions_league")
 
 
 @app.route(
@@ -9294,6 +9596,121 @@ def leaderboard():
             "matchdays": completed_matchdays,
             "players": list(chart_players.values()),
         },
+    )
+
+
+@app.route("/champions-league/live")
+def champions_league_live():
+    if not logged_in():
+        return redirect("/")
+    conn = get_db()
+    matchday = champions_league_display_matchday(conn)
+    fixtures = conn.execute(
+        """SELECT * FROM fixtures
+           WHERE season = ? AND competition = 'champions_league' AND matchday = ?
+           ORDER BY utc_date""",
+        (SEASON, matchday),
+    ).fetchall()
+    if not fixtures:
+        conn.close()
+        flash("No Champions League fixture round is available yet.", "error")
+        return redirect("/champions-league")
+    refresh_points(conn)
+    players = conn.execute(
+        "SELECT id, name FROM players ORDER BY name COLLATE NOCASE"
+    ).fetchall()
+    predictions = conn.execute(
+        """SELECT p.player_id, p.fixture_id, p.home_score, p.away_score,
+                  COALESCE(p.dp, 0) AS dp
+           FROM predictions p JOIN fixtures f ON f.id = p.fixture_id
+           WHERE f.season = ? AND f.competition = 'champions_league' AND f.matchday = ?""",
+        (SEASON, matchday),
+    ).fetchall()
+    previous_league = overall_table_at_matchday(
+        conn, matchday - 1, "champions_league"
+    )
+    live_table = build_live_table(fixtures, players, predictions, previous_league)
+    league_positions = {row["id"]: row["position"] for row in live_table}
+    prediction_map = {(row["player_id"], row["fixture_id"]): row for row in predictions}
+    reveal_map = {fixture["id"]: fixture_is_locked(fixture) for fixture in fixtures}
+    fixture_players = {
+        fixture["id"]: order_players_for_fixture(
+            players, fixture, prediction_map, reveal_map[fixture["id"]], league_positions,
+        )
+        for fixture in fixtures
+    }
+    visible = live_gameweek_visible(fixtures)
+    record_competition_live_position_snapshot(conn, "champions_league", matchday)
+    position_chart = competition_live_position_chart(
+        conn, "champions_league", matchday
+    )
+    conn.commit()
+    conn.close()
+    return render_template(
+        "gameweek.html", matchday=matchday, fixtures=fixtures, players=players,
+        fixture_players=fixture_players, prediction_map=prediction_map,
+        reveal_map=reveal_map, live_table=live_table,
+        gameweek_progress=gameweek_progress_label(fixtures),
+        live_gameweek_visible=visible, position_chart=position_chart,
+        competition="champions_league", competition_title="Champions League",
+        competition_icon="champions-league-trophy.png",
+    )
+
+
+@app.route("/champions-league/league")
+def champions_league_league():
+    if not logged_in():
+        return redirect("/")
+    conn = get_db()
+    refresh_points(conn)
+    completed_rounds = [
+        row["matchday"]
+        for row in conn.execute(
+            """SELECT matchday FROM fixtures
+               WHERE season = ? AND competition = 'champions_league'
+                 AND matchday IS NOT NULL
+               GROUP BY matchday
+               HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
+                               THEN 1 ELSE 0 END) = 0
+               ORDER BY matchday""",
+            (SEASON,),
+        ).fetchall()
+    ]
+    current_round = champions_league_display_matchday(conn)
+    settled_round = completed_rounds[-1] if completed_rounds else 0
+    players = [dict(row) for row in overall_table_at_matchday(
+        conn, settled_round, "champions_league"
+    )]
+    previous_positions = ranking_positions(overall_table_at_matchday(
+        conn,
+        completed_rounds[-2] if len(completed_rounds) > 1 else 0,
+        "champions_league",
+    ))
+    for position, player in enumerate(players, start=1):
+        player["position"] = position
+        player["position_change"] = table_position_change(
+            position, previous_positions.get(player["id"])
+        )
+    chart_players = {
+        player["id"]: {"id": player["id"], "name": compact_record_name(player["name"]), "positions": []}
+        for player in players
+    }
+    for round_number in completed_rounds:
+        positions = ranking_positions(overall_table_at_matchday(
+            conn, round_number, "champions_league"
+        ))
+        for player_id, series in chart_players.items():
+            series["positions"].append(positions.get(player_id))
+    conn.commit()
+    conn.close()
+    return render_template(
+        "leaderboard.html",
+        players=players,
+        position_chart={"matchdays": completed_rounds, "players": list(chart_players.values())},
+        competition="champions_league",
+        competition_title="Champions League",
+        competition_icon="champions-league-trophy.png",
+        current_round=current_round,
     )
 
 

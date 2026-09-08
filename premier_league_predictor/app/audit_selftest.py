@@ -845,6 +845,26 @@ assert client.get(
     "/team-badge?url=https%3A%2F%2Fexample.com%2Fbadge.png"
 ).status_code == 404
 
+# Champions League predictions unlock after the preceding PL gameweek settles,
+# rather than waiting for the currently displayed forthcoming gameweek.
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(id, season, matchday, utc_date, status, home_team, away_team)
+       VALUES (98771, ?, 901, ?, 'FINISHED', 'Gate Home', 'Gate Away')""",
+    (predictor.SEASON, (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()),
+)
+conn.execute(
+    """INSERT INTO fixtures(id, season, matchday, utc_date, status, home_team, away_team)
+       VALUES (98772, ?, 902, ?, 'SCHEDULED', 'Next Home', 'Next Away')""",
+    (predictor.SEASON, (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()),
+)
+conn.commit()
+assert predictor.premier_league_gameweek_complete(conn, 901) is True
+assert predictor.premier_league_gameweek_complete(conn, 902) is False
+conn.execute("DELETE FROM fixtures WHERE id IN (98771, 98772)")
+conn.commit()
+conn.close()
+
 # Normal prediction saves and later edits are committed to the ledger in the
 # same database transaction, including Double Points changes.
 conn = database.get_db()
@@ -1487,7 +1507,7 @@ try:
     open_message = predictor.signal_gw_open_message(2, [{
         "utc_date": "2026-08-29T11:30:00+00:00",
     }])
-    assert open_message.startswith("GW 2 - Put Your Pre-Dicks In\n")
+    assert open_message.startswith("Premier League GW 2 - Put Your Pre-Dicks In\n")
     assert "First Kick Off:" in open_message
     assert "Preddies: https://predictions.battleship.live" in open_message
     assert "Predictions are now open!" not in open_message
@@ -1644,6 +1664,31 @@ assert stats["away_record"]["played"] == 2
 assert stats["home_form"][0] == "W"
 assert len(stats["head_to_head"]) == 1
 assert stats["h2h_home_wins"] == 1
+
+# Prediction cards share their completed-history lookup: a gameweek must not
+# reload the full archive once for every fixture.
+history_lookup = predictor._historical_source_rows
+history_lookup_calls = []
+def counted_history_lookup(*args, **kwargs):
+    history_lookup_calls.append((args, kwargs))
+    return history_lookup(*args, **kwargs)
+predictor._historical_source_rows = counted_history_lookup
+try:
+    bulk_stats = predictor.build_fixture_stats(conn, [
+        fixture,
+        {
+            "id": 10000,
+            "season": season,
+            "matchday": 3,
+            "utc_date": kickoff,
+            "home_team": "Gamma",
+            "away_team": "Delta",
+        },
+    ])
+finally:
+    predictor._historical_source_rows = history_lookup
+assert len(history_lookup_calls) == 1
+assert bulk_stats[fixture["id"]]["home_record"] == stats["home_record"]
 conn.close()
 
 
@@ -2017,6 +2062,9 @@ with open(
     fixture_card_meta_template = handle.read()
 
 assert '_match_stats.html' in predictions_template
+assert 'competition == "champions_league"' in predictions_template
+assert 'Champions League · Round {{ matchday }}' in predictions_template
+assert 'competition == \"champions_league\"' in predictions_template
 assert 'Live GW{{ matchday }}' not in predictions_template
 with open(
     os.path.join(templates_dir, "_match_stats.html"),
@@ -2024,7 +2072,8 @@ with open(
     encoding="utf-8",
 ) as handle:
     match_stats_template = handle.read()
-assert "Current-season Premier League record" in match_stats_template
+assert "stats.record_note" in match_stats_template
+assert "stats.record_label" in match_stats_template
 assert '{% if show_match_stats %}' in predictions_template
 assert 'class="scoreline prediction-scoreline"' in predictions_template
 assert 'prediction-team-home' in predictions_template
@@ -2038,10 +2087,10 @@ assert '_match_stats.html' not in gameweek_template
 assert 'href="https://sportscore.com/" rel="dofollow"' in gameweek_template
 assert 'href="https://www.football-data.org/"' in gameweek_template
 assert "Match data from" in gameweek_template
-assert "Ordered by the current overall league position" in gameweek_template
+assert 'Ordered by the current {{ \"Champions League\" if is_champions else \"overall league\" }} position' in gameweek_template
 assert "player.season_points" in gameweek_template
 assert "display_player_name(player.name)" in gameweek_template
-assert "Position during this gameweek" in gameweek_template
+assert 'Position during this {{ \"Champions League round\" if is_champions else \"gameweek\" }}' in gameweek_template
 assert "position-chart-data" in gameweek_template
 assert "Swipe for earlier updates" in gameweek_template
 assert "mobileTimelineWidth" in gameweek_template

@@ -1,25 +1,26 @@
 {% extends "base.html" %}
-{% block title %}GW {{ matchday }} Predictions{% endblock %}
+{% block title %}{{ "Champions League" if competition == "champions_league" else "GW " ~ matchday }} Predictions{% endblock %}
 {% block content %}
 
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">YOUR PICKS</div>
+{% if competition == "champions_league" %}
+<h1><span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League · Round {{ matchday }}</h1>
+<p>Champions League picks are kept separate from Premier League predictions. Each fixture locks at its own kick-off.</p>
+{% else %}
 <h1>Gameweek {{ matchday }}</h1>
 <p>Each fixture locks individually at its own kick-off. Pick one match as your 🔥 DP for double points.</p>
+{% endif %}
 </div>
 
 <div class="nav">
-<a href="/dashboard">← Dashboard</a>
+<a href="{{ '/champions-league' if competition == 'champions_league' else '/dashboard' }}">← {{ 'Champions League' if competition == 'champions_league' else 'Dashboard' }}</a>
+{% if competition == 'champions_league' %}<a href="/champions-league/league">🏆 Competition table</a>{% endif %}
 </div>
 
 <form method="POST">
 
-{% set current_competition = namespace(value='') %}
 {% for fixture in fixtures %}
-{% if fixture.competition != current_competition.value %}
-  {% set current_competition.value = fixture.competition %}
-  <div class="card muted" style="margin-top:18px">{% if fixture.competition == 'champions_league' %}🏆 Champions League predictions are separate from Premier League predictions.{% else %}⚽ Premier League predictions{% endif %}</div>
-{% endif %}
 {% set exact_score = fixture.predicted_home is not none
     and fixture.predicted_away is not none
     and fixture.home_score is not none
@@ -139,10 +140,6 @@
 </div>
 
 {% endfor %}
-
-{% if not premier_league_complete %}
-<div class="card muted">🏆 Champions League predictions unlock after this Premier League gameweek is complete.</div>
-{% endif %}
 
 <div class="save-bar">
 <button type="submit" aria-label="Save predictions">

@@ -1,16 +1,17 @@
 {% extends "base.html" %}
 {% from "_player_badges.html" import display_player_name with context %}
-{% block title %}Season Leaderboard{% endblock %}
+{% set is_champions = competition == "champions_league" %}
+{% block title %}{{ competition_title or "Season Leaderboard" }}{% endblock %}
 {% block content %}
 
 <div class="hero">
-<h1><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> Premier League</h1>
+<h1><span class="competition-icon {{ 'competition-icon-cl' if is_champions else 'competition-icon-pl' }}"><img src="/static/{{ competition_icon or 'premier-league-trophy.png' }}" alt=""></span> {{ competition_title or 'Premier League' }}</h1>
 <p>Official points from completed matches.</p>
 </div>
 
 <div class="nav">
-<a href="/dashboard">← Dashboard</a>
-<a href="/league-stats">🏅 League Stats</a>
+<a href="{{ '/champions-league' if is_champions else '/dashboard' }}">← {{ 'Champions League' if is_champions else 'Dashboard' }}</a>
+{% if is_champions %}<a href="/champions-league/predict">✍️ My predictions</a>{% else %}<a href="/league-stats">🏅 League Stats</a>{% endif %}
 </div>
 
 <div class="card league-table-card">
@@ -265,7 +266,7 @@ Positions are ranked by total points. If points are level, the tie-break order i
 
 <div class="card">
 <h2>📈 Season position changes</h2>
-<p class="muted">League position after each completed gameweek.</p>
+<p class="muted">League position after each completed {{ "Champions League round" if is_champions else "gameweek" }}.</p>
 
 {% if position_chart.matchdays %}
 <div class="season-chart-wrap">
@@ -312,7 +313,7 @@ Positions are ranked by total points. If points are level, the tie-break order i
     }
     data.matchdays.forEach((gw, index) => {
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText('GW' + gw, x(index), height - pad.bottom + 12);
+      ctx.fillText(({{ 'true' if is_champions else 'false' }}) ? 'R' + gw : 'GW' + gw, x(index), height - pad.bottom + 12);
     });
     data.players.forEach((player, playerIndex) => {
       const colour = colours[playerIndex % colours.length];
@@ -360,7 +361,7 @@ Positions are ranked by total points. If points are level, the tie-break order i
 })();
 </script>
 {% else %}
-<p class="muted">The chart will appear after the first gameweek is complete.</p>
+<p class="muted">The chart will appear after the first {{ "Champions League round" if is_champions else "gameweek" }} is complete.</p>
 {% endif %}
 </div>
 
