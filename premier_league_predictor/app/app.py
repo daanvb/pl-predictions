@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.17"
+APP_VERSION = "1.7.18"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -1627,11 +1627,14 @@ def competition_live_position_chart(conn, competition, matchday):
         snapshot = snapshots_by_time.get(key)
         if snapshot is None:
             captured = parse_utc(row["captured_at"])
+            stored_cause = row["cause_label"] or "Live standings update"
+            if stored_cause not in ("Kick-off", "Live standings update") and not stored_cause.startswith("Score update:"):
+                stored_cause = "Live standings update"
             snapshot = {
                 "captured_at": row["captured_at"],
                 "state_signature": row["state_signature"],
                 "label": captured.astimezone(UK).strftime("%H:%M") if captured else "",
-                "cause_label": row["cause_label"] or "Position change",
+                "cause_label": stored_cause,
                 "rows": [],
             }
             if not snapshots:
@@ -1693,12 +1696,11 @@ def competition_live_position_chart(conn, competition, matchday):
             ]
             updated_at = [value for value in updated_at if value]
             captured = max(updated_at) if updated_at else now_utc()
-            _, cause_label = _position_snapshot_cause(fixtures)
             reconciled = {
                 "captured_at": captured.isoformat(),
                 "state_signature": "current-reconciled",
                 "label": captured.astimezone(UK).strftime("%H:%M"),
-                "cause_label": cause_label or "Latest score",
+                "cause_label": "Live standings update",
                 "rows": current_rows,
             }
             # This corrects the current checkpoint; it is not an extra event.
@@ -1712,7 +1714,9 @@ def competition_live_position_chart(conn, competition, matchday):
     return {"players": list(players.values()), "snapshots": snapshots}
 
 
-def record_competition_live_position_snapshot(conn, competition, matchday):
+def record_competition_live_position_snapshot(
+    conn, competition, matchday, cause_fixture_id=None
+):
     fixtures = conn.execute(
         """SELECT * FROM fixtures
            WHERE season = ? AND competition = ? AND matchday = ?
@@ -1775,7 +1779,17 @@ def record_competition_live_position_snapshot(conn, competition, matchday):
         (competition, SEASON, matchday, signature),
     ).fetchone():
         stored_signature = f"{signature}\noccurrence:{now_utc().isoformat()}"
-    _, cause = _position_snapshot_cause(fixtures)
+    cause_fixtures = [
+        fixture for fixture in fixtures if fixture["id"] == cause_fixture_id
+    ]
+    if cause_fixtures:
+        _, match_label = _position_snapshot_cause(cause_fixtures)
+        cause = f"Score update: {match_label}"
+    else:
+        # Clock refreshes happen every minute and are not evidence that this
+        # match caused a standings movement. Avoid attaching a false fixture
+        # label to an otherwise valid position checkpoint.
+        cause = "Live standings update"
     return _insert_competition_position_snapshot(
         conn, competition, matchday, now_utc().isoformat(), stored_signature, rows, cause
     )
@@ -4972,6 +4986,7 @@ def import_champions_league_live_from_live_football_api():
     conn = get_db()
     updated = 0
     affected_matchdays = set()
+    score_change_causes = {}
     try:
         checked_at = now_utc()
         fixtures = conn.execute(
@@ -5030,6 +5045,12 @@ def import_champions_league_live_from_live_football_api():
                     match_phase = _live_football_match_phase(provider_match)
                     home_penalty_score, away_penalty_score = _live_football_penalty_scores(provider_match)
                     events = _live_football_events(provider_match)
+            # The detailed record is authoritative. Its score can differ from
+            # the list response, so calculate the trigger after both reads.
+            state_changed = status != stored["status"]
+            score_changed = home_score is not None and away_score is not None and (
+                home_score != stored["home_score"] or away_score != stored["away_score"]
+            )
             goals = [goal for goal in (_live_football_goal_event(event, stored) for event in events) if goal]
             cards = [card for card in (_live_football_card_event(event, stored) for event in events) if card]
             for event in events:
@@ -5058,6 +5079,8 @@ def import_champions_league_live_from_live_football_api():
                 )
                 updated += 1
                 affected_matchdays.add(stored["matchday"])
+                if score_changed:
+                    score_change_causes[stored["matchday"]] = stored["id"]
             if details_checked:
                 conn.execute(
                     """INSERT OR REPLACE INTO provider_live_states(
@@ -5070,7 +5093,8 @@ def import_champions_league_live_from_live_football_api():
             refresh_points(conn)
             for matchday in affected_matchdays:
                 record_competition_live_position_snapshot(
-                    conn, "champions_league", matchday
+                    conn, "champions_league", matchday,
+                    cause_fixture_id=score_change_causes.get(matchday),
                 )
             archive_completed_fixture_history(conn, "champions_league")
         conn.commit()

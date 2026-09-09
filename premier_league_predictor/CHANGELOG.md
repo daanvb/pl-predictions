@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.18] - 2026-09-09
+
+### Fixed
+- Attached Champions League graph movements only to the fixture whose score changed, rather than to an unrelated match whose clock refreshed most recently.
+- Labelled older ambiguous graph checkpoints as live standings updates instead of showing a misleading fixture name.
+
 ## [1.7.17] - 2026-09-09
 
 ### Fixed
