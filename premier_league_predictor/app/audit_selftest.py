@@ -278,6 +278,21 @@ try:
     }])
 finally:
     predictor.now_utc = original_now_utc
+
+# CL keeps the completed round summary through the night, matching the PL
+# dashboard's next-day 09:00 UK closing boundary.
+original_now_utc = predictor.now_utc
+completed_cl_round = [{
+    "utc_date": "2026-09-09T20:00:00+00:00", "status": "FINISHED",
+}]
+try:
+    predictor.now_utc = lambda: datetime(2026, 9, 10, 7, 59, tzinfo=timezone.utc)
+    assert predictor.competition_round_summary_visible(completed_cl_round)
+    predictor.now_utc = lambda: datetime(2026, 9, 10, 8, 0, tzinfo=timezone.utc)
+    assert not predictor.competition_round_summary_visible(completed_cl_round)
+finally:
+    predictor.now_utc = original_now_utc
+
 original_now_utc = predictor.now_utc
 try:
     predictor.now_utc = lambda: datetime(2026, 8, 29, 14, 59, tzinfo=timezone.utc)
@@ -2324,7 +2339,9 @@ assert '_fixture_prediction_rows.html' in champions_league_template
 assert "fixture_players=fixture_players" in inspect.getsource(predictor.champions_league)
 assert "ranking_positions(live_table or previous_league)" in inspect.getsource(predictor.champions_league)
 assert "overall_table_at_matchday(conn, settled_matchday)" in inspect.getsource(predictor.dashboard)
-assert "competition_round_in_progress(fixtures)" in inspect.getsource(predictor.champions_league)
+assert "round_in_progress = competition_round_in_progress(fixtures)" in inspect.getsource(predictor.champions_league)
+assert "competition_round_summary_visible(previous_fixtures)" in inspect.getsource(predictor.champions_league_display_matchday)
+assert "competition_round_summary_visible(champions_fixtures)" in inspect.getsource(predictor.dashboard)
 assert "champions_round_live=champions_round_live" in inspect.getsource(predictor.dashboard)
 assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_live_football_api)
 assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_sportscore)
@@ -2353,6 +2370,7 @@ assert 'background: #f1f5f9;' in base_template
 assert dashboard_template.index('{% include "_news_ticker.html" %}') < dashboard_template.index('{% include "_dashboard_live_summary.html" %}')
 assert dashboard_template.index('{% include "_dashboard_live_summary.html" %}') < dashboard_template.index('Current Round')
 assert 'fixture.home_logo' in fixture_card_core_template
+assert '.fixture-predictions .pick-grid > strong{display:block;padding-left:25px}' in base_template
 assert 'fixture.away_logo' in fixture_card_core_template
 
 # Broadcaster logos are deliberately omitted from Predictions.

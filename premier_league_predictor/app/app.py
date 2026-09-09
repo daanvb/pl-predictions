@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.15"
+APP_VERSION = "1.7.16"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -892,6 +892,28 @@ def competition_round_in_progress(fixtures):
             for fixture in fixtures
         )
     )
+
+
+def competition_round_summary_visible(fixtures):
+    """Keep a completed CL round summary until 09:00 UK time the next day."""
+    if not live_gameweek_visible(fixtures):
+        return False
+    if any(fixture["status"] not in ("FINISHED", "CANCELLED") for fixture in fixtures):
+        return True
+    final_kickoffs = [
+        parse_utc(fixture["utc_date"])
+        for fixture in fixtures
+        if fixture["status"] != "CANCELLED" and fixture.get("utc_date")
+    ]
+    final_kickoffs = [kickoff for kickoff in final_kickoffs if kickoff]
+    if not final_kickoffs:
+        return False
+    final_local = max(final_kickoffs).astimezone(UK)
+    closes_at = (
+        final_local.replace(hour=9, minute=0, second=0, microsecond=0)
+        + timedelta(days=1)
+    )
+    return now_utc() < closes_at.astimezone(timezone.utc)
 
 
 def gameweek_predictions_open(fixtures):
@@ -3631,7 +3653,7 @@ def import_champions_league_matches(matchday):
 
 
 def champions_league_display_matchday(conn):
-    """Choose the live or next scheduled Champions League fixture block."""
+    """Keep a completed CL round selected until 09:00 UK time the next day."""
     rows = conn.execute(
         """SELECT matchday, status, utc_date FROM fixtures
            WHERE competition = 'champions_league' AND season = ?
@@ -3649,9 +3671,19 @@ def champions_league_display_matchday(conn):
         row for row in rows
         if parse_utc(row["utc_date"]) and parse_utc(row["utc_date"]) >= current
     ]
-    if upcoming:
-        return upcoming[0]["matchday"]
-    return rows[-1]["matchday"]
+    if not upcoming:
+        return rows[-1]["matchday"]
+
+    next_round = upcoming[0]["matchday"]
+    previous_rounds = sorted({
+        row["matchday"] for row in rows if row["matchday"] < next_round
+    })
+    if previous_rounds:
+        previous_round = previous_rounds[-1]
+        previous_fixtures = [row for row in rows if row["matchday"] == previous_round]
+        if competition_round_summary_visible(previous_fixtures):
+            return previous_round
+    return next_round
 
 
 def import_matches_from_api():
@@ -7685,19 +7717,21 @@ def champions_league():
     prediction_map = {}
     reveal_map = {}
     fixture_players = {}
-    live_gameweek_visible = competition_round_in_progress(fixtures)
+    round_in_progress = competition_round_in_progress(fixtures)
+    round_summary_visible = competition_round_summary_visible(fixtures)
     if fixtures:
         players = conn.execute("SELECT id, name FROM players ORDER BY name COLLATE NOCASE").fetchall()
         predictions = conn.execute("""SELECT p.player_id, p.fixture_id, p.home_score, p.away_score, COALESCE(p.dp, 0) AS dp FROM predictions p JOIN fixtures f ON f.id=p.fixture_id WHERE f.season=? AND f.competition='champions_league' AND f.matchday=?""", (SEASON, selected_matchday)).fetchall()
         prediction_map = {(row["player_id"], row["fixture_id"]): row for row in predictions}
         reveal_map = {fixture["id"]: fixture_is_locked(fixture) for fixture in fixtures}
         previous_league = overall_table_at_matchday(conn, selected_matchday - 1, "champions_league")
-        if live_gameweek_visible:
-            refresh_points(conn)
+        if round_summary_visible:
+            if round_in_progress:
+                refresh_points(conn)
+                record_competition_live_position_snapshot(conn, "champions_league", selected_matchday)
+                conn.commit()
             live_table = build_live_table(fixtures, players, predictions, previous_league)
-            record_competition_live_position_snapshot(conn, "champions_league", selected_matchday)
             position_chart = competition_live_position_chart(conn, "champions_league", selected_matchday)
-            conn.commit()
         # `live_table` carries a rendered position, whereas the saved
         # pre-round standings are ordered rows. Rank either source here so
         # the fixture prediction rows still render after the final whistle.
@@ -7733,12 +7767,12 @@ def champions_league():
     return render_template(
         "side_events.html", fixtures=fixtures,
         show_champions_h2h=show_champions_h2h,
-        has_live_fixtures=live_gameweek_visible,
+        has_live_fixtures=round_in_progress,
         last_refresh=get_setting("champions_league_last_refresh"),
         champions_h2h_last_refresh=get_setting("champions_league_h2h_last_refresh"),
         h2h_provider_outcomes=h2h_provider_outcomes,
         live_table=live_table,
-        live_gameweek_visible=live_gameweek_visible,
+        live_gameweek_visible=round_summary_visible,
         position_chart=position_chart,
         gameweek_progress=gameweek_progress_label(fixtures),
         competition="champions_league",
@@ -9220,7 +9254,9 @@ def dashboard():
                  AND matchday = ?""",
             (SEASON, champions_matchday),
         ).fetchall()]
-    champions_round_live = competition_round_in_progress(champions_fixtures)
+    # Match the PL dashboard: retain a completed CL round until 09:00 UK time
+    # on the day after its final fixture.
+    champions_round_live = competition_round_summary_visible(champions_fixtures)
 
     conn.close()
 

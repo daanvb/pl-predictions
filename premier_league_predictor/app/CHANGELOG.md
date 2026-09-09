@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.16] - 2026-09-09
+
+### Changed
+- Kept Champions League live tables, graphs and the dashboard shortcut visible until 09:00 UK time on the day after a round’s final fixture, matching the Premier League lifecycle.
+- Aligned title trophies and player names consistently across Premier League and Champions League prediction rows.
+
 ## [1.7.15] - 2026-09-09
 
 ### Added
