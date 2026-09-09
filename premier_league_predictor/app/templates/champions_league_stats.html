@@ -3,7 +3,7 @@
 {% block content %}
 <div class="compact-page stats-page">
 <div class="hero"><h1><span class="competition-icon competition-icon-cl champions-title-trophy"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League Competition Stats</h1><p>Competition records from completed Champions League fixtures.</p></div>
-<div class="nav"><a href="/champions-league">← Champions League</a><a href="/champions-league/league"><span class="nav-trophy-icon"><img src="/static/champions-league-trophy.png" alt=""></span> Competition table</a><a href="/stats">📈 Your Stats</a></div>
+<div class="nav"><a href="/champions-league">← Champions League</a><a href="/stats">📈 Your Stats</a></div>
 <div class="card"><div class="grid">
 {% for label, players, value, suffix in records %}
 <div class="stat"><div class="small">{{ label }}</div><div class="compact-record-name">{% for player in players %}{{ compact_record_name(player.name) }}{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</div><div class="muted">{{ value }}{{ suffix }}{% if players|length > 1 %} · tied{% endif %}</div></div>

@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.11"
+APP_VERSION = "1.7.12"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -881,6 +881,17 @@ def live_gameweek_visible(fixtures):
     ]
     kickoffs = [kickoff for kickoff in kickoffs if kickoff]
     return bool(kickoffs and now_utc() >= min(kickoffs))
+
+
+def competition_round_in_progress(fixtures):
+    """Keep a competition live view open between staggered fixture batches."""
+    return bool(
+        live_gameweek_visible(fixtures)
+        and any(
+            fixture["status"] not in ("FINISHED", "CANCELLED")
+            for fixture in fixtures
+        )
+    )
 
 
 def gameweek_predictions_open(fixtures):
@@ -4427,9 +4438,10 @@ def import_champions_league_live_from_sportscore():
     """Enrich stored Champions League fixtures with SportScore live data."""
     conn = get_db()
     updated = 0
+    affected_matchdays = set()
     try:
         candidates = conn.execute(
-            """SELECT id, home_team, away_team, status, utc_date
+            """SELECT id, matchday, home_team, away_team, status, utc_date
                FROM fixtures
                WHERE season = ? AND competition = 'champions_league'
                  AND status != 'CANCELLED'""",
@@ -4497,6 +4509,13 @@ def import_champions_league_live_from_sportscore():
                 ),
             )
             updated += 1
+            affected_matchdays.add(stored["matchday"])
+        if affected_matchdays:
+            refresh_points(conn)
+            for matchday in affected_matchdays:
+                record_competition_live_position_snapshot(
+                    conn, "champions_league", matchday
+                )
         conn.commit()
     finally:
         conn.close()
@@ -4743,6 +4762,7 @@ def import_champions_league_live_from_live_football_api():
         return 0
     conn = get_db()
     updated = 0
+    affected_matchdays = set()
     try:
         checked_at = now_utc()
         fixtures = conn.execute(
@@ -4828,6 +4848,7 @@ def import_champions_league_live_from_live_football_api():
                      checked_at.isoformat(), stored["id"]),
                 )
                 updated += 1
+                affected_matchdays.add(stored["matchday"])
             if details_checked:
                 conn.execute(
                     """INSERT OR REPLACE INTO provider_live_states(
@@ -4835,6 +4856,12 @@ def import_champions_league_live_from_live_football_api():
                        ) VALUES ('Live Football API', ?, ?, ?, ?)""",
                     (stored["id"], json.dumps({"status": status, "home": home_score, "away": away_score, "minute": minute}, sort_keys=True),
                      checked_at.isoformat(), json.dumps(provider_match, sort_keys=True)),
+                )
+        if affected_matchdays:
+            refresh_points(conn)
+            for matchday in affected_matchdays:
+                record_competition_live_position_snapshot(
+                    conn, "champions_league", matchday
                 )
         conn.commit()
     finally:
@@ -7521,9 +7548,7 @@ def champions_league():
     prediction_map = {}
     reveal_map = {}
     fixture_players = {}
-    live_gameweek_visible = bool(fixtures and any(
-        item["status"] in ("LIVE", "IN_PLAY", "PAUSED") for item in fixtures
-    ))
+    live_gameweek_visible = competition_round_in_progress(fixtures)
     if fixtures:
         players = conn.execute("SELECT id, name FROM players ORDER BY name COLLATE NOCASE").fetchall()
         predictions = conn.execute("""SELECT p.player_id, p.fixture_id, p.home_score, p.away_score, COALESCE(p.dp, 0) AS dp FROM predictions p JOIN fixtures f ON f.id=p.fixture_id WHERE f.season=? AND f.competition='champions_league' AND f.matchday=?""", (SEASON, selected_matchday)).fetchall()
@@ -7571,10 +7596,7 @@ def champions_league():
     return render_template(
         "side_events.html", fixtures=fixtures,
         show_champions_h2h=show_champions_h2h,
-        has_live_fixtures=any(
-            fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
-            for fixture in fixtures
-        ),
+        has_live_fixtures=live_gameweek_visible,
         last_refresh=get_setting("champions_league_last_refresh"),
         champions_h2h_last_refresh=get_setting("champions_league_h2h_last_refresh"),
         h2h_provider_outcomes=h2h_provider_outcomes,
@@ -9052,6 +9074,17 @@ def dashboard():
         news_preference and not news_preference["hide_news_ticker"]
     )
 
+    champions_matchday = champions_league_display_matchday(conn)
+    champions_fixtures = []
+    if champions_matchday is not None:
+        champions_fixtures = [dict(row) for row in conn.execute(
+            """SELECT status, utc_date FROM fixtures
+               WHERE season = ? AND competition = 'champions_league'
+                 AND matchday = ?""",
+            (SEASON, champions_matchday),
+        ).fetchall()]
+    champions_round_live = competition_round_in_progress(champions_fixtures)
+
     conn.close()
 
     return render_template(
@@ -9073,6 +9106,7 @@ def dashboard():
         gameweek_progress=dashboard_gameweek_progress,
         live_gameweek_visible=live_gameweek_visible(current_fixtures),
         gameweek_predictions_open=gameweek_predictions_open(current_fixtures),
+        champions_round_live=champions_round_live,
         players=dashboard_players,
         fixture_players=dashboard_fixture_players,
         prediction_map=dashboard_prediction_map,

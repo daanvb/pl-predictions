@@ -2,6 +2,17 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.12] - 2026-09-09
+
+### Added
+- Added a Champions League Live shortcut to the dashboard while a Champions League round is in progress.
+- Made the admin shortcut available in the shared top controls on every page for administrators.
+
+### Changed
+- Keep the Champions League live table and position graph visible from the first kick-off through staggered fixture batches, then hand over to the settled competition table after the round completes.
+- Simplified Champions League table and competition-statistics navigation to show only the links relevant to each view.
+- Reserved a shared top row for the menu and floating controls above page headers on desktop and mobile.
+
 ## [1.7.11] - 2026-09-08
 
 ### Fixes

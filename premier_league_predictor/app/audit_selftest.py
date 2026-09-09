@@ -2284,6 +2284,11 @@ assert '_fixture_prediction_rows.html' in champions_league_template
 assert "fixture_players=fixture_players" in inspect.getsource(predictor.champions_league)
 assert "ranking_positions(live_table or previous_league)" in inspect.getsource(predictor.champions_league)
 assert "overall_table_at_matchday(conn, settled_matchday)" in inspect.getsource(predictor.dashboard)
+assert "competition_round_in_progress(fixtures)" in inspect.getsource(predictor.champions_league)
+assert "champions_round_live=champions_round_live" in inspect.getsource(predictor.dashboard)
+assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_live_football_api)
+assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_sportscore)
+assert 'href="/champions-league/predict"' not in leaderboard_template
 assert 'champions_league_stats' in inspect.getsource(predictor)
 assert 'champions_league_stats.html' in inspect.getsource(predictor.champions_league_stats)
 assert 'return redirect("/champions-league")' in inspect.getsource(predictor.champions_league_live)
@@ -2293,12 +2298,12 @@ assert 'id="dashboard-menu-toggle"' in base_template
 assert 'id="dashboard-menu"' in base_template
 assert 'class="corner-action" href="/account"' in dashboard_template
 assert 'class="corner-action" href="/tegrity"' in dashboard_template
-assert 'class="corner-action" href="/admin"' in dashboard_template
+assert 'class="corner-action" href="/admin"' in base_template
 assert 'class="nav"' not in dashboard_template
 assert 'dashboard-position-stat' in dashboard_template
 assert 'dashboard-season-stat' in dashboard_template
 assert '-webkit-text-size-adjust: none' in base_template
-assert '.dashboard-hero{margin-top:56px}' in base_template
+assert 'padding:74px 14px 40px' in base_template
 assert 'flex:0 0 32px' in base_template
 assert 'height:32px;min-height:32px;max-height:32px;inline-size:32px;block-size:32px' in base_template
 assert 'background: #f1f5f9;' in base_template

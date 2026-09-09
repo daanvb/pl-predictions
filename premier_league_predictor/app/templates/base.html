@@ -44,7 +44,7 @@ h1,h2,h3,h4,strong{font-weight:700}
 .container{
   width:min(1040px,100%);
   margin:auto;
-  padding:18px 14px 40px
+  padding:74px 14px 40px
 }
 .hero{
   background:linear-gradient(135deg,#0f172a,#1e293b);
@@ -1260,6 +1260,8 @@ html[data-theme="dark"] .winner-tab.is-active{background:var(--accent);color:#ff
 .dashboard-stats .muted{font-size:12px}
 .dashboard-signal-stat{padding:10px 8px;font-size:13px}
 .dashboard-signal-stat img{width:28px;height:28px}
+.dashboard-cl-live-stat{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;color:inherit}
+.dashboard-cl-live-stat img{object-fit:contain}
 
 .dashboard-logo {
     width: 78px;
@@ -2451,7 +2453,7 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
   .corner-action svg,.theme-toggle-icon{width:20px;height:20px}
   .dashboard-menu-toggle{left:max(8px, env(safe-area-inset-left));width:40px;height:40px}
   .dashboard-menu-heading button{width:32px;min-width:32px;max-width:32px;height:32px;min-height:32px;max-height:32px;inline-size:32px;block-size:32px}
-  .dashboard-hero{margin-top:56px}
+  .dashboard-hero{margin-top:0}
   .dashboard-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
   .dashboard-stats .stat:last-child:nth-child(odd){grid-column:auto;width:auto;justify-self:stretch}
   .dashboard-primary-stat > .small{font-size:11px}
@@ -2512,6 +2514,11 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
 </aside>
 <div class="corner-controls">
 {% block corner_actions %}{% endblock %}
+{% if session.admin %}
+<a class="corner-action" href="/admin" aria-label="Admin" title="Admin">
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg>
+</a>
+{% endif %}
 <button class="theme-toggle theme-toggle-corner" id="theme-toggle" type="button"
         aria-pressed="false" aria-label="Switch to dark mode" title="Switch to dark mode">
   <svg class="theme-toggle-icon theme-toggle-icon-moon" viewBox="0 0 24 24" aria-hidden="true">

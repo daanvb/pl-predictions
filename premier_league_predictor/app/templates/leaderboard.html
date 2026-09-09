@@ -11,7 +11,7 @@
 
 <div class="nav">
 <a href="{{ '/champions-league' if is_champions else '/dashboard' }}">← {{ 'Champions League' if is_champions else 'Dashboard' }}</a>
-{% if is_champions %}<a href="/champions-league/predict">✍️ My predictions</a>{% else %}<a href="/league-stats">🏅 League Stats</a>{% endif %}
+{% if not is_champions %}<a href="/league-stats">🏅 League Stats</a>{% endif %}
 </div>
 
 <div class="card league-table-card">
