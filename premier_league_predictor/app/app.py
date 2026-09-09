@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.21"
+APP_VERSION = "1.7.22"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -1481,14 +1481,24 @@ def chart_team_code(name):
     return letters[:3] or "TEAM"
 
 
-def _position_snapshot_cause(fixtures):
+def _position_snapshot_cause(fixtures, captured_at=None):
     candidates = []
     for fixture in fixtures:
         updated = parse_utc(fixture["last_updated"])
         if updated:
             candidates.append((updated, fixture))
     if candidates:
-        fixture = max(candidates, key=lambda item: item[0])[1]
+        # When repairing a saved chart checkpoint, use the fixture updated
+        # nearest to that checkpoint.  For a new checkpoint, use the newest
+        # fixture as before.
+        if captured_at:
+            captured = parse_utc(captured_at) if isinstance(captured_at, str) else captured_at
+            fixture = min(
+                candidates,
+                key=lambda item: abs((item[0] - captured).total_seconds()),
+            )[1] if captured else max(candidates, key=lambda item: item[0])[1]
+        else:
+            fixture = max(candidates, key=lambda item: item[0])[1]
     else:
         fixture = next(
             (
@@ -1507,6 +1517,12 @@ def _position_snapshot_cause(fixtures):
         f"{chart_team_code(fixture['home_team'])}{score} "
         f"{chart_team_code(fixture['away_team'])}",
     )
+
+
+def _score_update_cause_label(fixtures, captured_at=None):
+    """Always give a plotted position movement a compact match-score label."""
+    _, match_label = _position_snapshot_cause(fixtures, captured_at)
+    return f"Score update: {match_label}"
 
 
 def record_live_position_snapshot(conn, matchday, cause_fixture_id=None):
@@ -1603,8 +1619,8 @@ def record_live_position_snapshot(conn, matchday, cause_fixture_id=None):
         cause_fixture_id, match_label = _position_snapshot_cause(cause_fixtures)
         cause_label = f"Score update: {match_label}"
     else:
-        cause_fixture_id = None
-        cause_label = "Live standings update"
+        cause_fixture_id, _ = _position_snapshot_cause(fixtures)
+        cause_label = _score_update_cause_label(fixtures)
     return _insert_position_snapshot(
         conn,
         matchday,
@@ -1667,6 +1683,14 @@ def competition_live_position_chart(conn, competition, matchday):
         (SEASON, competition, matchday),
     ).fetchall()
     if fixtures:
+        # Older checkpoints did not retain the fixture that caused a movement.
+        # Restore a useful compact score label from the nearest fixture update
+        # instead of showing a bare timestamp on the axis.
+        for snapshot in snapshots:
+            if snapshot["cause_label"] == "Live standings update":
+                snapshot["cause_label"] = _score_update_cause_label(
+                    fixtures, snapshot["captured_at"]
+                )
         current_players = conn.execute(
             "SELECT id, name FROM players ORDER BY name COLLATE NOCASE"
         ).fetchall()
@@ -1687,14 +1711,13 @@ def competition_live_position_chart(conn, competition, matchday):
             "season_points": row["season_points"],
             "gameweek_points": row["points"],
         } for row in current_table]
+        # This is a position chart: points-only refreshes must not replace a
+        # real score-labelled movement with a generic reconciliation point.
         current_state = tuple(sorted(
-            (row["player_id"], row["position"], row["season_points"],
-             row["gameweek_points"])
-            for row in current_rows
+            (row["player_id"], row["position"]) for row in current_rows
         ))
         last_state = tuple(sorted(
-            (row["player_id"], row["position"], row["season_points"],
-             row["gameweek_points"])
+            (row["player_id"], row["position"])
             for row in (snapshots[-1]["rows"] if snapshots else [])
         ))
         if current_state != last_state:
@@ -1708,7 +1731,7 @@ def competition_live_position_chart(conn, competition, matchday):
                 "captured_at": captured.isoformat(),
                 "state_signature": "current-reconciled",
                 "label": captured.astimezone(UK).strftime("%H:%M"),
-                "cause_label": "Live standings update",
+                "cause_label": _score_update_cause_label(fixtures, captured),
                 "rows": current_rows,
             }
             # This corrects the current checkpoint; it is not an extra event.
@@ -1810,10 +1833,7 @@ def record_competition_live_position_snapshot(
         _, match_label = _position_snapshot_cause(cause_fixtures)
         cause = f"Score update: {match_label}"
     else:
-        # Clock refreshes happen every minute and are not evidence that this
-        # match caused a standings movement. Avoid attaching a false fixture
-        # label to an otherwise valid position checkpoint.
-        cause = "Live standings update"
+        cause = _score_update_cause_label(fixtures)
     return _insert_competition_position_snapshot(
         conn, competition, matchday, now_utc().isoformat(), stored_signature, rows, cause
     )
@@ -2106,6 +2126,11 @@ def live_position_chart(conn, matchday):
     # or conflicting database snapshot survived an earlier provider wobble.
     current_fixtures, current_table, _ = _snapshot_rows(conn, matchday)
     if current_table:
+        for snapshot in snapshots:
+            if snapshot["cause_label"] == "Live standings update":
+                snapshot["cause_label"] = _score_update_cause_label(
+                    current_fixtures, snapshot["captured_at"]
+                )
         current_rows = [
             {
                 "player_id": row["id"],
@@ -2137,8 +2162,12 @@ def live_position_chart(conn, matchday):
                 "label": captured.astimezone(UK).strftime("%H:%M"),
                 "rows": current_rows,
             }
-            reconciled["cause_fixture_id"] = None
-            reconciled["cause_label"] = "Live standings update"
+            reconciled["cause_fixture_id"], _ = _position_snapshot_cause(
+                current_fixtures, captured
+            )
+            reconciled["cause_label"] = _score_update_cause_label(
+                current_fixtures, captured
+            )
             if (
                 not any(
                     fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")

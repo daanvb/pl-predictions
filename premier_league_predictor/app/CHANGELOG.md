@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.22] - 2026-09-09
+### Fixed
+- Restored compact team-and-score labels for every plotted Premier League and Champions League position movement, including repaired historical checkpoints.
+- Kept score-only and clock-only refreshes out of both position graphs.
+
 ## [1.7.21] - 2026-09-09
 
 ### Fixed
