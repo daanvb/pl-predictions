@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.21] - 2026-09-09
+
+### Fixed
+- Removed duplicate Champions League graph checkpoints when a score changes without changing any player’s position.
+
 ## [1.7.20] - 2026-09-09
 
 ### Fixed

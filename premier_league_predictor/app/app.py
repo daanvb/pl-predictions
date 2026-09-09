@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.20"
+APP_VERSION = "1.7.21"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -1719,6 +1719,22 @@ def competition_live_position_chart(conn, competition, matchday):
                 snapshots.append(reconciled)
         for row in current_table:
             players[row["id"]] = {"id": row["id"], "name": row["name"]}
+
+    # This is a position graph. Score and clock updates that leave every
+    # player in the same rank must not create another plotted checkpoint.
+    position_changes = []
+    for snapshot in snapshots:
+        positions = tuple(sorted(
+            (row["player_id"], row["position"])
+            for row in snapshot["rows"]
+        ))
+        previous_positions = tuple(sorted(
+            (row["player_id"], row["position"])
+            for row in position_changes[-1]["rows"]
+        )) if position_changes else None
+        if positions != previous_positions:
+            position_changes.append(snapshot)
+    snapshots = position_changes
     return {"players": list(players.values()), "snapshots": snapshots}
 
 
