@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.16"
+APP_VERSION = "1.7.17"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -1610,7 +1610,8 @@ def record_live_position_snapshot(conn, matchday):
 
 def competition_live_position_chart(conn, competition, matchday):
     rows = conn.execute(
-        """SELECT s.captured_at, s.cause_label, r.player_id, r.player_name,
+        """SELECT s.captured_at, s.state_signature, s.cause_label,
+                  r.player_id, r.player_name,
                   r.position, r.season_points, r.round_points
            FROM competition_live_position_snapshots s
            JOIN competition_live_position_snapshot_rows r ON r.snapshot_id = s.id
@@ -1627,6 +1628,8 @@ def competition_live_position_chart(conn, competition, matchday):
         if snapshot is None:
             captured = parse_utc(row["captured_at"])
             snapshot = {
+                "captured_at": row["captured_at"],
+                "state_signature": row["state_signature"],
                 "label": captured.astimezone(UK).strftime("%H:%M") if captured else "",
                 "cause_label": row["cause_label"] or "Position change",
                 "rows": [],
@@ -1642,6 +1645,70 @@ def competition_live_position_chart(conn, competition, matchday):
             "gameweek_points": row["round_points"],
         })
         players[row["player_id"]] = {"id": row["player_id"], "name": row["player_name"]}
+
+    # The table is always calculated from the latest fixture state. Keep the
+    # graph's final checkpoint on that same state, including points changes
+    # which do not move a player between positions.
+    fixtures = conn.execute(
+        """SELECT * FROM fixtures
+           WHERE season = ? AND competition = ? AND matchday = ?
+           ORDER BY utc_date""",
+        (SEASON, competition, matchday),
+    ).fetchall()
+    if fixtures:
+        current_players = conn.execute(
+            "SELECT id, name FROM players ORDER BY name COLLATE NOCASE"
+        ).fetchall()
+        predictions = conn.execute(
+            """SELECT p.player_id, p.fixture_id, p.home_score, p.away_score,
+                      COALESCE(p.dp, 0) AS dp
+               FROM predictions p JOIN fixtures f ON f.id = p.fixture_id
+               WHERE f.season = ? AND f.competition = ? AND f.matchday = ?""",
+            (SEASON, competition, matchday),
+        ).fetchall()
+        previous = overall_table_at_matchday(conn, matchday - 1, competition)
+        current_table = build_live_table(
+            fixtures, current_players, predictions, previous
+        )
+        current_rows = [{
+            "player_id": row["id"],
+            "position": row["position"],
+            "season_points": row["season_points"],
+            "gameweek_points": row["points"],
+        } for row in current_table]
+        current_state = tuple(sorted(
+            (row["player_id"], row["position"], row["season_points"],
+             row["gameweek_points"])
+            for row in current_rows
+        ))
+        last_state = tuple(sorted(
+            (row["player_id"], row["position"], row["season_points"],
+             row["gameweek_points"])
+            for row in (snapshots[-1]["rows"] if snapshots else [])
+        ))
+        if current_state != last_state:
+            updated_at = [
+                parse_utc(fixture["last_updated"])
+                for fixture in fixtures if fixture["last_updated"]
+            ]
+            updated_at = [value for value in updated_at if value]
+            captured = max(updated_at) if updated_at else now_utc()
+            _, cause_label = _position_snapshot_cause(fixtures)
+            reconciled = {
+                "captured_at": captured.isoformat(),
+                "state_signature": "current-reconciled",
+                "label": captured.astimezone(UK).strftime("%H:%M"),
+                "cause_label": cause_label or "Latest score",
+                "rows": current_rows,
+            }
+            # This corrects the current checkpoint; it is not an extra event.
+            if snapshots:
+                snapshots[-1] = reconciled
+            else:
+                reconciled["milestone"] = "KO"
+                snapshots.append(reconciled)
+        for row in current_table:
+            players[row["id"]] = {"id": row["id"], "name": row["name"]}
     return {"players": list(players.values()), "snapshots": snapshots}
 
 
@@ -1693,24 +1760,24 @@ def record_competition_live_position_snapshot(conn, competition, matchday):
         separators=(",", ":"),
     )
     latest = conn.execute(
-        """SELECT s.id FROM competition_live_position_snapshots s
+        """SELECT s.id, s.state_signature FROM competition_live_position_snapshots s
            WHERE s.competition = ? AND s.season = ? AND s.matchday = ?
            ORDER BY s.captured_at DESC, s.id DESC LIMIT 1""",
         (competition, SEASON, matchday),
     ).fetchone()
-    if latest:
-        previous_positions = [
-            [row["player_id"], row["position"]]
-            for row in conn.execute(
-                """SELECT player_id, position FROM competition_live_position_snapshot_rows
-                   WHERE snapshot_id = ? ORDER BY player_id""", (latest["id"],)
-            ).fetchall()
-        ]
-        if previous_positions == sorted([[row["id"], row["position"]] for row in rows]):
-            return False
+    if latest and latest["state_signature"].split("\noccurrence:", 1)[0] == signature:
+        return False
+    stored_signature = signature
+    if conn.execute(
+        """SELECT 1 FROM competition_live_position_snapshots
+           WHERE competition = ? AND season = ? AND matchday = ?
+             AND state_signature = ?""",
+        (competition, SEASON, matchday, signature),
+    ).fetchone():
+        stored_signature = f"{signature}\noccurrence:{now_utc().isoformat()}"
     _, cause = _position_snapshot_cause(fixtures)
     return _insert_competition_position_snapshot(
-        conn, competition, matchday, now_utc().isoformat(), signature, rows, cause
+        conn, competition, matchday, now_utc().isoformat(), stored_signature, rows, cause
     )
 
 
@@ -4566,7 +4633,8 @@ def import_champions_league_live_from_sportscore():
     affected_matchdays = set()
     try:
         candidates = conn.execute(
-            """SELECT id, matchday, home_team, away_team, status, utc_date
+            """SELECT id, matchday, home_team, away_team, status, utc_date,
+                      home_score, away_score, goals_json
                FROM fixtures
                WHERE season = ? AND competition = 'champions_league'
                  AND status != 'CANCELLED'""",
@@ -4609,6 +4677,21 @@ def import_champions_league_live_from_sportscore():
                 continue
             raw_incidents = details.get("incidents")
             incidents = raw_incidents if isinstance(raw_incidents, list) else []
+            sportscore_goals = sportscore_goal_events(details)
+            # Live Football API supplies the complete goal history for this
+            # round. SportScore can occasionally return only the newest event;
+            # never replace a complete scorer list with an incomplete one.
+            sportscore_goals_json = None
+            if isinstance(raw_incidents, list):
+                candidate = {
+                    "goals_json": json.dumps(sportscore_goals),
+                    "home_team": stored["home_team"],
+                    "away_team": stored["away_team"],
+                    "home_score": details.get("home_score", stored["home_score"]),
+                    "away_score": details.get("away_score", stored["away_score"]),
+                }
+                if not _fixture_goal_event_coverage_missing(candidate):
+                    sportscore_goals_json = candidate["goals_json"]
             minute_value, injury_time_value = sportscore_live_clock(details)
             home_penalty_score, away_penalty_score = provider_penalty_scores(details)
             conn.execute(
@@ -4627,7 +4710,7 @@ def import_champions_league_live_from_sportscore():
                     sportscore_fixture_status(details, stored["status"]), details.get("home_score"),
                     details.get("away_score"), minute_value, minute_value, injury_time_value,
                     provider_match_phase(details), home_penalty_score, away_penalty_score,
-                    json.dumps(sportscore_goal_events(details)) if isinstance(raw_incidents, list) else None,
+                    sportscore_goals_json,
                     json.dumps(incidents) if isinstance(raw_incidents, list) else None,
                     safe_team_logo_url(details.get("home_logo")), safe_team_logo_url(details.get("away_logo")),
                     now_utc().isoformat(), stored["id"],

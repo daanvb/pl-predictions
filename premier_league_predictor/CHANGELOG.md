@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.17] - 2026-09-09
+
+### Fixed
+- Kept the Champions League live graph’s current checkpoint aligned with the live table after every score update, including changes that do not alter a player’s rank.
+- Prevented an incomplete secondary live-feed response from replacing a complete Champions League scorer history.
+- Centre-aligned trophy badges within the reserved player-name column on Premier League and Champions League prediction rows.
+
 ## [1.7.16] - 2026-09-09
 
 ### Changed

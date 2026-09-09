@@ -2370,7 +2370,8 @@ assert 'background: #f1f5f9;' in base_template
 assert dashboard_template.index('{% include "_news_ticker.html" %}') < dashboard_template.index('{% include "_dashboard_live_summary.html" %}')
 assert dashboard_template.index('{% include "_dashboard_live_summary.html" %}') < dashboard_template.index('Current Round')
 assert 'fixture.home_logo' in fixture_card_core_template
-assert '.fixture-predictions .pick-grid > strong{display:block;padding-left:25px}' in base_template
+assert '.fixture-predictions .pick-grid > strong{display:flex;align-items:center;min-width:0;padding-left:25px}' in base_template
+assert '.fixture-predictions .player-title-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 1.3rem;margin-left:-25px;margin-right:5px;vertical-align:0}' in base_template
 assert 'fixture.away_logo' in fixture_card_core_template
 
 # Broadcaster logos are deliberately omitted from Predictions.
