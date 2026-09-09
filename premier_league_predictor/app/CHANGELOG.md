@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.19] - 2026-09-09
+
+### Fixed
+- Applied accurate score-change attribution and neutral clock-only labels to Premier League and Champions League live-position graphs.
+- Prevented incomplete scorer data from either live-feed path replacing complete Premier League or Champions League goal histories.
+
 ## [1.7.18] - 2026-09-09
 
 ### Fixed

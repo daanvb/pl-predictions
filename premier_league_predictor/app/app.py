@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.18"
+APP_VERSION = "1.7.19"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -1509,7 +1509,7 @@ def _position_snapshot_cause(fixtures):
     )
 
 
-def record_live_position_snapshot(conn, matchday):
+def record_live_position_snapshot(conn, matchday, cause_fixture_id=None):
     fixtures, live_table, previous_league = _snapshot_rows(conn, matchday)
     if not fixtures or not any(
         fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED", "FINISHED")
@@ -1596,7 +1596,15 @@ def record_live_position_snapshot(conn, matchday):
         if finished_updates:
             captured_at = max(finished_updates)
 
-    cause_fixture_id, cause_label = _position_snapshot_cause(fixtures)
+    cause_fixtures = [
+        fixture for fixture in fixtures if fixture["id"] == cause_fixture_id
+    ]
+    if cause_fixtures:
+        cause_fixture_id, match_label = _position_snapshot_cause(cause_fixtures)
+        cause_label = f"Score update: {match_label}"
+    else:
+        cause_fixture_id = None
+        cause_label = "Live standings update"
     return _insert_position_snapshot(
         conn,
         matchday,
@@ -1964,7 +1972,7 @@ def _reconstruct_finished_position_snapshots(conn, matchday):
             "state_signature": f"reconstructed:{fixture['id']}",
             "cause_fixture_id": fixture["id"],
             "cause_label": (
-                f"{chart_team_code(fixture['home_team'])} {score} "
+                f"Score update: {chart_team_code(fixture['home_team'])} {score} "
                 f"{chart_team_code(fixture['away_team'])}"
             ),
             "label": captured.astimezone(UK).strftime("%H:%M") if captured else "",
@@ -1993,11 +2001,14 @@ def live_position_chart(conn, matchday):
         snapshot = by_snapshot.get(row["snapshot_id"])
         if snapshot is None:
             captured = parse_utc(row["captured_at"])
+            stored_cause = row["cause_label"] or "Live standings update"
+            if stored_cause not in ("Kick-off", "Live standings update") and not stored_cause.startswith("Score update:"):
+                stored_cause = "Live standings update"
             snapshot = {
                 "captured_at": row["captured_at"],
                 "state_signature": row["state_signature"],
                 "cause_fixture_id": row["cause_fixture_id"],
-                "cause_label": row["cause_label"] or "",
+                "cause_label": stored_cause,
                 "label": (
                     captured.astimezone(UK).strftime("%H:%M")
                     if captured else ""
@@ -2110,11 +2121,8 @@ def live_position_chart(conn, matchday):
                 "label": captured.astimezone(UK).strftime("%H:%M"),
                 "rows": current_rows,
             }
-            cause_fixture_id, cause_label = _position_snapshot_cause(
-                current_fixtures
-            )
-            reconciled["cause_fixture_id"] = cause_fixture_id
-            reconciled["cause_label"] = cause_label
+            reconciled["cause_fixture_id"] = None
+            reconciled["cause_label"] = "Live standings update"
             if (
                 not any(
                     fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
@@ -4455,6 +4463,7 @@ def team_logo_worker():
 def import_live_matches_from_sportscore(force_current_gameweek=False):
     conn = get_db()
     updated = 0
+    score_change_causes = set()
 
     try:
         fixtures = conn.execute(
@@ -4554,14 +4563,20 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
             raw_incidents = details.get("incidents")
             incidents = raw_incidents if isinstance(raw_incidents, list) else []
             goals = sportscore_goal_events(details)
-            # An explicit empty incident list is authoritative. Persisting []
-            # clears a goal that the provider has withdrawn after VAR rather
-            # than retaining the earlier scorer and score indefinitely.
-            goals_json = (
-                json.dumps(goals)
-                if isinstance(raw_incidents, list)
-                else None
-            )
+            # Do not let a partial secondary response erase a complete scorer
+            # history already saved from another live feed. A zero-goal result
+            # still stores its authoritative empty list.
+            goals_json = None
+            if isinstance(raw_incidents, list):
+                candidate = {
+                    "goals_json": json.dumps(goals),
+                    "home_team": stored["home_team"],
+                    "away_team": stored["away_team"],
+                    "home_score": details.get("home_score", stored["home_score"]),
+                    "away_score": details.get("away_score", stored["away_score"]),
+                }
+                if not incidents or not _fixture_goal_event_coverage_missing(candidate):
+                    goals_json = candidate["goals_json"]
             incidents_json = (
                 json.dumps(incidents)
                 if isinstance(raw_incidents, list)
@@ -4569,6 +4584,14 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
             )
             minute_value, injury_time_value = sportscore_live_clock(details)
             home_penalty_score, away_penalty_score = provider_penalty_scores(details)
+            score_changed = (
+                details.get("home_score") is not None
+                and details.get("away_score") is not None
+                and (
+                    details.get("home_score") != stored["home_score"]
+                    or details.get("away_score") != stored["away_score"]
+                )
+            )
 
             conn.execute(
                 """
@@ -4623,12 +4646,18 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                 ),
             )
             updated += 1
+            if score_changed:
+                score_change_causes.add(stored["id"])
 
         if updated:
             refresh_points(conn)
             record_live_position_snapshot(
                 conn,
                 fixtures[0]["matchday"],
+                cause_fixture_id=(
+                    next(iter(score_change_causes))
+                    if len(score_change_causes) == 1 else None
+                ),
             )
             archive_completed_fixture_history(conn, "premier_league")
             archive_completed_season(conn, SEASON)
@@ -4704,7 +4733,7 @@ def import_champions_league_live_from_sportscore():
                     "home_score": details.get("home_score", stored["home_score"]),
                     "away_score": details.get("away_score", stored["away_score"]),
                 }
-                if not _fixture_goal_event_coverage_missing(candidate):
+                if not incidents or not _fixture_goal_event_coverage_missing(candidate):
                     sportscore_goals_json = candidate["goals_json"]
             minute_value, injury_time_value = sportscore_live_clock(details)
             home_penalty_score, away_penalty_score = provider_penalty_scores(details)
