@@ -2,6 +2,19 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.14] - 2026-09-09
+
+### Added
+- Archive every settled Premier League and Champions League fixture into the local match-history database for future head-to-head and form displays.
+
+### Changed
+- Prefer current stored results over downloaded historical duplicates when building match statistics.
+- Prepared Champions League fixtures and head-to-head history refresh together on Sunday after 20:00 UK time.
+- Increased the news ticker speed and Champions League live-page refresh rate.
+- Removed the retired Live Football API diagnostic links from the admin interface.
+- Moved Champions League and MCFG Cockfight Cup rules, scoring and fixture information into Competition Details pages.
+- Refresh Premier League fixtures and match history once, two hours after each completed gameweek.
+
 ## [1.7.13] - 2026-09-09
 
 ### Improved

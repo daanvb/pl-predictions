@@ -1847,6 +1847,31 @@ conn.commit()
 conn.close()
 
 
+# Settled live fixtures are copied into the local history archive, preserving
+# their result for later H2H cards even if the active fixture list changes.
+conn = database.get_db()
+archived_fixture_id = 77880001
+archived_kickoff = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           home_score, away_score, competition
+       ) VALUES (?, ?, 8, ?, 'FINISHED', 'Archive Home', 'Archive Away',
+                 2, 1, 'champions_league')""",
+    (archived_fixture_id, season, archived_kickoff),
+)
+assert predictor.archive_completed_fixture_history(conn, "champions_league") >= 1
+archived_row = conn.execute(
+    """SELECT home_score, away_score, competition FROM historical_fixtures
+       WHERE id = ?""",
+    (archived_fixture_id,),
+).fetchone()
+assert tuple(archived_row) == (2, 1, "champions_league")
+conn.execute("DELETE FROM fixtures WHERE id = ?", (archived_fixture_id,))
+conn.execute("DELETE FROM historical_fixtures WHERE id = ?", (archived_fixture_id,))
+conn.commit()
+conn.close()
+
 # ------------------------------------------------------------------
 # Final-audit regression coverage
 # ------------------------------------------------------------------
@@ -2256,20 +2281,24 @@ with open(
     encoding="utf-8",
 ) as handle:
     head_to_head_template = handle.read()
-assert "GW32–37" in head_to_head_template
-assert "Gameweek 38" in head_to_head_template
-assert "Head-to-head gameweek score difference" in head_to_head_template
-assert "player who finished higher in the Cockfight Cup league wins" in head_to_head_template
+with open(os.path.join(templates_dir, "head_to_head_details.html"), "r", encoding="utf-8") as handle:
+    head_to_head_details_template = handle.read()
+assert "GW32–37" in head_to_head_details_template
+assert "Gameweek 38" in head_to_head_details_template
+assert "Head-to-head gameweek score difference" in head_to_head_details_template
+assert "player who finished higher in the Cockfight Cup league wins" in head_to_head_details_template
 with open(
     os.path.join(templates_dir, "side_events.html"),
     "r",
     encoding="utf-8",
 ) as handle:
     champions_league_template = handle.read()
-assert "same prediction-league format as the Premier League" in champions_league_template
-assert "begin with the Champions League knockout stage" in champions_league_template
-assert "one Double Points fixture" in champions_league_template
-assert "wins the competition and the £20 prize" in champions_league_template
+with open(os.path.join(templates_dir, "champions_league_details.html"), "r", encoding="utf-8") as handle:
+    champions_league_details_template = handle.read()
+assert "same prediction-league format as the Premier League" in champions_league_details_template
+assert "begin with the Champions League knockout stage" in champions_league_details_template
+assert "one Double Points fixture" in champions_league_details_template
+assert "wins the competition and the £20 prize" in champions_league_details_template
 assert "champions-matchday-select" not in champions_league_template
 assert "Make Predictions" in champions_league_template
 assert "Refresh current fixtures" not in champions_league_template
@@ -2279,7 +2308,7 @@ with open(os.path.join(templates_dir, "stats.html"), "r", encoding="utf-8") as h
 assert "Your Champions League Stats" in stats_template
 assert "nav-trophy-icon" in champions_league_template
 assert "visibilitychange" in champions_league_template
-assert "setInterval(refreshLiveView, 60000)" in champions_league_template
+assert "setInterval(refreshLiveView, 30000)" in champions_league_template
 assert '_fixture_prediction_rows.html' in champions_league_template
 assert "fixture_players=fixture_players" in inspect.getsource(predictor.champions_league)
 assert "ranking_positions(live_table or previous_league)" in inspect.getsource(predictor.champions_league)

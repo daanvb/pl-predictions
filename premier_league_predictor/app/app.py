@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.13"
+APP_VERSION = "1.7.14"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -113,8 +113,8 @@ API_FOOTBALL_STALE_MINUTES = 2
 LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS = 5 * 60
 CHAMPIONS_LEAGUE_H2H_HISTORY_DAYS = 365 * 3
 CHAMPIONS_LEAGUE_H2H_IMPORT_REVISION = 2
-CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_WEEKDAY = 4  # Friday in Europe/London
-CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_HOUR = 9
+CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_WEEKDAY = 6  # Sunday in Europe/London
+CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_HOUR = 20
 FINAL_SCORER_BACKFILL_PER_REFRESH = 8
 LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
@@ -3439,6 +3439,47 @@ def import_historical_results(
 
 
 
+def archive_completed_fixture_history(conn, competition=None):
+    """Persist settled live fixtures for local form and H2H lookup.
+
+    The active fixture table remains the preferred current-season source. This
+    archive keeps those completed results available when future schedule
+    refreshes replace the active fixture set.
+    """
+    filters = [
+        "status = 'FINISHED'",
+        "home_score IS NOT NULL",
+        "away_score IS NOT NULL",
+    ]
+    parameters = []
+    if competition:
+        filters.append("competition = ?")
+        parameters.append(competition)
+    where = " AND ".join(filters)
+    cursor = conn.execute(
+        f"""INSERT INTO historical_fixtures(
+                  id, season, matchday, utc_date, home_team, away_team,
+                  home_score, away_score, status, competition
+              )
+              SELECT id, season, matchday, utc_date, home_team, away_team,
+                     home_score, away_score, 'FINISHED', competition
+              FROM fixtures
+              WHERE {where}
+              ON CONFLICT(id) DO UPDATE SET
+                  season = excluded.season,
+                  matchday = excluded.matchday,
+                  utc_date = excluded.utc_date,
+                  home_team = excluded.home_team,
+                  away_team = excluded.away_team,
+                  home_score = excluded.home_score,
+                  away_score = excluded.away_score,
+                  status = 'FINISHED',
+                  competition = excluded.competition""",
+        parameters,
+    )
+    return cursor.rowcount
+
+
 def refresh_champions_league_fixture_schedule_automatically():
     """Keep the displayed CL round and its successor ready for predictions."""
     token = get_setting("football_api_token")
@@ -3465,6 +3506,10 @@ def refresh_champions_league_fixture_schedule_automatically():
     imported = 0
     for matchday in (current, current + 1):
         imported += import_champions_league_matches(matchday)
+    try:
+        import_champions_league_h2h_from_live_football_api()
+    except LiveFootballAPIError as exc:
+        set_setting("champions_league_h2h_schedule_error", str(exc))
     set_setting("champions_league_schedule_auto_refresh", now_utc().isoformat())
     return imported
 
@@ -3806,6 +3851,7 @@ def import_matches_from_api():
     snapshot_matchday = dashboard_current_gameweek(conn)
     if snapshot_matchday is not None:
         record_live_position_snapshot(conn, snapshot_matchday)
+    archive_completed_fixture_history(conn, "premier_league")
     archive_completed_season(conn, SEASON)
 
     conn.commit()
@@ -3877,6 +3923,7 @@ def repair_missing_completed_results():
             refresh_points(conn)
             for matchday in sorted(repaired_matchdays):
                 record_live_position_snapshot(conn, matchday)
+            archive_completed_fixture_history(conn, "premier_league")
             archive_completed_season(conn, SEASON)
         conn.commit()
         return repaired
@@ -4432,6 +4479,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                 conn,
                 fixtures[0]["matchday"],
             )
+            archive_completed_fixture_history(conn, "premier_league")
             archive_completed_season(conn, SEASON)
         conn.commit()
     finally:
@@ -4523,6 +4571,7 @@ def import_champions_league_live_from_sportscore():
                 record_competition_live_position_snapshot(
                     conn, "champions_league", matchday
                 )
+            archive_completed_fixture_history(conn, "champions_league")
         conn.commit()
     finally:
         conn.close()
@@ -4870,6 +4919,7 @@ def import_champions_league_live_from_live_football_api():
                 record_competition_live_position_snapshot(
                     conn, "champions_league", matchday
                 )
+            archive_completed_fixture_history(conn, "champions_league")
         conn.commit()
     finally:
         conn.close()
@@ -5848,6 +5898,27 @@ def record_football_data_error(error):
         set_setting("football_data_rate_limited_at", now_utc().isoformat())
 
 
+def premier_league_schedule_refresh_due():
+    """Return the completed PL matchday due for its schedule refresh, if any."""
+    conn = get_db()
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM fixtures WHERE season = ? AND competition = 'premier_league'", (SEASON,)).fetchone()[0]
+        if not total:
+            return 'initial'
+        row = conn.execute("""SELECT matchday, MAX(utc_date) AS final_kickoff FROM fixtures
+            WHERE season = ? AND competition = 'premier_league' AND matchday IS NOT NULL
+            GROUP BY matchday HAVING SUM(CASE WHEN status NOT IN ('FINISHED','CANCELLED') THEN 1 ELSE 0 END)=0
+            ORDER BY matchday DESC LIMIT 1""", (SEASON,)).fetchone()
+        if not row or not parse_utc(row['final_kickoff']):
+            return False
+        if now_utc() < parse_utc(row['final_kickoff']) + timedelta(hours=2):
+            return False
+        matchday = str(row['matchday'])
+        return matchday if get_setting('pl_schedule_refresh_matchday') != matchday else None
+    finally:
+        conn.close()
+
+
 def api_refresh_worker():
     time.sleep(20)
 
@@ -5881,7 +5952,12 @@ def api_refresh_worker():
                 get_setting("football_api_token")
                 and not football_data_rate_limit_active()
             ):
-                imported = import_matches_from_api()
+                imported = 0
+                refreshed_matchday = premier_league_schedule_refresh_due()
+                if refreshed_matchday:
+                    imported = import_matches_from_api()
+                    set_setting('pl_schedule_refresh_matchday', refreshed_matchday)
+                    import_historical_results(seasons=[SEASON], include_championship=False)
                 champions_imported = refresh_champions_league_fixture_schedule_automatically()
 
                 set_setting(
@@ -5941,6 +6017,19 @@ def api_refresh_worker():
 
         if delay == LIVE_REFRESH_SECONDS or repair_results:
             try:
+                live_football_updates = import_champions_league_live_from_live_football_api()
+                if live_football_updates:
+                    print(
+                        f"[Live Football API] Updated {live_football_updates} Champions League live fixture(s)",
+                        flush=True,
+                    )
+                set_setting("last_live_football_api_error", "")
+            except LiveFootballAPIError as exc:
+                set_setting("last_live_football_api_error", str(exc))
+                set_setting("last_live_football_api_error_at", now_utc().isoformat())
+                print(f"[Live Football API] {exc}", flush=True)
+
+            try:
                 live_updates = import_live_matches_from_sportscore(
                     force_current_gameweek=repair_results,
                 )
@@ -5955,19 +6044,6 @@ def api_refresh_worker():
                 set_setting("last_sportscore_error", str(exc))
                 set_setting("last_sportscore_error_at", now_utc().isoformat())
                 print(f"[SportScore] {exc}", flush=True)
-
-            try:
-                live_football_updates = import_champions_league_live_from_live_football_api()
-                if live_football_updates:
-                    print(
-                        f"[Live Football API] Updated {live_football_updates} Champions League live fixture(s)",
-                        flush=True,
-                    )
-                set_setting("last_live_football_api_error", "")
-            except LiveFootballAPIError as exc:
-                set_setting("last_live_football_api_error", str(exc))
-                set_setting("last_live_football_api_error_at", now_utc().isoformat())
-                print(f"[Live Football API] {exc}", flush=True)
 
             try:
                 observed = monitor_live_football_api_test()
@@ -7526,6 +7602,16 @@ def champions_league_aggregate(conn, fixture):
     return None
 
 
+
+@app.route("/champions-league/details")
+def champions_league_details():
+    if not logged_in(): return redirect("/")
+    return render_template("champions_league_details.html")
+
+@app.route("/head-to-head/details")
+def head_to_head_details():
+    if not logged_in(): return redirect("/")
+    return render_template("head_to_head_details.html")
 
 @app.route("/side-events")
 def side_events():
