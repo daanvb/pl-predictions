@@ -37,18 +37,23 @@
   const stage = svg.parentElement;
   const pointSpacing = 68;
   const plotWidth = Math.max(0, snapshots.length - 1) * pointSpacing;
-  const width = window.innerWidth <= 640 ? Math.max(stage.clientWidth, 82 + plotWidth) : 760;
+  const isMobileChart = window.innerWidth <= 640;
+  const width = isMobileChart
+    ? Math.max(stage.clientWidth, 82 + plotWidth)
+    : Math.max(760, stage.clientWidth);
   const height = Math.max(205, 135 + players.length * 14);
   const margin = {top: 22, right: 50, bottom: 58, left: 32};
   const innerWidth = width - margin.left - margin.right;
-  const compactPlotWidth = Math.min(innerWidth, plotWidth);
+  const compactPlotWidth = isMobileChart
+    ? Math.min(innerWidth, plotWidth)
+    : innerWidth;
   const plotStart = margin.left;
   const innerHeight = height - margin.top - margin.bottom;
   const x = index => snapshots.length === 1 ? margin.left + innerWidth / 2 : plotStart + index * compactPlotWidth / (snapshots.length - 1);
   const y = position => margin.top + (players.length === 1 ? innerHeight / 2 : (position - 1) * innerHeight / (players.length - 1));
   const make = (name, attrs = {}) => { const node = document.createElementNS(ns, name); Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value)); return node; };
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  if (window.innerWidth <= 640) { svg.style.width = `${width}px`; svg.style.maxWidth = "none"; }
+  if (isMobileChart) { svg.style.width = `${width}px`; svg.style.maxWidth = "none"; }
   for (let position = 1; position <= players.length; position += 1) {
     svg.appendChild(make("line", {x1: snapshots.length === 1 ? margin.left : plotStart, x2: snapshots.length === 1 ? width - margin.right : plotStart + compactPlotWidth, y1: y(position), y2: y(position), class: "position-chart-grid"}));
     const positionLabel = make("text", {x: margin.left - 12, y: y(position) + 4, "text-anchor": "end", class: "position-chart-axis-label"});

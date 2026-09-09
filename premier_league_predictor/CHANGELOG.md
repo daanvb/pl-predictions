@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.25] - 2026-09-09
+### Fixed
+- Kept live position-chart text at its intended size on wide desktop browsers while preserving the mobile timeline layout.
+
 ## [1.7.24] - 2026-09-09
 ### Fixed
 - Restored the Champions League position graph from retained goal events, showing the actual score sequence while plotting only genuine position changes.

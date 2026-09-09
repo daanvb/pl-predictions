@@ -120,11 +120,16 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
         stage ? stage.clientWidth : 0,
         82 + plotWidth
     );
-    const width = window.innerWidth <= 640 ? mobileTimelineWidth : 760;
+    const isMobileChart = window.innerWidth <= 640;
+    const width = isMobileChart
+        ? mobileTimelineWidth
+        : Math.max(760, stage ? stage.clientWidth : 760);
     const height = Math.max(205, 135 + players.length * 14);
     const margin = {top: 22, right: 50, bottom: 58, left: 32};
     const innerWidth = width - margin.left - margin.right;
-    const compactPlotWidth = Math.min(innerWidth, plotWidth);
+    const compactPlotWidth = isMobileChart
+        ? Math.min(innerWidth, plotWidth)
+        : innerWidth;
     const plotStart = margin.left;
     const innerHeight = height - margin.top - margin.bottom;
     const x = index => snapshots.length === 1
@@ -138,7 +143,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
     };
 
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    if (window.innerWidth <= 640) {
+    if (isMobileChart) {
         svg.style.width = `${width}px`;
         svg.style.maxWidth = "none";
         if (scrollHint && stage) {

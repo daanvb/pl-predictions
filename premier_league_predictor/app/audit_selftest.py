@@ -2269,6 +2269,10 @@ assert 'button.setAttribute("aria-label", `Highlight ${player.name}`)' in dashbo
 assert "No settled position changes yet." in dashboard_live_summary_template
 assert "Math.max(205, 135 + players.length * 14)" in dashboard_live_summary_template
 assert "Math.max(205, 135 + players.length * 14)" in gameweek_template
+assert "Math.max(760, stage.clientWidth)" in dashboard_live_summary_template
+assert "Math.max(760, stage ? stage.clientWidth : 760)" in gameweek_template
+assert "const compactPlotWidth = isMobileChart" in dashboard_live_summary_template
+assert "const compactPlotWidth = isMobileChart" in gameweek_template
 assert "selectedPlayerId" in leaderboard_template
 assert "item.innerHTML" not in leaderboard_template
 assert "league-mobile-details" in leaderboard_template
