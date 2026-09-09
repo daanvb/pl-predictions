@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.24] - 2026-09-09
+### Fixed
+- Restored the Champions League position graph from retained goal events, showing the actual score sequence while plotting only genuine position changes.
+
 ## [1.7.23] - 2026-09-09
 ### Fixed
 - Removed untraceable legacy position checkpoints instead of incorrectly attributing them to a later scoreline.

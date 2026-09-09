@@ -42,6 +42,11 @@ assert "dp" in {r["name"] for r in conn.execute("PRAGMA table_info(predictions)"
 assert "goals_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "incidents_json" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
 assert "live_data_source" in {r["name"] for r in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
+assert "cause_fixture_id" in {
+    r["name"] for r in conn.execute(
+        "PRAGMA table_info(competition_live_position_snapshots)"
+    ).fetchall()
+}
 assert conn.execute(
     "SELECT name FROM sqlite_master WHERE type='table' "
     "AND name='provider_fixture_mappings'"
@@ -402,6 +407,53 @@ if snapshot_ids:
 conn.execute("DELETE FROM live_position_snapshots WHERE matchday = 99")
 conn.execute("DELETE FROM predictions WHERE fixture_id = 99001")
 conn.execute("DELETE FROM fixtures WHERE id = 99001")
+conn.commit()
+conn.close()
+
+# CL chart history is replayed from actual goals. A second goal that leaves
+# every player in the same position must not create another plotted point.
+conn = database.get_db()
+conn.executemany(
+    "INSERT INTO players(name, pin_hash, login_name) VALUES (?, ?, ?)",
+    (
+        ("Replay Alpha", "test", "replay-alpha"),
+        ("Replay Zulu", "test", "replay-zulu"),
+    ),
+)
+replay_players = conn.execute(
+    "SELECT id FROM players WHERE name LIKE 'Replay %' ORDER BY name COLLATE NOCASE"
+).fetchall()
+replay_early = replay_players[0]["id"]
+replay_late = replay_players[-1]["id"]
+replay_kickoff = datetime.now(timezone.utc) - timedelta(hours=2)
+replay_goals = json.dumps([
+    {"minute": 10, "team": {"name": "Alpha Home"}, "scorer": {"name": "One"}},
+    {"minute": 20, "team": {"name": "Alpha Home"}, "scorer": {"name": "Two"}},
+])
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, competition, matchday, utc_date, status,
+           home_team, away_team, home_score, away_score, goals_json
+       ) VALUES (99002, ?, 'champions_league', 98, ?, 'FINISHED',
+                 'Alpha Home', 'Zulu Away', 2, 0, ?)""",
+    (predictor.SEASON, replay_kickoff.isoformat(), replay_goals),
+)
+conn.executemany(
+    """INSERT INTO predictions(player_id, fixture_id, home_score, away_score, dp)
+       VALUES (?, 99002, ?, ?, 0)""",
+    ((replay_early, 0, 2), (replay_late, 2, 0)),
+)
+conn.commit()
+replayed = predictor._competition_position_replay(
+    conn, "champions_league", 98
+)
+assert len(replayed) == 2
+assert replayed[1]["cause_fixture_id"] == 99002
+assert replayed[1]["cause_label"] == "Score update: ALP 1–0 ZUL"
+assert all("2–0" not in row["cause_label"] for row in replayed)
+conn.execute("DELETE FROM predictions WHERE fixture_id = 99002")
+conn.execute("DELETE FROM fixtures WHERE id = 99002")
+conn.execute("DELETE FROM players WHERE name LIKE 'Replay %'")
 conn.commit()
 conn.close()
 

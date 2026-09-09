@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.23"
+APP_VERSION = "1.7.24"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -1525,6 +1525,137 @@ def _score_update_cause_label(fixtures, captured_at=None):
     return f"Score update: {match_label}"
 
 
+def _competition_position_replay(conn, competition, matchday):
+    """Rebuild a round's position changes from its retained score events."""
+    fixtures = [dict(row) for row in conn.execute(
+        """SELECT * FROM fixtures
+           WHERE season = ? AND competition = ? AND matchday = ?
+           ORDER BY utc_date, id""",
+        (SEASON, competition, matchday),
+    ).fetchall()]
+    started = [
+        fixture for fixture in fixtures
+        if kickoff_passed(fixture["utc_date"])
+        and fixture["status"] != "CANCELLED"
+        and fixture["home_score"] is not None
+        and fixture["away_score"] is not None
+    ]
+    if not started:
+        return []
+
+    players = conn.execute(
+        "SELECT id, name FROM players ORDER BY name COLLATE NOCASE"
+    ).fetchall()
+    predictions = conn.execute(
+        """SELECT p.player_id, p.fixture_id, p.home_score, p.away_score,
+                  COALESCE(p.dp, 0) AS dp
+           FROM predictions p JOIN fixtures f ON f.id = p.fixture_id
+           WHERE f.season = ? AND f.competition = ? AND f.matchday = ?""",
+        (SEASON, competition, matchday),
+    ).fetchall()
+    previous = overall_table_at_matchday(conn, matchday - 1, competition)
+    baseline = [{
+        "player_id": row["id"], "position": position,
+        "season_points": row["points"], "gameweek_points": 0,
+    } for position, row in enumerate(previous, start=1)]
+    snapshots = [{
+        "captured_at": started[0]["utc_date"],
+        "state_signature": "replayed-baseline",
+        "cause_fixture_id": None,
+        "cause_label": "Kick-off",
+        "label": "",
+        "milestone": "KO",
+        "rows": baseline,
+    }]
+    previous_positions = tuple(sorted(
+        (row["player_id"], row["position"]) for row in baseline
+    ))
+
+    replay_fixtures = []
+    replay_by_id = {}
+    events = []
+    for fixture in fixtures:
+        replay = dict(fixture)
+        replay["home_score"] = None
+        replay["away_score"] = None
+        replay_fixtures.append(replay)
+        replay_by_id[fixture["id"]] = replay
+        if fixture not in started:
+            continue
+        kickoff = parse_utc(fixture["utc_date"])
+        if not kickoff:
+            continue
+        events.append((kickoff, fixture["id"], "kickoff", None))
+        try:
+            goals = json.loads(fixture.get("goals_json") or "[]")
+        except (TypeError, ValueError):
+            goals = []
+        parsed_goals = []
+        home_key = normalized_team_name(fixture["home_team"])
+        away_key = normalized_team_name(fixture["away_team"])
+        for goal in goals if isinstance(goals, list) else []:
+            team = (goal.get("team") or {}).get("name")
+            team_key = normalized_team_name(team) if team else ""
+            side = "home" if team_key == home_key else "away" if team_key == away_key else None
+            try:
+                minute = int(goal.get("minute"))
+                injury = int(goal.get("injuryTime") or 0)
+            except (TypeError, ValueError):
+                continue
+            if side:
+                parsed_goals.append((minute, injury, side))
+        expected_goals = int(fixture["home_score"]) + int(fixture["away_score"])
+        if len(parsed_goals) == expected_goals:
+            for minute, injury, side in parsed_goals:
+                events.append((
+                    kickoff + timedelta(minutes=minute, seconds=injury),
+                    fixture["id"], "goal", side,
+                ))
+        else:
+            final_at = parse_utc(fixture.get("last_updated")) or kickoff + timedelta(hours=2)
+            events.append((final_at, fixture["id"], "final", None))
+
+    for captured, fixture_id, event_type, side in sorted(
+        events, key=lambda event: (event[0], event[1], event[2])
+    ):
+        fixture = replay_by_id[fixture_id]
+        original = next(item for item in fixtures if item["id"] == fixture_id)
+        if event_type == "kickoff":
+            fixture["home_score"] = 0
+            fixture["away_score"] = 0
+        elif event_type == "goal":
+            fixture[f"{side}_score"] += 1
+        else:
+            fixture["home_score"] = original["home_score"]
+            fixture["away_score"] = original["away_score"]
+
+        table = build_live_table(replay_fixtures, players, predictions, previous)
+        rows = [{
+            "player_id": row["id"], "position": row["position"],
+            "season_points": row["season_points"],
+            "gameweek_points": row["points"],
+        } for row in table]
+        positions = tuple(sorted(
+            (row["player_id"], row["position"]) for row in rows
+        ))
+        if positions == previous_positions:
+            continue
+        previous_positions = positions
+        score = f"{fixture['home_score']}–{fixture['away_score']}"
+        snapshots.append({
+            "captured_at": captured.isoformat(),
+            "state_signature": f"replayed:{fixture_id}:{score}",
+            "cause_fixture_id": fixture_id,
+            "cause_label": (
+                f"Score update: {chart_team_code(fixture['home_team'])} "
+                f"{score} {chart_team_code(fixture['away_team'])}"
+            ),
+            "label": captured.astimezone(UK).strftime("%H:%M"),
+            "rows": rows,
+        })
+    return snapshots
+
+
 def record_live_position_snapshot(conn, matchday, cause_fixture_id=None):
     fixtures, live_table, previous_league = _snapshot_rows(conn, matchday)
     if not fixtures or not any(
@@ -1760,6 +1891,11 @@ def competition_live_position_chart(conn, competition, matchday):
         if positions != previous_positions:
             position_changes.append(snapshot)
     snapshots = position_changes
+    replayed = _competition_position_replay(conn, competition, matchday)
+    if replayed:
+        # The replay uses the retained goal sequence and therefore restores
+        # valid history without relying on legacy guessed checkpoint labels.
+        snapshots = replayed
     return {"players": list(players.values()), "snapshots": snapshots}
 
 
