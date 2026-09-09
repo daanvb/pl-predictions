@@ -2289,6 +2289,9 @@ assert "champions_round_live=champions_round_live" in inspect.getsource(predicto
 assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_live_football_api)
 assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_sportscore)
 assert 'href="/champions-league/predict"' not in leaderboard_template
+assert 'champions-live-button' in dashboard_template
+assert 'premier-league-trophy.png' in dashboard_template
+assert 'row["points"], row.get("gameweek_points", 0)' in inspect.getsource(predictor.record_competition_live_position_snapshot)
 assert 'champions_league_stats' in inspect.getsource(predictor)
 assert 'champions_league_stats.html' in inspect.getsource(predictor.champions_league_stats)
 assert 'return redirect("/champions-league")' in inspect.getsource(predictor.champions_league_live)

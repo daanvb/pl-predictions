@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.13] - 2026-09-09
+
+### Improved
+- Moved the Champions League Live action below the news ticker and styled it as a centred, compact trophy button.
+- Replaced the dashboard Gameweek football with the aligned Premier League trophy asset.
+- Recorded Champions League graph checkpoints for scoring and settlement changes even when league positions do not move.
+
 ## [1.7.12] - 2026-09-09
 
 ### Added

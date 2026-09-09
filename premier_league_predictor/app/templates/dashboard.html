@@ -101,17 +101,21 @@ No position yet
 <strong>Get Your Pre-Dicks In</strong>
 </a>
 
-{% if champions_round_live %}
-<a class="stat dashboard-signal-stat dashboard-cl-live-stat" href="/champions-league">
-<img src="/static/champions-league-trophy.png" alt="">
-<strong>Champions League Live</strong>
-</a>
-{% endif %}
-
 </div>
 
 {% if show_news_ticker %}
 {% include "_news_ticker.html" %}
+{% endif %}
+
+{% if champions_round_live %}
+<div class="dashboard-cl-live-action">
+<a class="champions-live-button" href="/champions-league">
+<span class="champions-live-sparkle" aria-hidden="true">✦</span>
+<img src="/static/champions-league-trophy.png" alt="">
+<span>Champions League Live</span>
+<span class="champions-live-sparkle" aria-hidden="true">✦</span>
+</a>
+</div>
 {% endif %}
 
 {% if current_matchday is not none %}
@@ -121,7 +125,7 @@ No position yet
 <div class="card">
 
 <div>
-<h2 style="margin-bottom:6px">⚽ Gameweek {{ current_matchday }}</h2>
+<h2 class="dashboard-gameweek-heading"><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> Gameweek {{ current_matchday }}</h2>
 <p class="muted" style="margin-top:0">Current Round</p>
 </div>
 

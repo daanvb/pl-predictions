@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.12"
+APP_VERSION = "1.7.13"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -1662,7 +1662,14 @@ def record_competition_live_position_snapshot(conn, competition, matchday):
         _insert_competition_position_snapshot(
             conn, competition, matchday, fixtures[0]["utc_date"], "baseline", baseline, "Kick-off"
         )
-    signature = json.dumps([[row["id"], row["position"]] for row in rows], separators=(",", ":"))
+    # Keep a checkpoint for every scoring or settlement change even when the
+    # ranking itself stays flat. That gives the CL graph a complete live-round
+    # timeline instead of stopping after its first position movement.
+    signature = json.dumps(
+        [[row["id"], row["position"], row["points"], row.get("gameweek_points", 0)]
+         for row in rows],
+        separators=(",", ":"),
+    )
     latest = conn.execute(
         """SELECT s.id FROM competition_live_position_snapshots s
            WHERE s.competition = ? AND s.season = ? AND s.matchday = ?
