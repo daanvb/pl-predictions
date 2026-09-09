@@ -2158,7 +2158,8 @@ assert "position-chart-data" in gameweek_template
 assert "Swipe for earlier updates" in gameweek_template
 assert "mobileTimelineWidth" in gameweek_template
 assert "stage.scrollLeft = Math.max(0, stage.scrollWidth - stage.clientWidth)" in gameweek_template
-assert 'snapshot.cause_label || snapshot.milestone || "Position change"' in gameweek_template
+assert 'const rawCause = snapshot.cause_label || snapshot.milestone || "Position change";' in gameweek_template
+assert 'rawCause.replace(/^Score update:\\s*/, "")' in gameweek_template
 assert '_fixture_prediction_rows.html' in gameweek_template
 assert '_fixture_card_core.html' in dashboard_template
 assert '_fixture_prediction_rows.html' in fixture_card_core_template

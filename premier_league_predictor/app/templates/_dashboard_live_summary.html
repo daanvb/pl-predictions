@@ -57,10 +57,11 @@
   }
   snapshots.forEach((snapshot, index) => {
     const label = make("text", {x: x(index), y: height - 13, "text-anchor": "middle", class: "position-chart-axis-label"});
-    const cause = snapshot.cause_label || snapshot.milestone || "Position change";
+    const rawCause = snapshot.cause_label || snapshot.milestone || "Position change";
+    const cause = rawCause.replace(/^Score update:\s*/, "");
     const parts = cause.match(/^(\S+)\s+(\d+[–-]\d+)\s+(\S+)$/);
     if (snapshot.milestone === "KO" || !parts) {
-      label.textContent = snapshot.milestone === "KO" ? "KO" : cause;
+      label.textContent = snapshot.milestone === "KO" ? "KO" : snapshot.label;
     } else {
       const scoreLine = make("tspan", {x: x(index), dy: 0});
       scoreLine.textContent = parts[2];

@@ -168,10 +168,11 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
             "text-anchor": "middle",
             class: "position-chart-axis-label"
         });
-        const cause = snapshot.cause_label || snapshot.milestone || "Position change";
+        const rawCause = snapshot.cause_label || snapshot.milestone || "Position change";
+        const cause = rawCause.replace(/^Score update:\s*/, "");
         const parts = cause.match(/^(\S+)\s+(\d+[–-]\d+)\s+(\S+)$/);
         if (snapshot.milestone === "KO" || !parts) {
-            label.textContent = snapshot.milestone === "KO" ? "KO" : cause;
+            label.textContent = snapshot.milestone === "KO" ? "KO" : snapshot.label;
         } else {
             label.setAttribute("y", String(height - 27));
             const scoreLine = make("tspan", {x: x(index), dy: 0});

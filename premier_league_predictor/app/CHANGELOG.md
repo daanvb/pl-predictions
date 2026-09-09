@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.20] - 2026-09-09
+
+### Fixed
+- Restored a clean live-graph axis: score changes use compact score labels and neutral updates use their timestamp.
+
 ## [1.7.19] - 2026-09-09
 
 ### Fixed
