@@ -12,6 +12,22 @@
 </div>
 
 <div class="card">
+<h2>🧾 Fixture &amp; head-to-head refresh history</h2>
+<p class="muted">The latest successful refresh for each competition, with the data source used.</p>
+{% for refresh in refresh_logs %}
+<div style="padding:12px 0;{% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
+<strong>{{ refresh.label }}</strong>
+{% if refresh.at %}
+<div class="small">Last refreshed: <strong>{{ refresh.at }}</strong>{% if refresh.records is not none %} · {{ refresh.records }} record{{ '' if refresh.records == 1 else 's' }} updated{% endif %}</div>
+<div class="small">Source{% if refresh.sources|length != 1 %}s{% endif %}: {{ refresh.sources|join(' · ') }}</div>
+{% else %}
+<div class="small muted">No successful refresh logged yet.</div>
+{% endif %}
+</div>
+{% endfor %}
+</div>
+
+<div class="card">
 <h2>📊 Match stats history</h2>
 <p class="muted">Refresh the completed historical results used for the match-stat pages.</p>
 <form method="POST" action="/admin/match-stats/refresh">

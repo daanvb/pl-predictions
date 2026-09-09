@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.14"
+APP_VERSION = "1.7.15"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -3431,12 +3431,40 @@ def import_historical_results(
             "historical_results_last_error",
             " | ".join(errors)
         )
+        record_data_refresh_log("pl_h2h", sources, imported)
 
         return imported
 
     finally:
         conn.close()
 
+
+
+def record_data_refresh_log(key, sources, records=None):
+    """Store a consistent, compact record for the Admin Data refresh summary."""
+    source_names = [str(source).strip() for source in (sources or []) if str(source).strip()]
+    set_setting(
+        f"data_refresh_{key}",
+        json.dumps({
+            "refreshed_at": now_utc().isoformat(),
+            "sources": source_names,
+            "records": records,
+        }),
+    )
+
+
+def admin_data_refresh_log(key):
+    """Return a safe, display-ready refresh log entry for the admin page."""
+    try:
+        record = json.loads(get_setting(f"data_refresh_{key}") or "{}")
+    except (TypeError, ValueError):
+        record = {}
+    refreshed_at = record.get("refreshed_at")
+    return {
+        "at": local_timestamp(refreshed_at) if refreshed_at else None,
+        "sources": record.get("sources") or [],
+        "records": record.get("records"),
+    }
 
 
 def archive_completed_fixture_history(conn, competition=None):
@@ -3594,6 +3622,11 @@ def import_champions_league_matches(matchday):
         conn.close()
     set_setting("champions_league_last_refresh", now_utc().isoformat())
     set_setting("champions_league_selected_matchday", str(matchday))
+    record_data_refresh_log(
+        "cl_fixtures",
+        ["football-data.org", "Where's The Match UK listings / confirmed fallback"],
+        imported,
+    )
     return imported
 
 
@@ -3860,6 +3893,11 @@ def import_matches_from_api():
     set_setting(
         "last_api_refresh",
         now_utc().isoformat()
+    )
+    record_data_refresh_log(
+        "pl_fixtures",
+        ["football-data.org", "Premier League official TV listings / scheduled-slot fallback"],
+        imported,
     )
 
     return imported
@@ -5378,7 +5416,13 @@ def import_champions_league_h2h_from_live_football_api():
         outcome["import_revision"] = CHAMPIONS_LEAGUE_H2H_IMPORT_REVISION
         outcome["checked_at"] = checked_at
         set_setting(f"champions_league_h2h_outcome_{fixture_id}", json.dumps(outcome))
+    h2h_sources = ["Live Football API /h2h"]
+    if fallback_targets:
+        h2h_sources.append("Live Football API Champions League catalogue")
+    if unresolved_fallbacks:
+        h2h_sources.append("Live Football API club history")
     set_setting("champions_league_h2h_last_refresh", checked_at)
+    record_data_refresh_log("cl_h2h", h2h_sources, imported)
     return imported, matched
 
 
@@ -10318,8 +10362,15 @@ def admin_data():
         return redirect("/")
 
     historical_results_last_refresh = get_setting("historical_results_last_refresh")
+    refresh_logs = [
+        {"label": "Premier League fixtures", **admin_data_refresh_log("pl_fixtures")},
+        {"label": "Premier League head-to-head history", **admin_data_refresh_log("pl_h2h")},
+        {"label": "Champions League fixtures", **admin_data_refresh_log("cl_fixtures")},
+        {"label": "Champions League head-to-head history", **admin_data_refresh_log("cl_h2h")},
+    ]
     return render_template(
         "admin_data.html",
+        refresh_logs=refresh_logs,
         last_api_refresh=(
             local_timestamp(get_setting("last_api_refresh"))
             if get_setting("last_api_refresh") else None

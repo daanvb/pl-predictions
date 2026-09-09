@@ -1321,9 +1321,18 @@ assert b'href="/admin/settings"' in admin_response.data
 assert b'href="/admin/data"' in admin_response.data
 assert b"Database Health" in admin_response.data
 assert b">PREDICTIONS</div>" not in admin_response.data
+predictor.record_data_refresh_log("pl_fixtures", ["football-data.org"], 10)
+predictor.record_data_refresh_log("pl_h2h", ["football-data.org", "football-data.co.uk"], 25)
+predictor.record_data_refresh_log("cl_fixtures", ["football-data.org"], 18)
+predictor.record_data_refresh_log("cl_h2h", ["Live Football API /h2h"], 4)
 admin_data_response = client.get("/admin/data")
 assert admin_data_response.status_code == 200
 assert b"Data refresh &amp; tests" in admin_data_response.data
+assert b"Fixture &amp; head-to-head refresh history" in admin_data_response.data
+assert b"Premier League fixtures" in admin_data_response.data
+assert b"Champions League head-to-head history" in admin_data_response.data
+assert b"Live Football API /h2h" in admin_data_response.data
+assert predictor.admin_data_refresh_log("pl_fixtures")["records"] == 10
 health = predictor.database_health()
 assert health["database_bytes"] > 0
 assert health["page_count"] > 0
@@ -2163,6 +2172,8 @@ api_import_source = inspect.getsource(predictor.import_matches_from_api)
 assert "record_live_position_snapshot(conn, snapshot_matchday)" in api_import_source
 assert "import_champions_league_matches" in inspect.getsource(predictor)
 assert "source_fixture_id" in inspect.getsource(database.init_db)
+assert 'record_data_refresh_log' in inspect.getsource(predictor.import_matches_from_api)
+assert 'record_data_refresh_log("cl_h2h"' in inspect.getsource(predictor.import_champions_league_h2h_from_live_football_api)
 assert "import_champions_league_live_from_sportscore" in inspect.getsource(predictor)
 gameweek_source = inspect.getsource(predictor.gameweek)
 assert "record_live_position_snapshot(conn, matchday)" in gameweek_source

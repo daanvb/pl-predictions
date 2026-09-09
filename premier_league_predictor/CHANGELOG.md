@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.15] - 2026-09-09
+
+### Added
+- Added a unified Admin Data refresh history for Premier League and Champions League fixtures and head-to-head history, including the refresh time, records updated and source providers.
+
 ## [1.7.14] - 2026-09-09
 
 ### Added
