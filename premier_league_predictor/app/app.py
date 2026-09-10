@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.25"
+APP_VERSION = "1.7.26"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -3894,7 +3894,12 @@ def import_champions_league_matches(matchday):
                      match_phase = excluded.match_phase,
                      home_penalty_score = excluded.home_penalty_score,
                      away_penalty_score = excluded.away_penalty_score,
-                     goals_json = excluded.goals_json,
+                     goals_json = CASE
+                       WHEN excluded.goals_json IS NULL
+                         OR excluded.goals_json = '[]'
+                       THEN fixtures.goals_json
+                       ELSE excluded.goals_json
+                     END,
                      live_data_source = excluded.live_data_source,
                      competition = excluded.competition,
                      source_provider = excluded.source_provider,
@@ -5139,15 +5144,27 @@ def _live_football_goal_event(event, stored):
 def _live_football_card_event(event, stored):
     event_type = str(event.get("type") or "").casefold()
     detail = event.get("detail") or {}
-    detail_text = json.dumps(detail).casefold() if isinstance(detail, dict) else str(detail).casefold()
-    if "red" not in event_type and "red" not in detail_text and "second_yellow" not in detail_text:
+    card_values = []
+    second_yellow = False
+    if isinstance(detail, dict):
+        card_values = [
+            detail.get(key) for key in
+            ("type", "card", "card_type", "description", "reason")
+        ]
+        second_yellow = bool(
+            detail.get("is_second_yellow") or detail.get("second_yellow")
+        )
+    else:
+        card_values = [detail]
+    card_text = " ".join(str(value or "").casefold() for value in card_values)
+    if "red" not in event_type and "red" not in card_text and not second_yellow:
         return None
     side = str(event.get("side") or "").casefold()
     if side not in ("home", "away"):
         return None
     player = detail.get("player") if isinstance(detail, dict) else None
     return {
-        "type": "Second yellow red" if "second" in detail_text or "yellow" in detail_text else "Red card",
+        "type": "Second yellow red" if second_yellow or "second" in card_text else "Red card",
         "time": parse_live_minute(event.get("time") or event.get("minute"))[0],
         "side": side,
         "player": player.get("name") if isinstance(player, dict) else player,
@@ -5210,12 +5227,24 @@ def import_champions_league_live_from_live_football_api():
         checked_at = now_utc()
         fixtures = conn.execute(
             """SELECT * FROM fixtures WHERE season = ? AND competition = 'champions_league'
-               AND status NOT IN ('FINISHED', 'CANCELLED')""", (SEASON,)
+               AND status != 'CANCELLED'""", (SEASON,)
         ).fetchall()
         active = []
         for fixture in fixtures:
             kickoff = parse_utc(fixture["utc_date"])
-            if kickoff and (fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED") or
+            try:
+                total_goals = int(fixture["home_score"] or 0) + int(fixture["away_score"] or 0)
+            except (TypeError, ValueError):
+                total_goals = 0
+            missing_goals = total_goals > 0 and fixture["goals_json"] in (None, "", "[]")
+            needs_event_repair = bool(
+                kickoff
+                and fixture["status"] == "FINISHED"
+                and checked_at - timedelta(hours=48) <= kickoff <= checked_at
+                and (missing_goals or fixture["incidents_json"] is None)
+            )
+            if kickoff and (needs_event_repair or
+                            fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED") or
                             kickoff - timedelta(seconds=LIVE_WINDOW_BEFORE_SECONDS) <= checked_at <= kickoff + timedelta(seconds=LIVE_WINDOW_AFTER_SECONDS)):
                 active.append(fixture)
         if not active:
@@ -5226,6 +5255,17 @@ def import_champions_league_live_from_live_football_api():
             if match_date not in matches_by_date:
                 matches_by_date[match_date] = get_live_football_matches(api_key, match_date)
         for stored in active:
+            try:
+                stored_total_goals = int(stored["home_score"] or 0) + int(stored["away_score"] or 0)
+            except (TypeError, ValueError):
+                stored_total_goals = 0
+            repair_events = bool(
+                stored["status"] == "FINISHED"
+                and (
+                    (stored_total_goals > 0 and stored["goals_json"] in (None, "", "[]"))
+                    or stored["incidents_json"] is None
+                )
+            )
             provider_match = _live_football_match_for_fixture(
                 conn, stored, matches_by_date[parse_utc(stored["utc_date"]).date().isoformat()]
             )
@@ -5248,7 +5288,12 @@ def import_champions_league_live_from_live_football_api():
             events = []
             details_checked = False
             provider_id = _live_football_match_id(provider_match)
-            if provider_id is not None and _live_football_details_due(conn, stored["id"], state_changed, score_changed):
+            if provider_id is not None and (
+                repair_events
+                or _live_football_details_due(
+                    conn, stored["id"], state_changed, score_changed
+                )
+            ):
                 details = get_live_football_match_details(api_key, provider_id)
                 details_checked = True
                 if isinstance(details, dict):
@@ -5281,7 +5326,7 @@ def import_champions_league_live_from_live_football_api():
                      str(event.get("time") or event.get("minute") or ""), checked_at.isoformat(),
                      json.dumps(event, sort_keys=True)),
                 )
-            if events or state_changed or score_changed or clock_changed:
+            if events or state_changed or score_changed or clock_changed or repair_events:
                 conn.execute(
                     """UPDATE fixtures SET status = ?, home_score = COALESCE(?, home_score),
                            away_score = COALESCE(?, away_score), minute = COALESCE(?, minute),
@@ -5293,7 +5338,8 @@ def import_champions_league_live_from_live_football_api():
                            last_updated = ?, live_data_source = 'Live Football API' WHERE id = ?""",
                     (status, home_score, away_score, minute, injury_time, injury_time,
                      match_phase, home_penalty_score, away_penalty_score,
-                     json.dumps(goals) if events else None, json.dumps(cards) if events else None,
+                     json.dumps(goals) if events and goals else None,
+                     json.dumps(cards) if events else None,
                      checked_at.isoformat(), stored["id"]),
                 )
                 updated += 1

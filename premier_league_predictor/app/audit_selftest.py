@@ -2597,19 +2597,31 @@ predictor.set_setting("football_api_token", "test-token")
 try:
     predictor.refresh_champions_league_tv_broadcasters = lambda conn, matchday: 0
     assert predictor.import_champions_league_matches(1) == 1
+    conn = database.get_db()
+    retained_cl_goals = '[{"scorer":{"name":"Retained scorer"}}]'
+    conn.execute(
+        "UPDATE fixtures SET goals_json = ? WHERE source_fixture_id = '880001'",
+        (retained_cl_goals,),
+    )
+    conn.commit()
+    conn.close()
+    # A later schedule response without events must retain the live detail.
+    assert predictor.import_champions_league_matches(1) == 1
 finally:
     predictor.get_football_champions_league_matches = original_cl_loader
     predictor.refresh_champions_league_tv_broadcasters = original_cl_tv_refresh
     predictor.set_setting("football_api_token", "")
 conn = database.get_db()
 champions_fixture = conn.execute(
-    """SELECT id, competition, source_provider, source_fixture_id, home_logo, away_logo
+    """SELECT id, competition, source_provider, source_fixture_id, home_logo, away_logo,
+              goals_json
        FROM fixtures WHERE source_fixture_id = '880001'"""
 ).fetchone()
-assert tuple(champions_fixture) == (
+assert tuple(champions_fixture[:6]) == (
     -880001, "champions_league", "football-data.org", "880001",
     "https://example.test/cl-home.png", "https://example.test/cl-away.png",
 )
+assert champions_fixture["goals_json"] == retained_cl_goals
 conn.execute("DELETE FROM fixtures WHERE id = -880001")
 conn.commit()
 conn.close()
@@ -3163,6 +3175,44 @@ assert conn.execute(
     """SELECT COUNT(*) AS total FROM provider_event_observations
        WHERE fixture_id = -99009 AND provider = 'Live Football API'"""
 ).fetchone()["total"] == 2
+repair_kickoff = (datetime.now(timezone.utc) - timedelta(hours=26)).isoformat()
+conn.execute(
+    """UPDATE fixtures SET utc_date = ?, status = 'FINISHED',
+           home_score = 1, away_score = 0, goals_json = NULL,
+           incidents_json = NULL WHERE id = -99009""",
+    (repair_kickoff,),
+)
+conn.commit()
+conn.close()
+predictor.get_live_football_matches = lambda key, match_date: [{
+    "id": "lf-99009", "home": {"name": "Trial Home", "score": 1},
+    "away": {"name": "Trial Away", "score": 0},
+    "status": {"state": "postGame", "display": "FT"},
+}]
+predictor.get_live_football_match_details = lambda key, match_id: {
+    "match": {
+        "home": {"name": "Trial Home", "score": 1},
+        "away": {"name": "Trial Away", "score": 0},
+        "status": {"state": "postGame", "display": "FT"},
+    },
+    "events": [{
+        "type": "Goal", "time": "12'", "side": "home",
+        "detail": {"player": {"name": "Recovered Scorer"}},
+    }],
+}
+predictor.set_setting("live_football_api_key", "test-key")
+try:
+    assert predictor.import_champions_league_live_from_live_football_api() == 1
+finally:
+    predictor.get_live_football_matches = original_live_football_matches
+    predictor.get_live_football_match_details = original_live_football_details
+    predictor.set_setting("live_football_api_key", "")
+conn = database.get_db()
+repaired_cl = conn.execute(
+    "SELECT goals_json, incidents_json FROM fixtures WHERE id = -99009"
+).fetchone()
+assert "Recovered Scorer" in repaired_cl["goals_json"]
+assert repaired_cl["incidents_json"] == "[]"
 conn.execute("DELETE FROM fixtures WHERE id = -99009")
 conn.commit()
 conn.close()
