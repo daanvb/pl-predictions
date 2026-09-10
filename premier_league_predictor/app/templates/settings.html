@@ -14,11 +14,11 @@
 
 <div class="card">
 
-<h2>Live Football API — Champions League trial</h2>
+<h2>Live Football API — primary live feed</h2>
 
 <p>
 {% if live_football_api_configured %}
-✅ Key stored persistently. It is used only for Champions League live fixtures.
+✅ Key stored persistently. It supplies Premier League and Champions League live fixtures.
 {% else %}
 Optional: no key configured.
 {% endif %}
@@ -139,7 +139,7 @@ Optional: no key configured.
 </p>
 
 <p class="small">This is a targeted fallback for missing or delayed live
-scores, scorers and cards. SportScore remains the normal live feed. Calls are
+scores, scorers and cards. Live Football API remains the primary live feed. Calls are
 limited to one every two minutes, only when a gap is detected, with a daily
 cap of 75.</p>
 
@@ -199,11 +199,11 @@ Test API connection
 
 <div class="card">
 
-<h2>Automatic SportScore live feed</h2>
+<h2>Automatic SportScore fallback</h2>
 
-<p>✅ No token or account is required. SportScore is checked every 60 seconds
-during live match windows for current scores, match minutes and goal events.
-Football-Data remains available as the fixture and results fallback.</p>
+<p>✅ No token or account is required. SportScore fills individual live matches
+when Live Football API has not supplied a fresh, complete score and event update.
+Football-Data remains the fixture schedule and historical-results source.</p>
 
 <p class="small">
 Powered by <a href="https://sportscore.com/" rel="dofollow">SportScore</a>.

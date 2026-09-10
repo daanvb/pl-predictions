@@ -2400,7 +2400,7 @@ assert "round_in_progress = competition_round_in_progress(fixtures)" in inspect.
 assert "competition_round_summary_visible(previous_fixtures)" in inspect.getsource(predictor.champions_league_display_matchday)
 assert "competition_round_summary_visible(champions_fixtures)" in inspect.getsource(predictor.dashboard)
 assert "champions_round_live=champions_round_live" in inspect.getsource(predictor.dashboard)
-assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_live_football_api)
+assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor._import_competition_live_from_live_football_api)
 assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_sportscore)
 assert 'href="/champions-league/predict"' not in leaderboard_template
 assert 'champions-live-button' in dashboard_template
@@ -3117,8 +3117,7 @@ conn.execute("DELETE FROM fixtures WHERE id = -99008")
 conn.commit()
 conn.close()
 
-# Live Football API is a separate Champions League-only trial. It maps provider
-# IDs by teams/date, preserves the Premier League feed, and records scorer and
+# Live Football API maps provider IDs by teams/date and records scorer and
 # second-yellow evidence when detailed events are returned.
 cl_trial_kickoff = (datetime.now(timezone.utc) - timedelta(minutes=12)).isoformat()
 conn = database.get_db()
@@ -3217,6 +3216,59 @@ repaired_cl = conn.execute(
 assert "Recovered Scorer" in repaired_cl["goals_json"]
 assert repaired_cl["incidents_json"] == "[]"
 conn.execute("DELETE FROM fixtures WHERE id = -99009")
+conn.commit()
+conn.close()
+
+# Premier League uses the same normalized Live Football adapter, preserving the
+# existing fixture ID that predictions and scoring reference.
+pl_trial_kickoff = (datetime.now(timezone.utc) - timedelta(minutes=18)).isoformat()
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team, competition
+       ) VALUES (-99010, ?, 38, ?, 'SCHEDULED', 'Primary Home', 'Primary Away',
+                 'premier_league')""",
+    (season, pl_trial_kickoff),
+)
+conn.commit()
+conn.close()
+predictor.get_live_football_matches = lambda key, match_date: [{
+    "id": "lf-99010", "home": {"name": "Primary Home", "score": 2},
+    "away": {"name": "Primary Away", "score": 1},
+    "status": {"state": "inPlay", "display": "18'"},
+}]
+predictor.get_live_football_match_details = lambda key, match_id: {
+    "match": {
+        "home": {"name": "Primary Home", "score": 2},
+        "away": {"name": "Primary Away", "score": 1},
+        "status": {"state": "inPlay", "minute": "18'"},
+    },
+    "events": [
+        {"type": "Goal", "time": "3'", "side": "home",
+         "detail": {"player": {"name": "Primary Scorer"}}},
+        {"type": "Goal", "time": "12'", "side": "home",
+         "detail": {"player": {"name": "Primary Scorer"}}},
+        {"type": "Goal", "time": "15'", "side": "away",
+         "detail": {"player": {"name": "Away Scorer"}}},
+    ],
+}
+predictor.set_setting("live_football_api_key", "test-key")
+try:
+    assert predictor.import_premier_league_live_from_live_football_api() == 1
+finally:
+    predictor.get_live_football_matches = original_live_football_matches
+    predictor.get_live_football_match_details = original_live_football_details
+    predictor.set_setting("live_football_api_key", "")
+conn = database.get_db()
+pl_trial = conn.execute(
+    """SELECT id, status, home_score, away_score, minute, goals_json,
+              incidents_json, live_data_source FROM fixtures WHERE id = -99010"""
+).fetchone()
+assert tuple(pl_trial[:5]) == (-99010, "IN_PLAY", 2, 1, 18)
+assert "Primary Scorer" in pl_trial["goals_json"]
+assert pl_trial["incidents_json"] == "[]"
+assert pl_trial["live_data_source"] == "Live Football API"
+conn.execute("DELETE FROM fixtures WHERE id = -99010")
 conn.commit()
 conn.close()
 

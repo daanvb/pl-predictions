@@ -2,6 +2,16 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.0] - 2026-09-10
+### Changed
+- Made Live Football API the primary live provider for both Premier League and Champions League scores, clocks, statuses, scorers and cards.
+- Kept existing fixture IDs and gameweeks intact so predictions, scoring, tables, graphs, notifications and history continue using their established records.
+- Changed SportScore to a per-match fallback when Live Football API has not supplied a recent complete update.
+
+### Fixed
+- Continued repairing incomplete Premier League and Champions League events for 48 hours after kickoff.
+- Removed the duplicate background diagnostic poll now that the tested Live Football feed powers the live application.
+
 ## [1.7.29] - 2026-09-10
 ### Fixed
 - Prevented Premier League and Champions League live-graph event labels from overlapping on narrower desktop windows.
