@@ -2414,6 +2414,25 @@ assert "overall_table_at_matchday(conn, settled_matchday)" in inspect.getsource(
 assert "round_in_progress = competition_round_in_progress(fixtures)" in inspect.getsource(predictor.champions_league)
 assert "competition_round_summary_visible(previous_fixtures)" in inspect.getsource(predictor.champions_league_display_matchday)
 assert "competition_round_summary_visible(champions_fixtures)" in inspect.getsource(predictor.dashboard)
+
+# The completed-round persistence path receives sqlite3.Row objects in both
+# the CL hub and dashboard. It must remain valid after the final fixture ends.
+conn = database.get_db()
+conn.execute(
+    """INSERT INTO fixtures(id, season, matchday, utc_date, status,
+           home_team, away_team, competition)
+       VALUES (-880004, ?, 98, ?, 'FINISHED', 'Row Home', 'Row Away',
+               'champions_league')""",
+    (season, (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()),
+)
+conn.commit()
+completed_cl_sqlite_rows = conn.execute(
+    "SELECT status, utc_date FROM fixtures WHERE id = -880004"
+).fetchall()
+assert predictor.competition_round_summary_visible(completed_cl_sqlite_rows)
+conn.execute("DELETE FROM fixtures WHERE id = -880004")
+conn.commit()
+conn.close()
 assert "champions_round_live=champions_round_live" in inspect.getsource(predictor.dashboard)
 assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor._import_competition_live_from_live_football_api)
 assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_sportscore)

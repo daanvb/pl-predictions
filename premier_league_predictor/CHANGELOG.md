@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.4] - 2026-09-10
+### Fixed
+- Prevented the Champions League hub, dashboard and graph worker failing when a round changes from live to fully completed.
+
 ## [1.8.3] - 2026-09-10
 ### Fixed
 - Matched Bayern, Bodø/Glimt, Slavia Praha and Lens provider aliases so their Champions League live scores are imported.

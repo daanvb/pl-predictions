@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.3"
+APP_VERSION = "1.8.4"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -903,7 +903,7 @@ def competition_round_summary_visible(fixtures):
     final_kickoffs = [
         parse_utc(fixture["utc_date"])
         for fixture in fixtures
-        if fixture["status"] != "CANCELLED" and fixture.get("utc_date")
+        if fixture["status"] != "CANCELLED" and fixture["utc_date"]
     ]
     final_kickoffs = [kickoff for kickoff in final_kickoffs if kickoff]
     if not final_kickoffs:
