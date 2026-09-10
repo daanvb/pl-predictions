@@ -7,7 +7,7 @@
 
 <div class="nav"><a href="/dashboard">← Dashboard</a><a href="/champions-league/league"><span class="nav-trophy-icon"><img src="/static/champions-league-trophy.png" alt=""></span> Competition table</a><a href="/champions-league/stats">📈 CL Competition Stats</a><a href="/champions-league/details">ℹ️ Competition Details</a></div>
 
-<div class="card" style="text-align:center;padding:24px"><div class="small">CURRENT ROUND</div><h2>Champions League · Round {{ fixtures[0].matchday if fixtures else '—' }}</h2><a href="/champions-league/predict"><button class="primary" type="button">✍️ Make Predictions</button></a></div>
+<div class="card" style="text-align:center;padding:24px"><div class="small">CURRENT ROUND</div><h2>Champions League · Round {{ fixtures[0].matchday if fixtures else '—' }}</h2>{% if gameweek_predictions_open %}<a href="/champions-league/predict"><button class="primary" type="button">✍️ Make Predictions</button></a>{% endif %}</div>
 
 {% include "_dashboard_live_summary.html" %}
 {% if fixtures %}

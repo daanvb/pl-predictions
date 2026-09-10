@@ -2399,6 +2399,8 @@ assert "one Double Points fixture" in champions_league_details_template
 assert "wins the competition and the £20 prize" in champions_league_details_template
 assert "champions-matchday-select" not in champions_league_template
 assert "Make Predictions" in champions_league_template
+assert "{% if gameweek_predictions_open %}" in champions_league_template
+assert "gameweek_predictions_open=gameweek_predictions_open(fixtures)" in inspect.getsource(predictor.champions_league)
 assert "Refresh current fixtures" not in champions_league_template
 assert '{% include "_dashboard_live_summary.html" %}' in champions_league_template
 with open(os.path.join(templates_dir, "stats.html"), "r", encoding="utf-8") as handle:

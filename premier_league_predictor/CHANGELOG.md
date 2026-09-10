@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.5] - 2026-09-10
+### Changed
+- Hid the Champions League Make Predictions action once the final fixture in the round has kicked off.
+
 ## [1.8.4] - 2026-09-10
 ### Fixed
 - Prevented the Champions League hub, dashboard and graph worker failing when a round changes from live to fully completed.
