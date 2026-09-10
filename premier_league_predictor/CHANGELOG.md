@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.29] - 2026-09-10
+### Fixed
+- Prevented Premier League and Champions League live-graph event labels from overlapping on narrower desktop windows.
+
 ## [1.7.28] - 2026-09-10
 ### Fixed
 - Kept the background worker repairing missing scorer and card events for recently finished Champions League fixtures after their live polling window ends.

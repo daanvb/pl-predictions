@@ -2269,7 +2269,7 @@ assert 'button.setAttribute("aria-label", `Highlight ${player.name}`)' in dashbo
 assert "No settled position changes yet." in dashboard_live_summary_template
 assert "Math.max(205, 135 + players.length * 14)" in dashboard_live_summary_template
 assert "Math.max(205, 135 + players.length * 14)" in gameweek_template
-assert "Math.max(760, stage.clientWidth)" in dashboard_live_summary_template
+assert "const width = Math.max(stage.clientWidth, 82 + plotWidth);" in dashboard_live_summary_template
 assert "Math.max(760, stage ? stage.clientWidth : 760)" in gameweek_template
 assert "const compactPlotWidth = isMobileChart" in dashboard_live_summary_template
 assert "const compactPlotWidth = isMobileChart" in gameweek_template
@@ -2423,6 +2423,7 @@ assert '-webkit-text-size-adjust: none' in base_template
 assert 'padding:74px 14px 40px' in base_template
 assert 'padding:calc(64px + env(safe-area-inset-top, 0px)) 10px 40px' in base_template
 assert 'repair_champions_events = champions_league_needs_event_repair()' in inspect.getsource(predictor.api_refresh_worker)
+assert 'if (isMobileChart) { svg.style.width' not in dashboard_live_summary_template
 assert 'flex:0 0 32px' in base_template
 assert 'height:32px;min-height:32px;max-height:32px;inline-size:32px;block-size:32px' in base_template
 assert 'background: #f1f5f9;' in base_template
