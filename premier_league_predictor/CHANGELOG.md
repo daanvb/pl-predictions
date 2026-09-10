@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.2] - 2026-09-10
+### Changed
+- Mobile prediction rows now shorten multi-word player names only when the full name would overflow.
+
 ## [1.8.1] - 2026-09-10
 ### Changed
 - Tightened the spacing between player trophy icons and names in prediction rows.

@@ -2497,9 +2497,9 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
   }
 }
 @media (max-width: 520px) {
-  .player-name-full{display:none}
-  .player-name-mobile{display:inline;white-space:nowrap}
   .fixture-predictions .pick-grid > strong{white-space:nowrap}
+  .fixture-predictions .pick-grid > strong.player-name-compact .player-name-full{display:none}
+  .fixture-predictions .pick-grid > strong.player-name-compact .player-name-mobile{display:inline;white-space:nowrap}
 }
 </style>
 </head>
@@ -2592,6 +2592,23 @@ Preddies v{{ app_version }}
       applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark', true);
     });
   }
+})();
+</script>
+
+<script>
+(function () {
+  const phoneWidth = window.matchMedia('(max-width: 520px)');
+  function fitPredictionPlayerNames() {
+    document.querySelectorAll('.fixture-predictions .pick-grid > strong').forEach(function (name) {
+      name.classList.remove('player-name-compact');
+      if (phoneWidth.matches && name.scrollWidth > name.clientWidth) {
+        name.classList.add('player-name-compact');
+      }
+    });
+  }
+  fitPredictionPlayerNames();
+  window.addEventListener('resize', fitPredictionPlayerNames);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitPredictionPlayerNames);
 })();
 </script>
 

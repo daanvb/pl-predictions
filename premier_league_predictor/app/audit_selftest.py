@@ -2431,7 +2431,10 @@ assert 'dashboard-season-stat' in dashboard_template
 assert '-webkit-text-size-adjust: none' in base_template
 assert 'padding:74px 14px 40px' in base_template
 assert 'padding:calc(64px + env(safe-area-inset-top, 0px)) 10px 40px' in base_template
-assert '.player-name-mobile{display:inline;white-space:nowrap}' in base_template
+assert '.fixture-predictions .pick-grid > strong.player-name-compact .player-name-full{display:none}' in base_template
+assert '.fixture-predictions .pick-grid > strong.player-name-compact .player-name-mobile{display:inline;white-space:nowrap}' in base_template
+assert "name.scrollWidth > name.clientWidth" in base_template
+assert "name.classList.remove('player-name-compact')" in base_template
 assert 'repair_champions_events = champions_league_needs_event_repair()' in inspect.getsource(predictor.api_refresh_worker)
 assert 'if (isMobileChart) { svg.style.width' not in dashboard_live_summary_template
 assert 'flex:0 0 32px' in base_template
