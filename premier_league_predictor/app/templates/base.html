@@ -1172,6 +1172,7 @@ body.dashboard-menu-open{overflow:hidden}
 .competition-icon-h2h img{transform:scale(.94) scaleX(.82)}
 .player-title-icon{width:1.3rem;height:1.3rem;flex-basis:1.3rem;margin-right:1px;vertical-align:-.32rem}
 .player-title-icon img{width:1.3rem;height:1.3rem}
+.player-name-mobile{display:none}
 .live-table-card .leader-row{grid-template-columns:38px 22px minmax(0,1fr) 72px;column-gap:2px;row-gap:0}
 .live-table-card .leader-row > .rank{grid-column:1;grid-row:1;align-self:center}
 .live-table-card .leader-row > div:nth-child(2){grid-column:2;grid-row:1;align-self:center}
@@ -1183,7 +1184,7 @@ body.dashboard-menu-open{overflow:hidden}
 .live-table-card .player-title-icon,.league-player .player-title-icon{vertical-align:-.27rem}
 .fixture-predictions .pick-grid > strong{display:flex;align-items:center;min-width:0;padding-left:25px}
 /* Reserve the same leading icon column for every PL and CL prediction row. */
-.fixture-predictions .player-title-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 1.3rem;margin-left:-25px;margin-right:5px;vertical-align:0}
+.fixture-predictions .player-title-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 1.3rem;margin-left:-25px;margin-right:2px;vertical-align:0}
 .hero h1 .competition-icon{width:1.18em;height:1.18em;flex-basis:1.18em;font-size:inherit;vertical-align:-.2em}
 .hero h1 .competition-icon img{width:1.18em;height:1.18em}
 /* The Champions League artwork is narrower than the Premier League trophy.
@@ -2494,6 +2495,11 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
   .league-table-row > .leader-points.league-stat {
     font-size: 18px;
   }
+}
+@media (max-width: 520px) {
+  .player-name-full{display:none}
+  .player-name-mobile{display:inline;white-space:nowrap}
+  .fixture-predictions .pick-grid > strong{white-space:nowrap}
 }
 </style>
 </head>

@@ -2156,6 +2156,13 @@ with open(
     dashboard_live_summary_template = handle.read()
 
 with open(
+    os.path.join(templates_dir, "_player_badges.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    player_badges_template = handle.read()
+
+with open(
     os.path.join(templates_dir, "_fixture_prediction_rows.html"),
     "r",
     encoding="utf-8",
@@ -2227,6 +2234,8 @@ assert "fixture-live" in gameweek_template
 assert "fixture-live" in dashboard_template
 assert '_dashboard_live_summary.html' in dashboard_template
 assert "display_player_name(player.name)" in dashboard_live_summary_template
+assert 'class="player-name-full"' in player_badges_template
+assert 'class="player-name-mobile"' in player_badges_template
 assert '{% if gameweek_predictions_open %}' in dashboard_template
 assert dashboard_template.index('_dashboard_live_summary.html') < dashboard_template.index('{% for fixture in current_fixtures %}')
 assert 'href="#live-gameweek"' not in dashboard_template
@@ -2422,6 +2431,7 @@ assert 'dashboard-season-stat' in dashboard_template
 assert '-webkit-text-size-adjust: none' in base_template
 assert 'padding:74px 14px 40px' in base_template
 assert 'padding:calc(64px + env(safe-area-inset-top, 0px)) 10px 40px' in base_template
+assert '.player-name-mobile{display:inline;white-space:nowrap}' in base_template
 assert 'repair_champions_events = champions_league_needs_event_repair()' in inspect.getsource(predictor.api_refresh_worker)
 assert 'if (isMobileChart) { svg.style.width' not in dashboard_live_summary_template
 assert 'flex:0 0 32px' in base_template
@@ -2431,7 +2441,7 @@ assert dashboard_template.index('{% include "_news_ticker.html" %}') < dashboard
 assert dashboard_template.index('{% include "_dashboard_live_summary.html" %}') < dashboard_template.index('Current Round')
 assert 'fixture.home_logo' in fixture_card_core_template
 assert '.fixture-predictions .pick-grid > strong{display:flex;align-items:center;min-width:0;padding-left:25px}' in base_template
-assert '.fixture-predictions .player-title-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 1.3rem;margin-left:-25px;margin-right:5px;vertical-align:0}' in base_template
+assert '.fixture-predictions .player-title-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 1.3rem;margin-left:-25px;margin-right:2px;vertical-align:0}' in base_template
 assert 'fixture.away_logo' in fixture_card_core_template
 
 # Broadcaster logos are deliberately omitted from Predictions.

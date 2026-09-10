@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.1] - 2026-09-10
+### Changed
+- Tightened the spacing between player trophy icons and names in prediction rows.
+- Kept mobile player rows on one line by showing only the first word of multi-word display names at phone widths.
+
 ## [1.8.0] - 2026-09-10
 ### Changed
 - Made Live Football API the primary live provider for both Premier League and Champions League scores, clocks, statuses, scorers and cards.
