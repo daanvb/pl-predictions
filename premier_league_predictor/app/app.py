@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.2"
+APP_VERSION = "1.8.3"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -2899,6 +2899,15 @@ def canonical_team_name(name):
         "sabah fk": "sabah",
         "sabah": "sabah",
         "bodo glimt": "bodo glimt",
+        "bayern munchen": "bayern munich",
+        "bayern munich": "bayern munich",
+        "slavia praha": "slavia prague",
+        "sk slavia praha": "slavia prague",
+        "slavia prague": "slavia prague",
+        "sk slavia prague": "slavia prague",
+        "racing club de lens": "lens",
+        "racing de lens": "lens",
+        "lens": "lens",
     }
 
     if value in aliases:
@@ -4316,6 +4325,13 @@ def normalized_team_name(name):
         "tottenham hotspur": "tottenham",
         "west ham united": "west ham",
         "wolverhampton wanderers": "wolves",
+        "bayern munchen": "bayern munich",
+        "bayern munich": "bayern munich",
+        "slavia praha": "slavia prague",
+        "slavia prague": "slavia prague",
+        "racing club de lens": "lens",
+        "racing de lens": "lens",
+        "lens": "lens",
     }
     return aliases.get(value, value)
 
@@ -5192,8 +5208,15 @@ def _live_football_match_for_fixture(conn, stored, provider_matches):
         (stored["id"],),
     ).fetchone()
     if mapping:
-        return next((match for match in provider_matches
-                     if str(_live_football_match_id(match)) == mapping["provider_fixture_id"]), None)
+        mapped_match = next(
+            (match for match in provider_matches
+             if str(_live_football_match_id(match)) == mapping["provider_fixture_id"]),
+            None,
+        )
+        if mapped_match:
+            return mapped_match
+        # A fixture refresh can leave an obsolete provider ID behind. Fall
+        # through to the team-and-date match and replace it when one is found.
     # Match through the same club identity used by fixture cards and H2H.
     # Provider lists often use a longer local name than the current fixture.
     matches = [

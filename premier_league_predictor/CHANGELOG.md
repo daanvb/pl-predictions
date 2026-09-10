@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.3] - 2026-09-10
+### Fixed
+- Matched Bayern, Bodø/Glimt, Slavia Praha and Lens provider aliases so their Champions League live scores are imported.
+- Re-resolved live fixtures by team and date when a saved provider match ID is no longer present.
+
 ## [1.8.2] - 2026-09-10
 ### Changed
 - Mobile prediction rows now shorten multi-word player names only when the full name would overflow.

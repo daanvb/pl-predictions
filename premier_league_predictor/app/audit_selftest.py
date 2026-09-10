@@ -1178,6 +1178,12 @@ assert predictor.normalized_team_name("Club Atlético de Madrid") == "atletico m
 assert predictor.normalized_team_name("FC Internazionale Milano") == "inter"
 assert predictor.normalized_team_name("Real Betis Balompié") == "real betis"
 assert predictor.normalized_team_name("Sporting Clube de Portugal") == "sporting"
+assert predictor.normalized_team_name("FC Bayern München") == "bayern munich"
+assert predictor.normalized_team_name("Bayern Munich") == "bayern munich"
+assert predictor.normalized_team_name("SK Slavia Praha") == "slavia prague"
+assert predictor.normalized_team_name("Slavia Prague") == "slavia prague"
+assert predictor.normalized_team_name("Racing Club de Lens") == "lens"
+assert predictor.normalized_team_name("Lens") == "lens"
 assert predictor.status_label({
     "status": "IN_PLAY", "minute": 45, "injury_time": 3, "match_phase": None,
 }) == "LIVE 45+3'"
@@ -2683,6 +2689,9 @@ assert predictor._champions_league_tv_teams_match(
 assert predictor._live_football_provider_names_match("AEK", "AEK Athens")
 assert predictor._live_football_provider_names_match("Lille", "Lille OSC")
 assert predictor._live_football_provider_names_match("Atl. Madrid", "Atlético Madrid")
+assert predictor._live_football_provider_names_match("Bayern Munich", "FC Bayern München")
+assert predictor._live_football_provider_names_match("Slavia Prague", "SK Slavia Praha")
+assert predictor._live_football_provider_names_match("Lens", "Racing Club de Lens")
 assert predictor.confirmed_champions_league_broadcaster({
     "home_team": "Manchester United", "away_team": "Sabah",
 }) == "TNT Sports 1"
