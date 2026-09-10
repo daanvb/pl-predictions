@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.28] - 2026-09-10
+### Fixed
+- Kept the background worker repairing missing scorer and card events for recently finished Champions League fixtures after their live polling window ends.
+
 ## [1.7.27] - 2026-09-10
 ### Fixed
 - Restored safe mobile spacing above page headers for the floating navigation, admin and theme controls.

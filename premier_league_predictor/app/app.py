@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.7.27"
+APP_VERSION = "1.7.28"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -6317,6 +6317,29 @@ def current_gameweek_needs_result_repair():
         conn.close()
 
 
+def champions_league_needs_event_repair():
+    """Return true while a recent finished CL fixture lacks scorer/card data."""
+    conn = get_db()
+    try:
+        cutoff = (now_utc() - timedelta(hours=48)).isoformat()
+        current = now_utc().isoformat()
+        return bool(conn.execute(
+            """SELECT 1 FROM fixtures
+               WHERE season = ? AND competition = 'champions_league'
+                 AND status = 'FINISHED'
+                 AND utc_date BETWEEN ? AND ?
+                 AND (
+                   ((COALESCE(home_score, 0) + COALESCE(away_score, 0)) > 0
+                    AND COALESCE(goals_json, '') IN ('', '[]'))
+                   OR incidents_json IS NULL
+                 )
+               LIMIT 1""",
+            (SEASON, cutoff, current),
+        ).fetchone())
+    finally:
+        conn.close()
+
+
 def live_window_active():
     """
     Backwards-compatible helper used by tests/diagnostics.
@@ -6462,8 +6485,9 @@ def api_refresh_worker():
 
         delay = next_api_refresh_delay()
         repair_results = current_gameweek_needs_result_repair()
+        repair_champions_events = champions_league_needs_event_repair()
 
-        if delay == LIVE_REFRESH_SECONDS or repair_results:
+        if delay == LIVE_REFRESH_SECONDS or repair_results or repair_champions_events:
             try:
                 live_football_updates = import_champions_league_live_from_live_football_api()
                 if live_football_updates:
@@ -6518,6 +6542,9 @@ def api_refresh_worker():
                 set_setting("last_api_football_error", str(exc))
                 set_setting("last_api_football_error_at", now_utc().isoformat())
                 print(f"[API-Football] {exc}", flush=True)
+
+        if repair_champions_events:
+            delay = min(delay, LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS)
 
         try:
             snapshot_conn = get_db()
