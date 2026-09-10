@@ -703,7 +703,7 @@ html[data-theme="dark"] .theme-toggle-icon-sun{display:block}
   line-height:1.25
 }
 @media(max-width:620px){
-  .container{padding:10px}
+  .container{padding:calc(64px + env(safe-area-inset-top, 0px)) 10px 40px}
   .hero{padding:21px}
   .card{padding:16px}
   .nav{

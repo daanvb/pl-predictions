@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.7.27] - 2026-09-10
+### Fixed
+- Restored safe mobile spacing above page headers for the floating navigation, admin and theme controls.
+
 ## [1.7.26] - 2026-09-10
 ### Fixed
 - Preserved Champions League scorers and incidents when schedule refreshes omit event details.

@@ -2421,6 +2421,7 @@ assert 'dashboard-position-stat' in dashboard_template
 assert 'dashboard-season-stat' in dashboard_template
 assert '-webkit-text-size-adjust: none' in base_template
 assert 'padding:74px 14px 40px' in base_template
+assert 'padding:calc(64px + env(safe-area-inset-top, 0px)) 10px 40px' in base_template
 assert 'flex:0 0 32px' in base_template
 assert 'height:32px;min-height:32px;max-height:32px;inline-size:32px;block-size:32px' in base_template
 assert 'background: #f1f5f9;' in base_template
