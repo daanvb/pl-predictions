@@ -487,9 +487,7 @@ input{
   stroke-width:3;
   stroke-linecap:round;
   stroke-dasharray:18 82;
-  will-change:stroke-dashoffset;
   filter:drop-shadow(0 0 3px rgba(250,204,21,.9));
-  animation:exact-dp-border-trail 2.8s linear infinite
 }
 .pick-grid.exact-score-dp-row > *{
   position:relative;
@@ -2548,12 +2546,6 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
 html[data-theme="dark"] .pick-grid.exact-score-dp-row{
   background:linear-gradient(100deg,#123b2a 0%,#4a3410 100%);
   color:#fef3c7
-}
-@keyframes exact-dp-border-trail{
-  to{stroke-dashoffset:-100}
-}
-@media (prefers-reduced-motion:reduce){
-  .exact-dp-border-trail rect{animation:none}
 }
 .dashboard-stats > .dashboard-signal-stat.dashboard-signal-stat:only-child{
   grid-column:1 / -1;
