@@ -7,8 +7,8 @@
 
 <div class="nav"><a href="/dashboard">← Dashboard</a><a href="/champions-league/league"><span class="nav-trophy-icon"><img src="/static/champions-league-trophy.png" alt=""></span> Competition table</a><a href="/champions-league/stats">📈 CL Competition Stats</a><a href="/champions-league/details">ℹ️ Competition Details</a></div>
 
-{% if not champions_has_live_fixtures %}
 <div class="grid dashboard-stats competition-player-summary" style="margin-bottom:14px">
+{% if not champions_summary_hidden %}
 <div class="stat dashboard-primary-stat dashboard-season-stat">
 <div class="small">YOUR CL TOTAL</div>
 <div class="stat-number">{{ champions_total_points }}</div>
@@ -19,8 +19,12 @@
 <div class="stat-number">{% if champions_league_position == 1 %}🥇{% elif champions_league_position == 2 %}🥈{% elif champions_league_position == 3 %}🥉{% elif champions_league_position == 4 %}💩{% elif champions_league_position %}{{ champions_league_position }}{% else %}—{% endif %}</div>
 <div class="muted">{% if champions_league_position and champions_league_size %}{{ champions_league_position }} of {{ champions_league_size }}{% else %}No position yet{% endif %}</div>
 </div>
-</div>
 {% endif %}
+<a class="stat dashboard-signal-stat" href="https://signal.group/#CjQKICKvqNxAPVKOKRPHrZWMWVO61y8ojBfPn03L5mTSqN20EhBx7o-QFZZ-lEdOstntrezU" target="_blank" rel="noopener noreferrer">
+<img src="https://signal.org/brand/assets/logo_min_size.png" alt="" width="38" height="38">
+<strong>Get Your Pre-Dicks In</strong>
+</a>
+</div>
 
 <div class="card" style="text-align:center;padding:24px"><div class="small">CURRENT ROUND</div><h2>Champions League · Round {{ fixtures[0].matchday if fixtures else '—' }}</h2>{% if gameweek_predictions_open %}<a href="/champions-league/predict"><button class="primary" type="button">✍️ Make Predictions</button></a>{% endif %}</div>
 

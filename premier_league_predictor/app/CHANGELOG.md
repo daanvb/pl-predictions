@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.19] - 2026-09-12
+### Fixed
+- Hide each competition’s settled player summary from its first kick-off until that round or gameweek is complete, while preserving normal live refresh behaviour.
+- Use a rotating conic-gradient ring for exact Double Points picks so the border animation is visible across supported browsers.
+### Added
+- Champions League hub now includes the Signal group link alongside its player summary.
+
 ## [1.8.18] - 2026-09-12
 ### Added
 - Champions League hub now shows your settled competition total and league position.

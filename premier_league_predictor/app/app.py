@@ -79,7 +79,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.18"
+APP_VERSION = "1.8.19"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -8560,6 +8560,7 @@ def champions_league():
         show_champions_h2h=show_champions_h2h,
         has_live_fixtures=round_in_progress,
         champions_has_live_fixtures=champions_has_live_fixtures,
+        champions_summary_hidden=round_in_progress,
         champions_total_points=champions_player_summary["total_points"],
         champions_league_position=champions_player_summary["league_position"],
         champions_league_size=champions_player_summary["league_size"],
@@ -10047,6 +10048,7 @@ def dashboard():
         league_position=premier_player_summary["league_position"],
         league_size=premier_player_summary["league_size"],
         dashboard_has_live_fixtures=competition_has_live_fixtures(current_fixtures),
+        dashboard_summary_hidden=competition_round_in_progress(current_fixtures),
         dashboard_sources=dashboard_sources,
         live_table=dashboard_live_table,
         position_chart=dashboard_position_chart,
