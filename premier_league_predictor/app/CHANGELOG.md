@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.16] - 2026-09-12
+### Changed
+- Compare Live Football API clocks with the SportScore and API-Football responses already received in the same worker cycle, without extra provider calls.
+- Fetch due Champions League event details in bounded parallel batches and stop repeat detail requests once a complete final result is stored.
+
 ## [1.8.15] - 2026-09-12
 ### Fixed
 - Keep the background worker checking recently finished fixtures every minute during the final-score reconciliation window.

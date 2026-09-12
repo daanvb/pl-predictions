@@ -79,7 +79,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.15"
+APP_VERSION = "1.8.16"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -4718,6 +4718,11 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
         ).fetchall()
         current_time = now_utc()
         for stored in fixtures:
+            # The primary provider has already confirmed this final result and
+            # its complete events. Keep the inexpensive list reconciliation,
+            # but do not repeatedly request the secondary match-detail page.
+            if _fixture_has_complete_live_football_final(stored):
+                continue
             live_football_updated_at = parse_utc(stored["last_updated"])
             live_football_is_fresh = bool(
                 stored["live_data_source"] == "Live Football API"
@@ -4820,6 +4825,10 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                 else None
             )
             minute_value, injury_time_value = sportscore_live_clock(details)
+            log_live_clock_comparison(
+                conn, stored["id"], "SportScore", minute_value,
+                sportscore_fixture_status(details, stored["status"]), current_time,
+            )
             home_penalty_score, away_penalty_score = provider_penalty_scores(details)
             score_changed = (
                 details.get("home_score") is not None
@@ -4914,7 +4923,8 @@ def import_champions_league_live_from_sportscore():
     try:
         candidates = conn.execute(
             """SELECT id, matchday, home_team, away_team, status, utc_date,
-                      home_score, away_score, goals_json
+                      home_score, away_score, goals_json, incidents_json,
+                      live_data_source
                FROM fixtures
                WHERE season = ? AND competition = 'champions_league'
                  AND status != 'CANCELLED'""",
@@ -4922,6 +4932,8 @@ def import_champions_league_live_from_sportscore():
         ).fetchall()
         current_time = now_utc()
         for stored in candidates:
+            if _fixture_has_complete_live_football_final(stored):
+                continue
             kickoff = parse_utc(stored["utc_date"])
             in_live_window = bool(
                 kickoff and kickoff - timedelta(seconds=LIVE_WINDOW_BEFORE_SECONDS)
@@ -4973,6 +4985,10 @@ def import_champions_league_live_from_sportscore():
                 if not incidents or not _fixture_goal_event_coverage_missing(candidate):
                     sportscore_goals_json = candidate["goals_json"]
             minute_value, injury_time_value = sportscore_live_clock(details)
+            log_live_clock_comparison(
+                conn, stored["id"], "SportScore", minute_value,
+                sportscore_fixture_status(details, stored["status"]), current_time,
+            )
             home_penalty_score, away_penalty_score = provider_penalty_scores(details)
             conn.execute(
                 """UPDATE fixtures SET status = ?, home_score = COALESCE(?, home_score),
@@ -5276,6 +5292,44 @@ def _live_football_details_due(conn, fixture_id, state_changed, score_changed):
     return not captured_at or (now_utc() - captured_at).total_seconds() >= LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS
 
 
+def _live_football_detail_refresh_needed(conn, stored, state_changed, score_changed, repair_events):
+    """Avoid repeat event requests after a complete final result is stored."""
+    if repair_events or state_changed or score_changed:
+        return True
+    if stored["status"] == "FINISHED":
+        return False
+    return _live_football_details_due(conn, stored["id"], state_changed, score_changed)
+
+
+def log_live_clock_comparison(conn, fixture_id, provider, minute, status, observed_at):
+    """Log an in-cycle clock comparison without adding any provider calls."""
+    if minute is None:
+        return
+    row = conn.execute(
+        """SELECT state_signature, captured_at FROM provider_live_states
+           WHERE provider = 'Live Football API' AND fixture_id = ?""",
+        (fixture_id,),
+    ).fetchone()
+    if not row or provider == "Live Football API":
+        return
+    try:
+        primary = json.loads(row["state_signature"] or "{}")
+        primary_minute = int(primary.get("minute"))
+        secondary_minute = int(minute)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return
+    primary_observed_at = parse_utc(row["captured_at"])
+    if not primary_observed_at:
+        return
+    age_seconds = (observed_at - primary_observed_at).total_seconds()
+    print(
+        f"[poll-compare] fixture={fixture_id} live_football={primary_minute}' "
+        f"{provider}={secondary_minute}' delta={secondary_minute - primary_minute:+d} "
+        f"primary_age_s={age_seconds:.1f} status={status}",
+        flush=True,
+    )
+
+
 def _import_competition_live_from_live_football_api(competition):
     """Import one competition through the shared Live Football API adapter."""
     if competition not in ("premier_league", "champions_league"):
@@ -5323,6 +5377,56 @@ def _import_competition_live_from_live_football_api(competition):
             match_date = parse_utc(fixture["utc_date"]).date().isoformat()
             if match_date not in matches_by_date:
                 matches_by_date[match_date] = get_live_football_matches(api_key, match_date)
+
+        # A Champions League round can have many simultaneous kick-offs. The
+        # list endpoint has already supplied the current score/clock for every
+        # match, so fetch only the due detail records in a small bounded batch.
+        # This preserves the provider's rate headroom while avoiding a long
+        # sequential queue before later matches receive their scorer updates.
+        prefetched_matches = {}
+        prefetched_details = {}
+        prefetched_detail_errors = {}
+        if competition == "champions_league":
+            detail_candidates = []
+            for stored in active:
+                provider_match = _live_football_match_for_fixture(
+                    conn, stored,
+                    matches_by_date[parse_utc(stored["utc_date"]).date().isoformat()],
+                )
+                if not provider_match:
+                    continue
+                prefetched_matches[stored["id"]] = provider_match
+                provider_id = _live_football_match_id(provider_match)
+                if provider_id is None:
+                    continue
+                home_score, away_score = _live_football_scores(provider_match)
+                provider_status = _live_football_status(provider_match, stored["status"])
+                repair_events = bool(
+                    stored["status"] == "FINISHED"
+                    and (
+                        _fixture_goal_event_coverage_missing(stored)
+                        or stored["incidents_json"] is None
+                    )
+                )
+                score_changed = home_score is not None and away_score is not None and (
+                    home_score != stored["home_score"] or away_score != stored["away_score"]
+                )
+                if _live_football_detail_refresh_needed(
+                    conn, stored, provider_status != stored["status"], score_changed, repair_events
+                ):
+                    detail_candidates.append((stored["id"], provider_id))
+            if detail_candidates:
+                with ThreadPoolExecutor(max_workers=min(3, len(detail_candidates))) as executor:
+                    futures = {
+                        executor.submit(get_live_football_match_details, api_key, provider_id): fixture_id
+                        for fixture_id, provider_id in detail_candidates
+                    }
+                    for future in as_completed(futures):
+                        fixture_id = futures[future]
+                        try:
+                            prefetched_details[fixture_id] = future.result()
+                        except LiveFootballAPIError as exc:
+                            prefetched_detail_errors[fixture_id] = exc
         for stored in active:
             repair_events = bool(
                 stored["status"] == "FINISHED"
@@ -5331,9 +5435,11 @@ def _import_competition_live_from_live_football_api(competition):
                     or stored["incidents_json"] is None
                 )
             )
-            provider_match = _live_football_match_for_fixture(
-                conn, stored, matches_by_date[parse_utc(stored["utc_date"]).date().isoformat()]
-            )
+            provider_match = prefetched_matches.get(stored["id"])
+            if provider_match is None:
+                provider_match = _live_football_match_for_fixture(
+                    conn, stored, matches_by_date[parse_utc(stored["utc_date"]).date().isoformat()]
+                )
             if not provider_match:
                 continue
             home_score, away_score = _live_football_scores(provider_match)
@@ -5355,21 +5461,25 @@ def _import_competition_live_from_live_football_api(competition):
             events_available = False
             details_checked = False
             provider_id = _live_football_match_id(provider_match)
-            if provider_id is not None and (
-                repair_events
-                or _live_football_details_due(
-                    conn, stored["id"], state_changed, score_changed
-                )
-            ):
-                try:
-                    details = get_live_football_match_details(api_key, provider_id)
-                    details_checked = True
-                except LiveFootballAPIError as exc:
-                    # Retain the list score/clock and previously saved events.
-                    # One unavailable detail endpoint must not roll back every
-                    # other match in this competition's transaction.
-                    details = None
-                    print(f"[Live Football API] Details unavailable for fixture {stored['id']}: {exc}", flush=True)
+            details_due = provider_id is not None and _live_football_detail_refresh_needed(
+                conn, stored, state_changed, score_changed, repair_events
+            )
+            if details_due:
+                if competition == "champions_league":
+                    details = prefetched_details.get(stored["id"])
+                    details_checked = isinstance(details, dict)
+                    if stored["id"] in prefetched_detail_errors:
+                        print(f"[Live Football API] Details unavailable for fixture {stored['id']}: {prefetched_detail_errors[stored['id']]}", flush=True)
+                else:
+                    try:
+                        details = get_live_football_match_details(api_key, provider_id)
+                        details_checked = True
+                    except LiveFootballAPIError as exc:
+                        # Retain the list score/clock and previously saved events.
+                        # One unavailable detail endpoint must not roll back every
+                        # other match in this competition's transaction.
+                        details = None
+                        print(f"[Live Football API] Details unavailable for fixture {stored['id']}: {exc}", flush=True)
                 if isinstance(details, dict):
                     detail_match = details.get("match")
                     if not isinstance(detail_match, dict):
@@ -5450,7 +5560,7 @@ def _import_competition_live_from_live_football_api(competition):
                 if score_changed:
                     score_change_causes[stored["matchday"]] = stored["id"]
             print(f"[poll-timing] Live Football API fixture={stored['id']} status={status} minute={minute} received_and_processed={now_utc().isoformat()}", flush=True)
-            if details_checked:
+            if provider_match:
                 conn.execute(
                     """INSERT OR REPLACE INTO provider_live_states(
                            provider, fixture_id, state_signature, captured_at, payload_json
@@ -6144,6 +6254,18 @@ def _fixture_goal_event_coverage_missing(stored):
     return False
 
 
+def _fixture_has_complete_live_football_final(stored):
+    """True when no secondary post-FT event lookup can add useful data."""
+    return bool(
+        stored["status"] == "FINISHED"
+        and stored["live_data_source"] == "Live Football API"
+        and stored["home_score"] is not None
+        and stored["away_score"] is not None
+        and stored["incidents_json"] is not None
+        and not _fixture_goal_event_coverage_missing(stored)
+    )
+
+
 def _api_football_fallback_needed(stored, checked_at):
     kickoff = parse_utc(stored["utc_date"])
     if not kickoff:
@@ -6270,6 +6392,10 @@ def import_live_matches_from_api_football_fallback():
                     }, sort_keys=True), checked_at.isoformat(),
                     json.dumps(provider_match, sort_keys=True),
                 ),
+            )
+            log_live_clock_comparison(
+                conn, stored["id"], "API-Football", elapsed,
+                provider_status, checked_at,
             )
             print(f"[poll-timing] API-Football fixture={stored['id']} elapsed={elapsed} status={provider_status} stored_minute={stored['minute']} processed={now_utc().isoformat()}", flush=True)
             can_fill_score = (

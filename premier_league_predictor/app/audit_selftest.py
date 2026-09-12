@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import sqlite3
 import inspect
+from contextlib import redirect_stdout
 from datetime import datetime, timezone, timedelta
 
 # Use a disposable DB for build-time tests.
@@ -2645,6 +2646,41 @@ conn.execute(
 conn.commit()
 conn.close()
 assert predictor.next_api_refresh_delay() == predictor.LIVE_REFRESH_SECONDS
+
+# A secondary provider response is compared with the Live Football response
+# already stored in the same worker cycle; this must never trigger a new call.
+conn = database.get_db()
+comparison_observed_at = datetime.now(timezone.utc)
+conn.execute(
+    """INSERT OR REPLACE INTO provider_live_states(
+           provider, fixture_id, state_signature, captured_at, payload_json
+       ) VALUES ('Live Football API', ?, ?, ?, '{}')""",
+    (99001, json.dumps({"minute": 67}), comparison_observed_at.isoformat()),
+)
+conn.commit()
+comparison_output = io.StringIO()
+with redirect_stdout(comparison_output):
+    predictor.log_live_clock_comparison(
+        conn, 99001, "API-Football", 69, "IN_PLAY", comparison_observed_at,
+    )
+assert "delta=+2" in comparison_output.getvalue()
+finished_row = conn.execute("SELECT * FROM fixtures WHERE id = 99001").fetchone()
+assert not predictor._live_football_detail_refresh_needed(
+    conn, finished_row, False, False, False,
+)
+assert predictor._live_football_detail_refresh_needed(
+    conn, finished_row, False, True, False,
+)
+complete_final = {
+    "status": "FINISHED", "live_data_source": "Live Football API",
+    "home_score": 1, "away_score": 0, "incidents_json": "[]",
+    "goals_json": json.dumps([{"team": {"name": "Home"}}]),
+    "home_team": "Home", "away_team": "Away",
+}
+assert predictor._fixture_has_complete_live_football_final(complete_final)
+complete_final["goals_json"] = "[]"
+assert not predictor._fixture_has_complete_live_football_final(complete_final)
+conn.close()
 
 # Quiet sleeps must end at 20:00 UK in both summer and winter. A failed
 # scheduled update retries, while a completed one returns to quiet operation.
