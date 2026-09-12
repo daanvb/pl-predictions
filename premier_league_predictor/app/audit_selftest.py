@@ -3626,11 +3626,13 @@ assert "changelog-fix-heading" in changelog_template
 assert "section.get('groups')" in changelog_template
 
 # Credit telemetry uses existing responses and never blocks match data.
-assert predictor.preserve_half_time("PAUSED", "IN_PLAY", 45) == "PAUSED"
-assert predictor.preserve_half_time("PAUSED", "IN_PLAY", None) == "PAUSED"
-assert predictor.preserve_half_time("PAUSED", "IN_PLAY", 46) == "IN_PLAY"
-assert predictor.preserve_half_time("PAUSED", "FINISHED", 90) == "FINISHED"
-assert predictor.preserve_half_time("IN_PLAY", "IN_PLAY", 44) == "IN_PLAY"
+assert predictor.preserve_live_status("PAUSED", "IN_PLAY", 45) == "PAUSED"
+assert predictor.preserve_live_status("PAUSED", "IN_PLAY", None) == "PAUSED"
+assert predictor.preserve_live_status("PAUSED", "IN_PLAY", 46) == "IN_PLAY"
+assert predictor.preserve_live_status("PAUSED", "FINISHED", 90) == "FINISHED"
+assert predictor.preserve_live_status("FINISHED", "IN_PLAY", 90) == "FINISHED"
+assert predictor.preserve_live_status("FINISHED", "SCHEDULED", None) == "FINISHED"
+assert predictor.preserve_live_status("IN_PLAY", "IN_PLAY", 44) == "IN_PLAY"
 from unittest.mock import Mock, patch
 import live_football_api as credit_api
 with patch.object(credit_api.requests, "get", return_value=Mock(status_code=429, headers={"Retry-After": "90"})) as limited_request:

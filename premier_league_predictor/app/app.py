@@ -79,7 +79,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.12"
+APP_VERSION = "1.8.13"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -4862,7 +4862,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                 WHERE id = ?
                 """,
                 (
-                    preserve_half_time(stored["status"], sportscore_fixture_status(details, stored["status"]), minute_value),
+                    preserve_live_status(stored["status"], sportscore_fixture_status(details, stored["status"]), minute_value),
                     details.get("home_score"),
                     details.get("away_score"),
                     minute_value,
@@ -4987,7 +4987,7 @@ def import_champions_league_live_from_sportscore():
                        last_updated = ?, live_data_source = 'SportScore'
                    WHERE id = ?""",
                 (
-                    preserve_half_time(stored["status"], sportscore_fixture_status(details, stored["status"]), minute_value), details.get("home_score"),
+                    preserve_live_status(stored["status"], sportscore_fixture_status(details, stored["status"]), minute_value), details.get("home_score"),
                     details.get("away_score"), minute_value, minute_value, injury_time_value,
                     provider_match_phase(details), home_penalty_score, away_penalty_score,
                     sportscore_goals_json,
@@ -5252,8 +5252,10 @@ def _live_football_match_for_fixture(conn, stored, provider_matches):
     return matches[0]
 
 
-def preserve_half_time(previous_status, incoming_status, minute):
-    """Do not reopen the first half after an interval has been observed."""
+def preserve_live_status(previous_status, incoming_status, minute):
+    """Prevent stale provider snapshots from moving a match backwards."""
+    if previous_status == "FINISHED" and incoming_status != "FINISHED":
+        return "FINISHED"
     if previous_status == "PAUSED" and incoming_status in ("LIVE", "IN_PLAY"):
         try:
             if minute is None or int(minute) <= 45:
@@ -5375,8 +5377,8 @@ def _import_competition_live_from_live_football_api(competition):
                     events = _live_football_events(provider_match)
                     events_available = events_available or isinstance(detail_match.get("events"), list) or isinstance(detail_match.get("incidents"), list)
             # Neither stale details nor a later list poll may reopen half one.
-            status = preserve_half_time(stored["status"], status, minute)
-            status = preserve_half_time(
+            status = preserve_live_status(stored["status"], status, minute)
+            status = preserve_live_status(
                 list_status,
                 status, minute,
             )
@@ -6299,7 +6301,7 @@ def import_live_matches_from_api_football_fallback():
                            last_updated = ?, live_data_source = 'API-Football'
                        WHERE id = ?""",
                     (
-                        preserve_half_time(stored["status"], provider_status, elapsed), replace_score, goals.get("home"),
+                        preserve_live_status(stored["status"], provider_status, elapsed), replace_score, goals.get("home"),
                         replace_score, goals.get("away"), elapsed, elapsed,
                         json.dumps(goal_events) if goal_events else None,
                         json.dumps(card_events) if card_events else None,

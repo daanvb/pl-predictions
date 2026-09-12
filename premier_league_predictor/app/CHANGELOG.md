@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.13] - 2026-09-12
+### Fixed
+- Keep confirmed full-time matches at FT when a stale secondary provider response arrives.
+
 ## [1.8.12] - 2026-09-12
 ### Added
 - Lowest completed gameweek score in personal and league statistics, including tied league records.
