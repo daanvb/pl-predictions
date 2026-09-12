@@ -8,12 +8,41 @@
 
 <div class="nav">
 <a href="/admin">← Admin status</a>
-<a href="/admin/settings">🔑 API Keys</a>
+</div>
+
+<div class="card">
+<h2>⏱️ Automatic refresh sequence</h2>
+<p class="muted">Times are UK time. This is the order the background worker keeps data current.</p>
+<div style="padding:12px 0;border-bottom:1px solid var(--border)"><strong>1. Around live kick-off</strong><div class="small">Every 60 seconds while a tracked match is live or in its live window. Scores, status, clocks, scorers and cards are checked.</div></div>
+<div style="padding:12px 0;border-bottom:1px solid var(--border)"><strong>2. Two hours after a Premier League gameweek ends</strong><div class="small">Premier League fixtures and match-stat/head-to-head history refresh. The next gameweek opens at 09:00 UK time the following day.</div></div>
+<div style="padding:12px 0;border-bottom:1px solid var(--border)"><strong>3. Sunday from 20:00</strong><div class="small">Champions League fixtures and head-to-head history refresh for the coming match block.</div></div>
+<div style="padding:12px 0"><strong>4. Quiet periods</strong><div class="small">The worker checks again at least every 6 hours; automatic database backups also run every 6 hours.</div></div>
+</div>
+
+<div class="card">
+<h2>⚡ Refresh now</h2>
+<p class="muted">Use these only when you need an immediate update; automatic refreshes remain enabled.</p>
+<form method="POST" action="/admin/fixtures/import"><input type="hidden" name="return_to" value="data"><button class="primary" type="submit">⚽ Refresh Premier League fixtures</button></form>
+<form method="POST" action="/admin/match-stats/refresh" style="margin-top:10px"><button type="submit">📊 Refresh Premier League match history</button></form>
+<form method="POST" action="/admin/champions-league/import" style="margin-top:10px"><button type="submit">🏆 Refresh Champions League fixtures</button></form>
+<form method="POST" action="/admin/champions-league/h2h/import" style="margin-top:10px"><button type="submit">🤝 Refresh Champions League head-to-head history</button></form>
+</div>
+
+<div class="card">
+<h2>📡 Last live-data checks</h2>
+<p class="muted">Live Football API is primary. The other listed services only fill a confirmed gap.</p>
+{% for refresh in live_refreshes %}
+<div style="padding:12px 0;{% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
+<strong>{{ refresh.label }}</strong>
+<div class="small">Last checked: <strong>{{ refresh.at or 'Not recorded yet' }}</strong></div>
+<div class="small">Sources: {{ refresh.sources|join(' → ') }}</div>
+</div>
+{% endfor %}
 </div>
 
 <div class="card">
 <h2>🧾 Fixture &amp; head-to-head refresh history</h2>
-<p class="muted">The latest successful refresh for each competition, with the data source used.</p>
+<p class="muted">The latest successful completed refresh for each competition and source.</p>
 {% for refresh in refresh_logs %}
 <div style="padding:12px 0;{% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
 <strong>{{ refresh.label }}</strong>
@@ -28,27 +57,11 @@
 </div>
 
 <div class="card">
-<h2>📊 Match stats history</h2>
+<h2>📊 Premier League match stats history</h2>
 <p class="muted">Refresh the completed historical results used for the match-stat pages.</p>
-<form method="POST" action="/admin/match-stats/refresh">
-<button class="primary" type="submit">📥 Refresh historical results</button>
-</form>
 {% if historical_results_last_refresh %}<p class="small">Last refresh: <strong>{{ historical_results_last_refresh }}</strong></p>{% endif %}
 {% if historical_results_last_sources %}<p class="small">Sources: {{ historical_results_last_sources }}</p>{% endif %}
 {% if historical_results_last_error %}<p class="small" style="color:#b91c1c">Some seasons could not be loaded: {{ historical_results_last_error }}</p>{% endif %}
 </div>
 
-<div class="card">
-<h2>🏆 Champions League data</h2>
-<p class="muted">Refresh the current Champions League fixtures or load the stored head-to-head history used on fixture cards.</p>
-<form method="POST" action="/admin/champions-league/import"><button class="primary" type="submit">Refresh current CL fixtures</button></form>
-<form method="POST" action="/admin/champions-league/h2h/import" style="margin-top:10px"><button type="submit">Load CL head-to-head history</button></form>
-</div>
-
-<div class="card">
-<h2>⚽ Fixture refresh</h2>
-<p class="muted">The background refresh updates live fixtures automatically. The last successful refresh is shown here.</p>
-{% if last_api_refresh %}<p>Last API refresh: <strong>{{ last_api_refresh }}</strong></p>{% else %}<p class="muted">No API refresh recorded yet.</p>{% endif %}
-<a href="/admin/fixtures"><button>Open fixture management</button></a>
-</div>
 {% endblock %}

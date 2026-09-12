@@ -1392,6 +1392,7 @@ admin_response = client.get("/admin")
 assert b"System status" in admin_response.data
 assert b'href="/admin/settings"' in admin_response.data
 assert b'href="/admin/data"' in admin_response.data
+assert b"Google Drive backup" in admin_response.data
 assert b"Database Health" in admin_response.data
 assert b">PREDICTIONS</div>" not in admin_response.data
 predictor.record_data_refresh_log("pl_fixtures", ["football-data.org"], 10)
@@ -1401,10 +1402,14 @@ predictor.record_data_refresh_log("cl_h2h", ["Live Football API /h2h"], 4)
 admin_data_response = client.get("/admin/data")
 assert admin_data_response.status_code == 200
 assert b"Data refresh &amp; tests" in admin_data_response.data
+assert b"Automatic refresh sequence" in admin_data_response.data
+assert b"Refresh Premier League fixtures" in admin_data_response.data
+assert b"Last live-data checks" in admin_data_response.data
 assert b"Fixture &amp; head-to-head refresh history" in admin_data_response.data
 assert b"Premier League fixtures" in admin_data_response.data
 assert b"Champions League head-to-head history" in admin_data_response.data
 assert b"Live Football API /h2h" in admin_data_response.data
+assert b'href="/admin/settings"' not in admin_data_response.data
 assert predictor.admin_data_refresh_log("pl_fixtures")["records"] == 10
 health = predictor.database_health()
 assert health["database_bytes"] > 0

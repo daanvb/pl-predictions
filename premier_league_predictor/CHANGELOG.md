@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.6] - 2026-09-12
+### Changed
+- Simplified Admin Data Refresh & Tests into a chronological refresh schedule, immediate refresh controls, live-feed status and completed refresh history.
+- Added Google Drive backup connection status to the Admin system report.
+
 ## [1.8.5] - 2026-09-10
 ### Changed
 - Hid the Champions League Make Predictions action once the final fixture in the round has kicked off.

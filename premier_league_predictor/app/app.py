@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.5"
+APP_VERSION = "1.8.6"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -10809,10 +10809,12 @@ def admin():
 
     signal = signal_settings()
     signal_status = signal_connection_status()
+    google_backup_error = get_setting("last_google_backup_error")
     system_status = [
         ("football-data.org", bool(get_setting("football_api_token")), last_api_error),
         ("API-Football", bool(get_setting("api_football_key")), ""),
         ("Live Football API", bool(get_setting("live_football_api_key")), get_setting("last_live_football_api_error")),
+        ("Google Drive backup", google_drive_connected(), google_backup_error),
         ("Signal", signal["enabled"], "" if signal_status.get("ok") else "Connection unavailable"),
     ]
 
@@ -10870,7 +10872,7 @@ def admin():
 
 @app.route("/admin/data")
 def admin_data():
-    """Keep manual refreshes and provider checks away from the status page."""
+    """Show the operational refresh sequence and its latest completed work."""
     if not is_admin():
         return redirect("/")
 
@@ -10881,9 +10883,24 @@ def admin_data():
         {"label": "Champions League fixtures", **admin_data_refresh_log("cl_fixtures")},
         {"label": "Champions League head-to-head history", **admin_data_refresh_log("cl_h2h")},
     ]
+    def setting_time(key):
+        value = get_setting(key)
+        return local_timestamp(value) if value else None
     return render_template(
         "admin_data.html",
         refresh_logs=refresh_logs,
+        live_refreshes=[
+            {
+                "label": "Premier League live scores, status and events",
+                "at": setting_time("last_live_football_api_pl_refresh"),
+                "sources": ["Live Football API", "SportScore fallback", "API-Football fallback"],
+            },
+            {
+                "label": "Champions League live scores, status and events",
+                "at": setting_time("last_live_football_api_refresh"),
+                "sources": ["Live Football API", "SportScore fallback", "API-Football fallback"],
+            },
+        ],
         last_api_refresh=(
             local_timestamp(get_setting("last_api_refresh"))
             if get_setting("last_api_refresh") else None
@@ -12650,13 +12667,11 @@ def import_fixtures():
             "error"
         )
 
-        return redirect(
-            "/admin/settings"
-        )
+        return redirect("/admin/data" if request.form.get("return_to") == "data" else "/admin/settings")
 
     if football_data_rate_limit_active():
         flash("football-data.org is temporarily rate limiting requests. Please try again shortly.", "error")
-        return redirect("/admin/fixtures")
+        return redirect("/admin/data" if request.form.get("return_to") == "data" else "/admin/fixtures")
 
     try:
         imported = import_matches_from_api()
@@ -12680,9 +12695,7 @@ def import_fixtures():
             "error"
         )
 
-    return redirect(
-        "/admin/fixtures"
-    )
+    return redirect("/admin/data" if request.form.get("return_to") == "data" else "/admin/fixtures")
 
 
 @app.route(
