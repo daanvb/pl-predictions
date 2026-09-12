@@ -5,12 +5,16 @@ League feeds.  Keeping it here makes it possible to turn the CL trial off by
 removing its key without affecting the normal live-data path.
 """
 
-from datetime import date
+from datetime import date, datetime, timezone
+import logging
+import time
 
 import requests
 
 
 API_BASE = "https://live-football-api.com/api/v1"
+credit_observer = None
+_retry_after = 0.0
 
 
 class LiveFootballAPIError(Exception):
@@ -28,8 +32,14 @@ def _payload_data(payload):
 
 
 def _get(api_key, path, params=None):
+    global _retry_after
     if not api_key:
         raise LiveFootballAPIError("No Live Football API key is configured.")
+    if time.monotonic() < _retry_after:
+        raise LiveFootballAPIError("Live Football API rate-limit cooldown active.")
+    checked_at = datetime.now(timezone.utc).isoformat()
+    sent_at = datetime.now(timezone.utc).isoformat()
+    started = time.monotonic()
     try:
         response = requests.get(
             f"{API_BASE}{path}",
@@ -44,7 +54,17 @@ def _get(api_key, path, params=None):
         raise LiveFootballAPIError(
             "Live Football API could not be reached."
         ) from exc
+    logging.getLogger(__name__).warning(
+        "[poll-timing] Live Football API path=%s sent=%s received=%s duration_ms=%d http=%s",
+        path, sent_at, datetime.now(timezone.utc).isoformat(),
+        int((time.monotonic() - started) * 1000), response.status_code,
+    )
     if response.status_code == 429:
+        try:
+            delay = max(60, min(3600, int(response.headers.get("Retry-After", 60))))
+        except (TypeError, ValueError):
+            delay = 60
+        _retry_after = time.monotonic() + delay
         raise LiveFootballAPIError("Live Football API rate limit reached.")
     if response.status_code in (401, 403):
         raise LiveFootballAPIError("Live Football API key was rejected.")
@@ -57,7 +77,14 @@ def _get(api_key, path, params=None):
             f"Live Football API returned HTTP {response.status_code}."
         )
     try:
-        return _payload_data(response.json())
+        payload = response.json()
+        credits = payload.get("credits_remaining") if isinstance(payload, dict) else None
+        if type(credits) is int and credits >= 0 and credit_observer is not None:
+            try:
+                credit_observer(credits, checked_at)
+            except Exception:
+                logging.getLogger(__name__).warning("Could not save Live Football API credit balance")
+        return _payload_data(payload)
     except ValueError as exc:
         raise LiveFootballAPIError("Live Football API returned invalid JSON.") from exc
 

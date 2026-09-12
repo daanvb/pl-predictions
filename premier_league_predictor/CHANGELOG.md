@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.11] - 2026-09-12
+### Fixed
+- Prevent stale first-half clocks from overwriting half-time in PL and CL live feeds.
+- Back off after Live Football API rate limits and skip upcoming event requests in the admin test.
+### Added
+- Admin credit balance and last-check time from existing API responses, with an amber admin icon below 500 credits.
+
 ## [1.8.10] - 2026-09-12
 ### Changed
 - Display own goals as (OG) on Premier League and Champions League scorecards.

@@ -1,6 +1,9 @@
 """Small API-Football client used only for targeted live-data fallback."""
 
 import requests
+import logging
+import time
+from datetime import datetime, timezone
 
 
 API_BASE = "https://v3.football.api-sports.io"
@@ -17,6 +20,8 @@ def _headers(api_key):
 
 
 def _get(api_key, path, params=None):
+    sent_at = datetime.now(timezone.utc).isoformat()
+    started = time.monotonic()
     try:
         response = requests.get(
             f"{API_BASE}{path}", headers=_headers(api_key), params=params,
@@ -25,6 +30,11 @@ def _get(api_key, path, params=None):
     except requests.RequestException as exc:
         raise APIFootballError("API-Football is temporarily unavailable.") from exc
 
+    logging.getLogger(__name__).warning(
+        "[poll-timing] API-Football path=%s sent=%s received=%s duration_ms=%d http=%s",
+        path, sent_at, datetime.now(timezone.utc).isoformat(),
+        int((time.monotonic() - started) * 1000), response.status_code,
+    )
     if response.status_code == 401:
         raise APIFootballError("API-Football rejected the configured key.")
     if response.status_code == 429:

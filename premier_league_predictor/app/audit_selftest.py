@@ -3625,5 +3625,47 @@ with open(
 assert "changelog-fix-heading" in changelog_template
 assert "section.get('groups')" in changelog_template
 
+# Credit telemetry uses existing responses and never blocks match data.
+assert predictor.preserve_half_time("PAUSED", "IN_PLAY", 45) == "PAUSED"
+assert predictor.preserve_half_time("PAUSED", "IN_PLAY", None) == "PAUSED"
+assert predictor.preserve_half_time("PAUSED", "IN_PLAY", 46) == "IN_PLAY"
+assert predictor.preserve_half_time("PAUSED", "FINISHED", 90) == "FINISHED"
+assert predictor.preserve_half_time("IN_PLAY", "IN_PLAY", 44) == "IN_PLAY"
+from unittest.mock import Mock, patch
+import live_football_api as credit_api
+with patch.object(credit_api.requests, "get", return_value=Mock(status_code=429, headers={"Retry-After": "90"})) as limited_request:
+    for attempt in range(2):
+        try:
+            credit_api.get_matches("test-key", "2026-09-12")
+            assert False, "Expected rate-limit error"
+        except credit_api.LiveFootballAPIError:
+            pass
+    assert limited_request.call_count == 1
+credit_api._retry_after = 0
+with patch.object(credit_api.requests, "get", return_value=Mock(
+    status_code=200, json=lambda: {"success": True, "credits_remaining": 499, "data": {"matches": []}}
+)) as credit_request:
+    assert credit_api.get_matches("test-key", "2026-09-12") == []
+    assert credit_request.call_count == 1
+with predictor.app.test_request_context("/admin"):
+    predictor.session["admin"] = True
+    assert predictor.inject_live_football_credits()["live_football_credits_low"]
+    predictor.record_live_football_credits(500, "2099-01-01T00:00:00+00:00")
+    assert not predictor.inject_live_football_credits()["live_football_credits_low"]
+    predictor.record_live_football_credits(0, "2098-01-01T00:00:00+00:00")
+    assert predictor.inject_live_football_credits()["live_football_credits"] == 500
+    predictor.record_live_football_credits(0, "2099-01-02T00:00:00+00:00")
+    assert predictor.inject_live_football_credits()["live_football_credits_low"]
+    predictor.record_live_football_credits(2000, "2099-01-03T00:00:00+00:00")
+    assert not predictor.inject_live_football_credits()["live_football_credits_low"]
+    predictor.session.clear()
+    assert predictor.inject_live_football_credits()["live_football_credits"] is None
+with patch.object(credit_api.requests, "get", return_value=Mock(
+    status_code=200, json=lambda: {"credits_remaining": 20, "data": {"matches": []}}
+)), patch.object(credit_api, "credit_observer", side_effect=RuntimeError("storage unavailable")):
+    assert credit_api.get_matches("test-key", "2026-09-12") == []
+predictor.app.jinja_env.get_template("admin.html")
+predictor.app.jinja_env.get_template("base.html")
+
 os.remove(tmp.name)
 print("Preddies self-test: PASS")

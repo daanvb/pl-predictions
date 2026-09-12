@@ -2527,7 +2527,7 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
 <div class="corner-controls">
 {% block corner_actions %}{% endblock %}
 {% if session.admin %}
-<a class="corner-action" href="/admin" aria-label="Admin" title="Admin">
+<a class="corner-action" href="/admin" {% if live_football_credits_low %}style="background:#fef3c7;color:#92400e;border:2px solid #d97706;box-shadow:0 0 0 3px rgba(217,119,6,.25)" aria-label="Admin — Live Football API credits below 500" title="Low Live Football API credits: {{ live_football_credits }} remaining"{% else %}aria-label="Admin" title="Admin"{% endif %}>
 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg>
 </a>
 {% endif %}

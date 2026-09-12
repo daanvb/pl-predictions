@@ -21,6 +21,8 @@ ADMIN · v{{ app_version }}
 
 <div class="card">
 <h2>🩺 System status</h2>
+<p {% if live_football_credits_low %}style="color:#dc2626;font-weight:700"{% endif %}><strong>Live Football API credits:</strong> {% if live_football_credits is not none %}{{ live_football_credits }} remaining{% else %}Awaiting next API refresh{% endif %}{% if live_football_credits_low %} · Low balance — below 500{% endif %}</p>
+{% if live_football_credits_checked_at %}<p class="small">Last checked: {{ live_football_credits_checked_at }}. Updated from existing API requests.</p>{% endif %}
 {% for name, configured, issue in system_status %}
 <p {% if issue or not configured %}style="color:#dc2626"{% endif %}>{% if issue %}🔴{% elif configured %}🟢{% else %}🔴{% endif %} <strong>{{ name }}</strong> · {% if issue %}{{ issue }}{% elif configured %}Connected/configured{% else %}Not configured{% endif %}</p>
 {% endfor %}

@@ -60,6 +60,7 @@ from api_football import (
     get_premier_league_fixtures_for_date as get_api_football_premier_league_fixtures_for_date,
     test_connection as test_api_football_connection,
 )
+import live_football_api
 from live_football_api import (
     LiveFootballAPIError,
     get_head_to_head as get_live_football_head_to_head,
@@ -78,7 +79,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.10"
+APP_VERSION = "1.8.11"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -219,6 +220,8 @@ database_restore_lock = threading.Lock()
 @app.after_request
 def prevent_stale_html(response):
     """Always fetch a current rendered page when Preddies is opened."""
+    if request.path == "/dashboard":
+        app.logger.warning("[poll-timing] dashboard rendered=%s", now_utc().isoformat())
     if response.mimetype == "text/html":
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
@@ -4859,7 +4862,7 @@ def import_live_matches_from_sportscore(force_current_gameweek=False):
                 WHERE id = ?
                 """,
                 (
-                    sportscore_fixture_status(details, stored["status"]),
+                    preserve_half_time(stored["status"], sportscore_fixture_status(details, stored["status"]), minute_value),
                     details.get("home_score"),
                     details.get("away_score"),
                     minute_value,
@@ -4984,7 +4987,7 @@ def import_champions_league_live_from_sportscore():
                        last_updated = ?, live_data_source = 'SportScore'
                    WHERE id = ?""",
                 (
-                    sportscore_fixture_status(details, stored["status"]), details.get("home_score"),
+                    preserve_half_time(stored["status"], sportscore_fixture_status(details, stored["status"]), minute_value), details.get("home_score"),
                     details.get("away_score"), minute_value, minute_value, injury_time_value,
                     provider_match_phase(details), home_penalty_score, away_penalty_score,
                     sportscore_goals_json,
@@ -5249,6 +5252,17 @@ def _live_football_match_for_fixture(conn, stored, provider_matches):
     return matches[0]
 
 
+def preserve_half_time(previous_status, incoming_status, minute):
+    """Do not reopen the first half after an interval has been observed."""
+    if previous_status == "PAUSED" and incoming_status in ("LIVE", "IN_PLAY"):
+        try:
+            if minute is None or int(minute) <= 45:
+                return "PAUSED"
+        except (TypeError, ValueError):
+            return "PAUSED"
+    return incoming_status
+
+
 def _live_football_details_due(conn, fixture_id, state_changed, score_changed):
     if state_changed or score_changed:
         return True
@@ -5313,6 +5327,7 @@ def _import_competition_live_from_live_football_api(competition):
                 continue
             home_score, away_score = _live_football_scores(provider_match)
             status = _live_football_status(provider_match, stored["status"])
+            list_status = status
             minute, injury_time = _live_football_minute(provider_match)
             match_phase = _live_football_match_phase(provider_match)
             home_penalty_score, away_penalty_score = _live_football_penalty_scores(provider_match)
@@ -5359,6 +5374,12 @@ def _import_competition_live_from_live_football_api(competition):
                     home_penalty_score, away_penalty_score = _live_football_penalty_scores(provider_match)
                     events = _live_football_events(provider_match)
                     events_available = events_available or isinstance(detail_match.get("events"), list) or isinstance(detail_match.get("incidents"), list)
+            # Neither stale details nor a later list poll may reopen half one.
+            status = preserve_half_time(stored["status"], status, minute)
+            status = preserve_half_time(
+                list_status,
+                status, minute,
+            )
             # The detailed record is authoritative. Its score can differ from
             # the list response, so calculate the trigger after both reads.
             state_changed = status != stored["status"]
@@ -5417,6 +5438,7 @@ def _import_competition_live_from_live_football_api(competition):
                     affected_matchdays.add(stored["matchday"])
                 if score_changed:
                     score_change_causes[stored["matchday"]] = stored["id"]
+            print(f"[poll-timing] Live Football API fixture={stored['id']} status={status} minute={minute} received_and_processed={now_utc().isoformat()}", flush=True)
             if details_checked:
                 conn.execute(
                     """INSERT OR REPLACE INTO provider_live_states(
@@ -6238,6 +6260,7 @@ def import_live_matches_from_api_football_fallback():
                     json.dumps(provider_match, sort_keys=True),
                 ),
             )
+            print(f"[poll-timing] API-Football fixture={stored['id']} elapsed={elapsed} status={provider_status} stored_minute={stored['minute']} processed={now_utc().isoformat()}", flush=True)
             can_fill_score = (
                 stored["home_score"] is None or stored["away_score"] is None
                 or stored["status"] in ("SCHEDULED", "TIMED")
@@ -6276,7 +6299,7 @@ def import_live_matches_from_api_football_fallback():
                            last_updated = ?, live_data_source = 'API-Football'
                        WHERE id = ?""",
                     (
-                        provider_status, replace_score, goals.get("home"),
+                        preserve_half_time(stored["status"], provider_status, elapsed), replace_score, goals.get("home"),
                         replace_score, goals.get("away"), elapsed, elapsed,
                         json.dumps(goal_events) if goal_events else None,
                         json.dumps(card_events) if card_events else None,
@@ -8006,6 +8029,37 @@ def resolve_reigning_champion_name(winner_name, players):
             compatible.append(current_name)
     matches = exact or compatible
     return matches[0] if len(matches) == 1 else winner_name
+
+
+_credit_balance_lock = threading.Lock()
+
+
+def record_live_football_credits(credits, checked_at):
+    with _credit_balance_lock:
+        previous = json.loads(get_setting("live_football_credit_balance") or "{}")
+        if checked_at >= previous.get("checked_at", ""):
+            set_setting("live_football_credit_balance", json.dumps({
+                "remaining": credits, "checked_at": checked_at,
+            }))
+
+
+live_football_api.credit_observer = record_live_football_credits
+
+
+@app.context_processor
+def inject_live_football_credits():
+    balance = {}
+    if session.get("admin"):
+        try:
+            balance = json.loads(get_setting("live_football_credit_balance") or "{}")
+        except (ValueError, TypeError):
+            pass
+    remaining = balance.get("remaining")
+    return {
+        "live_football_credits": remaining,
+        "live_football_credits_checked_at": local_timestamp(balance.get("checked_at")) if balance.get("checked_at") else None,
+        "live_football_credits_low": type(remaining) is int and remaining < 500,
+    }
 
 
 @app.context_processor
@@ -12290,6 +12344,7 @@ def monitor_live_football_api_test():
             executor.submit(get_live_football_match_details, api_key, provider_id): provider_id
             for match in monitored
             if (provider_id := _live_football_match_id(match)) is not None
+                and (day == "yesterday" or _live_football_status(match, "SCHEDULED") not in ("SCHEDULED", "TIMED"))
         }
         for future in as_completed(futures):
             provider_id = futures[future]
@@ -12352,6 +12407,7 @@ def import_yesterdays_premier_league_results_from_live_football_api():
             executor.submit(get_live_football_match_details, api_key, provider_id): provider_id
             for match in provider_matches
             if (provider_id := _live_football_match_id(match)) is not None
+                and (day == "yesterday" or _live_football_status(match, "SCHEDULED") not in ("SCHEDULED", "TIMED"))
         }
         for future in as_completed(futures):
             provider_id = futures[future]
@@ -12464,6 +12520,7 @@ def live_football_api_test():
                 ): provider_id
                 for match in provider_matches
                 if (provider_id := _live_football_match_id(match)) is not None
+                and (day == "yesterday" or _live_football_status(match, "SCHEDULED") not in ("SCHEDULED", "TIMED"))
             }
             for future in as_completed(futures):
                 provider_id = futures[future]
