@@ -2431,7 +2431,7 @@ assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
 assert "exact-dp-border-orbit" in base_template
 assert "mask-composite:exclude" in base_template
-assert "dashboard-signal-stat:only-child" in base_template
+assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
 assert 'width:118px;' in base_template
 assert 'grid-template-columns:42px 20px 42px;' in base_template
 assert 'column-gap:12px' in base_template

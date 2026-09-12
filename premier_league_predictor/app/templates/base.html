@@ -468,7 +468,7 @@ input{
 .pick-grid.exact-score-dp-row{
   position:relative;
   isolation:isolate;
-  border-color:transparent;
+  border:2px solid rgba(245,158,11,.42);
   background:linear-gradient(100deg,#ecfdf5 0%,#fef3c7 58%,#fffbeb 100%);
   box-shadow:0 0 0 2px rgba(245,158,11,.14),0 8px 20px rgba(245,158,11,.16)
 }
@@ -477,15 +477,16 @@ input{
   position:absolute;
   inset:0;
   z-index:0;
-  padding:2px;
+  padding:3px;
   border-radius:10px;
-  background:conic-gradient(#f59e0b,#ef4444,#a855f7,#06b6d4,#22c55e,#f59e0b);
+  background:conic-gradient(from 0deg,transparent 0deg 258deg,rgba(6,182,212,.18) 270deg,#22c55e 284deg,#fef08a 299deg,#f97316 315deg,#ef4444 331deg,rgba(239,68,68,.18) 344deg,transparent 358deg 360deg);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
   -webkit-mask-composite:xor;
   mask-composite:exclude;
   pointer-events:none;
   will-change:transform;
-  animation:exact-dp-border-orbit 3.8s linear infinite
+  filter:drop-shadow(0 0 4px rgba(250,204,21,.9));
+  animation:exact-dp-border-orbit 3.2s linear infinite
 }
 .pick-grid.exact-score-dp-row > *{
   position:relative;
@@ -2549,12 +2550,13 @@ html[data-theme="dark"] .pick-grid.exact-score-dp-row{
   to{transform:rotate(1turn)}
 }
 @media (prefers-reduced-motion:reduce){
-  .pick-grid.exact-score-dp-row{animation:none}
+  .pick-grid.exact-score-dp-row::before{animation:none}
 }
-.dashboard-stats > .dashboard-signal-stat:only-child{
+.dashboard-stats > .dashboard-signal-stat.dashboard-signal-stat:only-child{
   grid-column:1 / -1;
   justify-self:center;
-  width:min(260px,100%)
+  width:min(260px,100%);
+  box-sizing:border-box
 }
 </style>
 </head>

@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.20] - 2026-09-12
+### Fixed
+- Exact Double Points cards now keep a subtle outline while a bright multicolour trail travels around the edge.
+- Centre the Signal card whenever it is the sole visible competition-summary card.
+
 ## [1.8.19] - 2026-09-12
 ### Fixed
 - Hide each competition’s settled player summary from its first kick-off until that round or gameweek is complete, while preserving normal live refresh behaviour.
