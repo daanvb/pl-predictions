@@ -489,9 +489,13 @@ input{
   stroke-dasharray:18 82;
   filter:drop-shadow(0 0 3px rgba(250,204,21,.9));
 }
-.pick-grid.exact-score-dp-row > *{
+.pick-grid.exact-score-dp-row > :not(.exact-dp-border-trail){
   position:relative;
   z-index:1
+}
+.pick-grid.exact-score-dp-row > .exact-dp-border-trail{
+  position:absolute;
+  z-index:2
 }
 .dp-exact-badge{
   display:inline-flex;
