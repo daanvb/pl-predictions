@@ -484,10 +484,10 @@ input{
 .exact-dp-border-trail rect{
   fill:none;
   stroke:url(#exact-dp-trail-colours);
-  stroke-width:3;
+  stroke-width:2;
+  vector-effect:non-scaling-stroke;
   stroke-linecap:round;
   stroke-dasharray:18 82;
-  filter:drop-shadow(0 0 3px rgba(250,204,21,.9));
 }
 .pick-grid.exact-score-dp-row > :not(.exact-dp-border-trail){
   position:relative;
@@ -2665,6 +2665,40 @@ Preddies v{{ app_version }}
   fitPredictionPlayerNames();
   window.addEventListener('resize', fitPredictionPlayerNames);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitPredictionPlayerNames);
+})();
+</script>
+
+<script>
+(function () {
+  function sizeExactDpTrail(trail) {
+    const card = trail.closest('.exact-score-dp-row');
+    const border = trail.querySelector('rect');
+    if (!card || !border || !card.clientWidth || !card.clientHeight) return;
+    const width = card.clientWidth;
+    const height = card.clientHeight;
+    trail.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    border.setAttribute('x', '1');
+    border.setAttribute('y', '1');
+    border.setAttribute('width', String(Math.max(1, width - 2)));
+    border.setAttribute('height', String(Math.max(1, height - 2)));
+    border.setAttribute('rx', '10');
+  }
+  const trails = Array.from(document.querySelectorAll('.exact-dp-border-trail'));
+  trails.forEach(sizeExactDpTrail);
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver(function (entries) {
+      entries.forEach(function (entry) {
+        const trail = entry.target.querySelector('.exact-dp-border-trail');
+        if (trail) sizeExactDpTrail(trail);
+      });
+    });
+    trails.forEach(function (trail) {
+      const card = trail.closest('.exact-score-dp-row');
+      if (card) observer.observe(card);
+    });
+  } else {
+    window.addEventListener('resize', function () { trails.forEach(sizeExactDpTrail); });
+  }
 })();
 </script>
 
