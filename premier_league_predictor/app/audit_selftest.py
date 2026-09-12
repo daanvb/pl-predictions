@@ -176,6 +176,7 @@ with predictor.app.test_client() as client:
     assert cached_page.headers["Cache-Control"] == "no-store, max-age=0"
 assert predictor.news_cache["fetched_at"] == 0.0
 assert predictor.LIVE_REFRESH_SECONDS == 60
+assert predictor.POST_FINAL_RECONCILIATION_SECONDS == 15 * 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
 
 # Champions League H2H fallback: provider history uses old IDs and shortened
@@ -2309,7 +2310,9 @@ assert 'rawCause.replace(/^Score update:\\s*/, "")' in gameweek_template
 assert '_fixture_prediction_rows.html' in gameweek_template
 assert '_fixture_card_core.html' in dashboard_template
 assert '_fixture_prediction_rows.html' in fixture_card_core_template
-assert 'class="pick-grid{% if exact_score %} exact-score-row{% endif %}"' in fixture_prediction_template
+assert 'exact-score-row{% endif %}{% if exact_score and pred.dp %} exact-score-dp-row' in fixture_prediction_template
+assert "exact-score-dp-row" in fixture_prediction_template
+assert "💥 Exact DP" in fixture_prediction_template
 assert "reveal_map.get(fixture.id)" in fixture_prediction_template
 assert "stay hidden until this fixture kicks off" in fixture_prediction_template
 assert "labelIndexes" not in gameweek_template
@@ -2636,9 +2639,13 @@ delay = predictor.next_api_refresh_delay()
 assert delay < predictor.QUIET_REFRESH_SECONDS
 assert delay <= (2 * 60 * 60)
 
-# A completed fixture remains on the one-minute schedule during the
-# three-hour reconciliation window, so a delayed final score is not missed.
+# An incomplete final remains on the one-minute schedule during the
+# reconciliation window, so a delayed score is not missed.
 conn = database.get_db()
+other_fixture_statuses = conn.execute(
+    "SELECT id, status FROM fixtures WHERE id != 99001"
+).fetchall()
+conn.execute("UPDATE fixtures SET status='CANCELLED' WHERE id != 99001")
 conn.execute(
     "UPDATE fixtures SET status='FINISHED', utc_date=? WHERE id=99001",
     ((datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),),
@@ -2646,6 +2653,26 @@ conn.execute(
 conn.commit()
 conn.close()
 assert predictor.next_api_refresh_delay() == predictor.LIVE_REFRESH_SECONDS
+
+# A complete Live Football API final retains the correction safety net at a
+# much lower rate, rather than consuming a paid list call every minute.
+conn = database.get_db()
+conn.execute(
+    """UPDATE fixtures SET live_data_source='Live Football API',
+           home_score=1, away_score=0, goals_json=?, incidents_json='[]'
+       WHERE id=99001""",
+    (json.dumps([{"team": {"name": "Scheduler Home"}}]),),
+)
+conn.commit()
+conn.close()
+assert predictor.next_api_refresh_delay() == predictor.POST_FINAL_RECONCILIATION_SECONDS
+conn = database.get_db()
+conn.executemany(
+    "UPDATE fixtures SET status=? WHERE id=?",
+    [(row["status"], row["id"]) for row in other_fixture_statuses],
+)
+conn.commit()
+conn.close()
 
 # A secondary provider response is compared with the Live Football response
 # already stored in the same worker cycle; this must never trigger a new call.

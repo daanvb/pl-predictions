@@ -79,7 +79,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.16"
+APP_VERSION = "1.8.17"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -108,6 +108,9 @@ QUIET_REFRESH_SECONDS = 6 * 60 * 60
 # SportScore caches its live feed for 60 seconds, so polling more often would
 # add load without producing fresher data.
 LIVE_REFRESH_SECONDS = 60
+# Once a provider has stored a complete final result, retain a light-touch
+# safety check for late corrections without spending a paid call every minute.
+POST_FINAL_RECONCILIATION_SECONDS = 15 * 60
 API_FOOTBALL_MINIMUM_INTERVAL_SECONDS = 120
 API_FOOTBALL_DAILY_CALL_CAP = 75
 API_FOOTBALL_STALE_MINUTES = 2
@@ -6467,7 +6470,8 @@ def next_api_refresh_delay():
 
     fixtures = conn.execute(
         """
-        SELECT utc_date, status
+        SELECT utc_date, status, live_data_source, home_score, away_score,
+               goals_json, incidents_json, home_team, away_team
         FROM fixtures
         WHERE season = ?
           AND status != 'CANCELLED'
@@ -6488,14 +6492,19 @@ def next_api_refresh_delay():
             fixture["utc_date"]
         )
 
-        # Retain the short post-match wake-up window so a delayed provider FT
-        # score can be reconciled even after every fixture is marked finished.
+        # Keep incomplete finals on the rapid path. Complete primary finals
+        # still receive safety checks for a delayed correction, but at a much
+        # lower cost than a provider call every minute.
         if (
             status == "FINISHED"
             and kickoff
             and kickoff <= now <= kickoff + timedelta(hours=3)
         ):
-            return LIVE_REFRESH_SECONDS
+            if not _fixture_has_complete_live_football_final(fixture):
+                return LIVE_REFRESH_SECONDS
+            if next_wake is None or POST_FINAL_RECONCILIATION_SECONDS < next_wake:
+                next_wake = POST_FINAL_RECONCILIATION_SECONDS
+            continue
 
         if status in (
             "LIVE",
@@ -6767,7 +6776,7 @@ def api_refresh_worker():
         repair_premier_events = competition_needs_event_repair("premier_league")
         repair_champions_events = champions_league_needs_event_repair()
 
-        if (delay == LIVE_REFRESH_SECONDS or repair_results
+        if (delay in (LIVE_REFRESH_SECONDS, POST_FINAL_RECONCILIATION_SECONDS) or repair_results
                 or repair_premier_events or repair_champions_events):
             live_football_updates = {"Premier League": 0, "Champions League": 0}
             live_football_errors = []

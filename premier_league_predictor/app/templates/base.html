@@ -459,6 +459,19 @@ input{
   color:#166534;
   box-shadow:0 0 0 2px rgba(34,197,94,.10)
 }
+.pick-grid.exact-score-dp-row{
+  border-color:#f59e0b;
+  background:linear-gradient(100deg,#ecfdf5 0%,#fef3c7 58%,#fffbeb 100%);
+  box-shadow:0 0 0 2px rgba(245,158,11,.14),0 8px 20px rgba(245,158,11,.16)
+}
+.dp-exact-badge{
+  display:inline-flex;
+  align-items:center;
+  background:#b45309;
+  color:#fff7ed;
+  border:1px solid #fbbf24;
+  box-shadow:0 2px 8px rgba(180,83,9,.25)
+}
 table{
   width:100%;
   border-collapse:collapse
@@ -2500,6 +2513,11 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
   .fixture-predictions .pick-grid > strong{white-space:nowrap}
   .fixture-predictions .pick-grid > strong.player-name-compact .player-name-full{display:none}
   .fixture-predictions .pick-grid > strong.player-name-compact .player-name-mobile{display:inline;white-space:nowrap}
+}
+html[data-theme="dark"] .pick-grid.exact-score-dp-row{
+  background:linear-gradient(100deg,#123b2a 0%,#4a3410 100%);
+  border-color:#fbbf24;
+  color:#fef3c7
 }
 </style>
 </head>

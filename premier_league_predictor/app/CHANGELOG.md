@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.17] - 2026-09-12
+### Changed
+- Keep one-minute checks for live and incomplete fixtures, while complete Live Football API final results receive a 15-minute correction check for the rest of the three-hour safety window.
+- Give exact Double Points predictions a gold success treatment and a clear “Exact DP” badge.
+
 ## [1.8.16] - 2026-09-12
 ### Changed
 - Compare Live Football API clocks with the SportScore and API-Football responses already received in the same worker cycle, without extra provider calls.
