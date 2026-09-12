@@ -10,6 +10,7 @@
 <div class="stat"><div class="small">{{ label }}</div><div class="compact-record-name">{% for player in players %}{{ compact_record_name(player.name) }}{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</div><div class="muted">{{ value }}{{ suffix }}{% if players|length > 1 %} · tied{% endif %}</div></div>
 {% endfor %}
 <div class="stat"><div class="small">BEST SINGLE GW</div><div class="compact-record-name">{% for record in best_gameweeks_overall %}<div>{{ compact_record_name(record.name) }} <span class="muted" style="font-size:12px">GW{{ record.matchday }}</span></div>{% else %}—{% endfor %}</div><div class="muted">{% if best_gameweeks_overall %}{{ best_gameweek_value }} pts{% if best_gameweeks_overall|length > 1 %} · tied record{% endif %}{% else %}—{% endif %}</div></div>
+<div class="stat"><div class="small">LOWEST SINGLE GW</div><div class="compact-record-name">{% for record in lowest_gameweeks_overall %}<div>{{ compact_record_name(record.name) }} <span class="muted" style="font-size:12px">GW{{ record.matchday }}</span></div>{% else %}—{% endfor %}</div><div class="muted">{% if lowest_gameweeks_overall %}{{ lowest_gameweek_value }} pts{% if lowest_gameweeks_overall|length > 1 %} · tied record{% endif %}{% else %}—{% endif %}</div></div>
 </div></div>
 <div class="card muted">Updated after every settled game block.</div>
 </div>

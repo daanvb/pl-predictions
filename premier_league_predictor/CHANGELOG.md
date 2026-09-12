@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.12] - 2026-09-12
+### Added
+- Lowest completed gameweek score in personal and league statistics, including tied league records.
+
 ## [1.8.11] - 2026-09-12
 ### Fixed
 - Prevent stale first-half clocks from overwriting half-time in PL and CL live feeds.

@@ -79,7 +79,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.11"
+APP_VERSION = "1.8.12"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -9385,6 +9385,27 @@ def stats():
         ),
     ).fetchone()
 
+    lowest_gameweek_rows = conn.execute(
+        """SELECT pl.id, pl.name, f.matchday, COALESCE(SUM(p.points), 0) AS points
+           FROM predictions p JOIN players pl ON pl.id = p.player_id
+           JOIN fixtures f ON f.id = p.fixture_id
+           WHERE f.id IN (SELECT id FROM settled_premier_fixture_ids)
+             AND NOT EXISTS (
+                 SELECT 1 FROM fixtures pending
+                 WHERE pending.season = f.season
+                   AND pending.competition = f.competition
+                   AND pending.matchday = f.matchday
+                   AND pending.status NOT IN ('FINISHED', 'CANCELLED')
+             )
+           GROUP BY pl.id, f.matchday
+           ORDER BY points ASC, f.matchday ASC, pl.name COLLATE NOCASE"""
+    ).fetchall()
+    lowest_personal = next((row for row in lowest_gameweek_rows
+                            if row["id"] == session["player_id"]), None)
+    lowest_gameweek_value = lowest_gameweek_rows[0]["points"] if lowest_gameweek_rows else None
+    lowest_gameweeks_overall = [row for row in lowest_gameweek_rows
+                               if row["points"] == lowest_gameweek_value]
+
     if request.path == "/stats":
         conn.close()
         avg_points = (
@@ -9396,6 +9417,7 @@ def stats():
             "stats.html",
             personal=personal,
             best_gameweek=best_gameweek,
+            lowest_gameweek=lowest_personal,
             avg_points=avg_points,
             champions_personal=champions_personal,
         )
@@ -9654,6 +9676,8 @@ def stats():
         dp_exact_score_value=dp_exact_score_value,
         most_late_goal_points_lost=most_late_goal_points_lost,
         late_goal_loss_value=late_goal_loss_value,
+        lowest_gameweeks_overall=lowest_gameweeks_overall,
+        lowest_gameweek_value=lowest_gameweek_value,
         best_gameweeks_overall=best_gameweeks_overall,
         best_gameweek_value=best_gameweek_value,
         completed_gameweeks=completed_gameweeks["total"],
