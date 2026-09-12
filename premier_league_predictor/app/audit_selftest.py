@@ -2326,6 +2326,7 @@ assert '_fixture_prediction_rows.html' in fixture_card_core_template
 assert 'exact-score-row{% endif %}{% if exact_score and pred.dp %} exact-score-dp-row' in fixture_prediction_template
 assert "exact-score-dp-row" in fixture_prediction_template
 assert "💥 Exact DP" in fixture_prediction_template
+assert "exact-dp-border-trail" in fixture_prediction_template
 assert "champions_summary_hidden" in champions_template
 assert "YOUR CL TOTAL" in champions_template
 assert "CL LEAGUE POSITION" in champions_template
@@ -2429,8 +2430,8 @@ assert '/static/predictor-icon.png' in base_template
 assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
-assert "exact-dp-border-orbit" in base_template
-assert "mask-composite:exclude" in base_template
+assert "exact-dp-border-trail" in base_template
+assert "stroke-dashoffset" in base_template
 assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
 assert 'width:118px;' in base_template
 assert 'grid-template-columns:42px 20px 42px;' in base_template

@@ -2,6 +2,14 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.22] - 2026-09-12
+### Fixed
+- Keep the moving Exact Double Points trail precisely on top of the card border.
+
+## [1.8.21] - 2026-09-12
+### Fixed
+- Use an SVG stroke trail for the animated Exact Double Points border, ensuring the moving highlight works in Safari and Chromium browsers.
+
 ## [1.8.20] - 2026-09-12
 ### Fixed
 - Exact Double Points cards now keep a subtle outline while a bright multicolour trail travels around the edge.
