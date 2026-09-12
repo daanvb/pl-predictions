@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.18] - 2026-09-12
+### Added
+- Champions League hub now shows your settled competition total and league position.
+### Changed
+- Hide Premier League and Champions League settled player totals and positions only while that competition has active fixtures.
+- Animate exact Double Points prediction borders with a travelling multicolour edge while keeping the card background readable.
+
 ## [1.8.17] - 2026-09-12
 ### Changed
 - Keep one-minute checks for live and incomplete fixtures, while complete Live Football API final results receive a 15-minute correction check for the rest of the three-hour safety window.

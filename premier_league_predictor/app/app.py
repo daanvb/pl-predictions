@@ -79,7 +79,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.17"
+APP_VERSION = "1.8.18"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -854,6 +854,14 @@ def ranking_positions(rows):
     }
 
 
+def competition_has_live_fixtures(fixtures):
+    """Return whether this competition currently has any active match."""
+    return any(
+        fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
+        for fixture in fixtures
+    )
+
+
 def gameweek_progress_label(fixtures):
     completed = sum(
         1 for fixture in fixtures
@@ -1183,6 +1191,36 @@ def overall_table_at_matchday(
             competition,
         ),
     ).fetchall()
+
+
+def competition_completed_matchdays(conn, competition):
+    """Return settled rounds/gameweeks for one competition only."""
+    return [
+        row["matchday"]
+        for row in conn.execute(
+            """SELECT matchday FROM fixtures
+               WHERE season = ? AND competition = ? AND matchday IS NOT NULL
+               GROUP BY matchday
+               HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
+                               THEN 1 ELSE 0 END) = 0
+               ORDER BY matchday""",
+            (SEASON, competition),
+        ).fetchall()
+    ]
+
+
+def competition_player_summary(conn, competition, player_id):
+    """Use settled competition standings for the dashboard player summary."""
+    completed = competition_completed_matchdays(conn, competition)
+    settled_matchday = completed[-1] if completed else 0
+    standings = overall_table_at_matchday(conn, settled_matchday, competition)
+    positions = ranking_positions(standings)
+    player = next((row for row in standings if row["id"] == player_id), None)
+    return {
+        "total_points": player["points"] if player else 0,
+        "league_position": positions.get(player_id),
+        "league_size": len(standings),
+    }
 
 
 def settled_premier_league_blocks(conn):
@@ -8468,6 +8506,7 @@ def champions_league():
     fixture_players = {}
     round_in_progress = competition_round_in_progress(fixtures)
     round_summary_visible = competition_round_summary_visible(fixtures)
+    champions_has_live_fixtures = competition_has_live_fixtures(fixtures)
     if fixtures:
         players = conn.execute("SELECT id, name FROM players ORDER BY name COLLATE NOCASE").fetchall()
         predictions = conn.execute("""SELECT p.player_id, p.fixture_id, p.home_score, p.away_score, COALESCE(p.dp, 0) AS dp FROM predictions p JOIN fixtures f ON f.id=p.fixture_id WHERE f.season=? AND f.competition='champions_league' AND f.matchday=?""", (SEASON, selected_matchday)).fetchall()
@@ -8491,6 +8530,9 @@ def champions_league():
             )
             for fixture in fixtures
         }
+    champions_player_summary = competition_player_summary(
+        conn, "champions_league", session["player_id"]
+    )
     show_champions_h2h = request.args.get("h2h") == "1"
     for fixture in fixtures:
         if (
@@ -8517,6 +8559,10 @@ def champions_league():
         "side_events.html", fixtures=fixtures,
         show_champions_h2h=show_champions_h2h,
         has_live_fixtures=round_in_progress,
+        champions_has_live_fixtures=champions_has_live_fixtures,
+        champions_total_points=champions_player_summary["total_points"],
+        champions_league_position=champions_player_summary["league_position"],
+        champions_league_size=champions_player_summary["league_size"],
         last_refresh=get_setting("champions_league_last_refresh"),
         champions_h2h_last_refresh=get_setting("champions_league_h2h_last_refresh"),
         h2h_provider_outcomes=h2h_provider_outcomes,
@@ -9963,43 +10009,9 @@ def dashboard():
             for fixture in current_fixtures
         }
 
-    # The dashboard is the Premier League home screen. Match the settled
-    # Premier League leaderboard exactly; Champions League points stay in
-    # their separate competition throughout the live round.
-    completed_matchdays = [
-        row["matchday"]
-        for row in conn.execute(
-            """SELECT matchday FROM fixtures
-               WHERE season = ? AND competition = 'premier_league' AND matchday IS NOT NULL
-               GROUP BY matchday
-               HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
-                               THEN 1 ELSE 0 END) = 0
-               ORDER BY matchday""",
-            (SEASON,),
-        ).fetchall()
-    ]
-    settled_matchday = completed_matchdays[-1] if completed_matchdays else 0
-    league_rows = overall_table_at_matchday(conn, settled_matchday)
-    current_player = next(
-        (player for player in league_rows if player["id"] == session["player_id"]),
-        None,
+    premier_player_summary = competition_player_summary(
+        conn, "premier_league", session["player_id"]
     )
-
-    league_position = None
-    league_size = len(
-        league_rows
-    )
-
-    for position, league_player in enumerate(
-        league_rows,
-        start=1
-    ):
-        if (
-            league_player["id"]
-            == session["player_id"]
-        ):
-            league_position = position
-            break
 
     news_preference = conn.execute(
         """SELECT COALESCE(hide_news_ticker, 0) AS hide_news_ticker
@@ -10031,13 +10043,10 @@ def dashboard():
         show_news_ticker=show_news_ticker,
         current_matchday=current_matchday,
         current_fixtures=current_fixtures,
-        total_points=current_player["points"] if current_player else 0,
-        league_position=league_position,
-        league_size=league_size,
-        dashboard_has_live_fixtures=any(
-            fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED")
-            for fixture in current_fixtures
-        ),
+        total_points=premier_player_summary["total_points"],
+        league_position=premier_player_summary["league_position"],
+        league_size=premier_player_summary["league_size"],
+        dashboard_has_live_fixtures=competition_has_live_fixtures(current_fixtures),
         dashboard_sources=dashboard_sources,
         live_table=dashboard_live_table,
         position_chart=dashboard_position_chart,

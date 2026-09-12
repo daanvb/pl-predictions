@@ -178,6 +178,12 @@ assert predictor.news_cache["fetched_at"] == 0.0
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.POST_FINAL_RECONCILIATION_SECONDS == 15 * 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
+assert not predictor.competition_has_live_fixtures([{"status": "FINISHED"}])
+assert predictor.competition_has_live_fixtures([{"status": "IN_PLAY"}])
+premier_fixture_states = [{"status": "LIVE"}]
+champions_fixture_states = [{"status": "FINISHED"}]
+assert predictor.competition_has_live_fixtures(premier_fixture_states)
+assert not predictor.competition_has_live_fixtures(champions_fixture_states)
 
 # Champions League H2H fallback: provider history uses old IDs and shortened
 # labels, so it must match the pair from the shared league catalogue.
@@ -2227,6 +2233,13 @@ with open(
     dashboard_template = handle.read()
 
 with open(
+    os.path.join(templates_dir, "side_events.html"),
+    "r",
+    encoding="utf-8",
+) as handle:
+    champions_template = handle.read()
+
+with open(
     os.path.join(
         templates_dir,
         "gameweek.html"
@@ -2313,6 +2326,10 @@ assert '_fixture_prediction_rows.html' in fixture_card_core_template
 assert 'exact-score-row{% endif %}{% if exact_score and pred.dp %} exact-score-dp-row' in fixture_prediction_template
 assert "exact-score-dp-row" in fixture_prediction_template
 assert "💥 Exact DP" in fixture_prediction_template
+assert "champions_has_live_fixtures" in champions_template
+assert "YOUR CL TOTAL" in champions_template
+assert "CL LEAGUE POSITION" in champions_template
+assert "dashboard_has_live_fixtures" in dashboard_template
 assert "reveal_map.get(fixture.id)" in fixture_prediction_template
 assert "stay hidden until this fixture kicks off" in fixture_prediction_template
 assert "labelIndexes" not in gameweek_template
@@ -2410,6 +2427,8 @@ assert '/static/predictor-icon.png' in base_template
 assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
+assert "exact-dp-border-orbit" in base_template
+assert "--exact-dp-border-angle" in base_template
 assert 'width:118px;' in base_template
 assert 'grid-template-columns:42px 20px 42px;' in base_template
 assert 'column-gap:12px' in base_template
@@ -2496,7 +2515,10 @@ assert "setInterval(refreshLiveView, 30000)" in champions_league_template
 assert '_fixture_prediction_rows.html' in champions_league_template
 assert "fixture_players=fixture_players" in inspect.getsource(predictor.champions_league)
 assert "ranking_positions(live_table or previous_league)" in inspect.getsource(predictor.champions_league)
-assert "overall_table_at_matchday(conn, settled_matchday)" in inspect.getsource(predictor.dashboard)
+assert "competition_player_summary" in inspect.getsource(predictor.dashboard)
+assert "competition_player_summary" in inspect.getsource(predictor.champions_league)
+assert "competition_has_live_fixtures" in inspect.getsource(predictor.dashboard)
+assert "competition_has_live_fixtures" in inspect.getsource(predictor.champions_league)
 assert "round_in_progress = competition_round_in_progress(fixtures)" in inspect.getsource(predictor.champions_league)
 assert "competition_round_summary_visible(previous_fixtures)" in inspect.getsource(predictor.champions_league_display_matchday)
 assert "competition_round_summary_visible(champions_fixtures)" in inspect.getsource(predictor.dashboard)

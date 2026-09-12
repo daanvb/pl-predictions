@@ -194,6 +194,12 @@ input{
 .dashboard-stats .stat {
     text-align: center;
 }
+.competition-player-summary{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  max-width:520px;
+  margin-left:auto;
+  margin-right:auto
+}
 
 .dashboard-signal-stat {
     display: flex;
@@ -460,9 +466,12 @@ input{
   box-shadow:0 0 0 2px rgba(34,197,94,.10)
 }
 .pick-grid.exact-score-dp-row{
-  border-color:#f59e0b;
-  background:linear-gradient(100deg,#ecfdf5 0%,#fef3c7 58%,#fffbeb 100%);
-  box-shadow:0 0 0 2px rgba(245,158,11,.14),0 8px 20px rgba(245,158,11,.16)
+  --exact-dp-border-angle:0deg;
+  border-color:transparent;
+  background:linear-gradient(100deg,#ecfdf5 0%,#fef3c7 58%,#fffbeb 100%) padding-box,
+    conic-gradient(from var(--exact-dp-border-angle),#f59e0b,#ef4444,#a855f7,#06b6d4,#22c55e,#f59e0b) border-box;
+  box-shadow:0 0 0 2px rgba(245,158,11,.14),0 8px 20px rgba(245,158,11,.16);
+  animation:exact-dp-border-orbit 3.8s linear infinite
 }
 .dp-exact-badge{
   display:inline-flex;
@@ -2515,9 +2524,20 @@ html[data-theme="dark"] .news-ticker-group a:focus-visible {
   .fixture-predictions .pick-grid > strong.player-name-compact .player-name-mobile{display:inline;white-space:nowrap}
 }
 html[data-theme="dark"] .pick-grid.exact-score-dp-row{
-  background:linear-gradient(100deg,#123b2a 0%,#4a3410 100%);
-  border-color:#fbbf24;
+  background:linear-gradient(100deg,#123b2a 0%,#4a3410 100%) padding-box,
+    conic-gradient(from var(--exact-dp-border-angle),#fbbf24,#f43f5e,#c084fc,#22d3ee,#4ade80,#fbbf24) border-box;
   color:#fef3c7
+}
+@property --exact-dp-border-angle{
+  syntax:"<angle>";
+  initial-value:0deg;
+  inherits:false
+}
+@keyframes exact-dp-border-orbit{
+  to{--exact-dp-border-angle:360deg}
+}
+@media (prefers-reduced-motion:reduce){
+  .pick-grid.exact-score-dp-row{animation:none}
 }
 </style>
 </head>
