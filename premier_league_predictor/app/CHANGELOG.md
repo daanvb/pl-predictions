@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.10] - 2026-09-12
+### Changed
+- Display own goals as (OG) on Premier League and Champions League scorecards.
+
 ## [1.8.9] - 2026-09-12
 ### Fixed
 - Show recorded live providers in the dashboard source footer, including Live Football API, instead of assuming live games use SportScore.

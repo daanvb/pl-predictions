@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.9"
+APP_VERSION = "1.8.10"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -774,7 +774,7 @@ def fixture_scorers(goals_json, home_team, away_team, home_score=None, away_scor
         if goal_type == "PENALTY":
             marker = f"{marker} (Pen)".strip()
         elif goal_type in ("OWN", "OWN_GOAL"):
-            marker = f"{marker} og".strip()
+            marker = f"{marker} (OG)".strip()
 
         key = scorer
         entry = scorer_index[side].get(key)
