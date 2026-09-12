@@ -3477,6 +3477,31 @@ try:
         assert len(json.loads(row["goals_json"])) == 4
         assert not predictor._fixture_goal_event_coverage_missing(row)
         conn.close()
+
+        # A recently finished 0-0 must still be reconciled when the provider
+        # publishes a delayed final score. It has no missing-event signal.
+        conn = database.get_db()
+        conn.execute(
+            """UPDATE fixtures SET status='FINISHED', home_score=0, away_score=0,
+               goals_json='[]', incidents_json='[]', minute=NULL WHERE id=-99010"""
+        )
+        conn.commit()
+        conn.close()
+        feed["home"]["score"] = 0
+        feed["away"]["score"] = 2
+        events = [
+            {"type": "Goal", "time": "58'", "side": "away",
+             "detail": {"player": {"name": "Delayed Final One"}}},
+            {"type": "Goal", "time": "90'", "side": "away",
+             "detail": {"player": {"name": "Delayed Final Two"}}},
+        ]
+        predictor.get_live_football_match_details = lambda key, match_id: {"match": {**feed, "events": events}}
+        assert predictor._import_competition_live_from_live_football_api(competition) == 1
+        conn = database.get_db()
+        row = conn.execute("SELECT * FROM fixtures WHERE id = -99010").fetchone()
+        assert (row["status"], row["home_score"], row["away_score"]) == ("FINISHED", 0, 2)
+        assert "Delayed Final Two" in row["goals_json"]
+        conn.close()
 finally:
     predictor.refresh_points = original_refresh_points
     predictor.get_live_football_matches = original_live_football_matches

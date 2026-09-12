@@ -79,7 +79,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.13"
+APP_VERSION = "1.8.14"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -5303,7 +5303,16 @@ def _import_competition_live_from_live_football_api(competition):
                 and checked_at - timedelta(hours=48) <= kickoff <= checked_at
                 and (missing_goals or fixture["incidents_json"] is None)
             )
-            if kickoff and (needs_event_repair or
+            # Reconcile recently completed results even when the stored score
+            # looks complete. A provider can publish FT before its final score
+            # has propagated, and a 0-0 result otherwise has no event gap to
+            # trigger a later check.
+            needs_final_reconciliation = bool(
+                kickoff
+                and fixture["status"] == "FINISHED"
+                and kickoff <= checked_at <= kickoff + timedelta(hours=3)
+            )
+            if kickoff and (needs_event_repair or needs_final_reconciliation or
                             fixture["status"] in ("LIVE", "IN_PLAY", "PAUSED") or
                             kickoff - timedelta(seconds=LIVE_WINDOW_BEFORE_SECONDS) <= checked_at <= kickoff + timedelta(seconds=LIVE_WINDOW_AFTER_SECONDS)):
                 active.append(fixture)

@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.14] - 2026-09-12
+### Fixed
+- Reconcile recently finished PL and CL scores when a provider publishes the final result late.
+
 ## [1.8.13] - 2026-09-12
 ### Fixed
 - Keep confirmed full-time matches at FT when a stale secondary provider response arrives.
