@@ -15,7 +15,7 @@
 <p class="muted">Times are UK time. This is the order the background worker keeps data current.</p>
 <div style="padding:12px 0;border-bottom:1px solid var(--border)"><strong>1. Around live kick-off</strong><div class="small">Every 60 seconds while a tracked match is live or in its live window. Scores, status, clocks, scorers and cards are checked.</div></div>
 <div style="padding:12px 0;border-bottom:1px solid var(--border)"><strong>2. Two hours after a Premier League gameweek ends</strong><div class="small">Premier League fixtures and match-stat/head-to-head history refresh. The next gameweek opens at 09:00 UK time the following day.</div></div>
-<div style="padding:12px 0;border-bottom:1px solid var(--border)"><strong>3. Sunday from 20:00</strong><div class="small">Champions League fixtures and head-to-head history refresh for the coming match block.</div></div>
+<div style="padding:12px 0;border-bottom:1px solid var(--border)"><strong>3. Sunday from 20:00</strong><div class="small">Champions League fixtures and head-to-head history refresh for the coming match block. The CL opening Signal message sends only after both updates finish.</div></div>
 <div style="padding:12px 0"><strong>4. Quiet periods</strong><div class="small">The worker checks again at least every 6 hours; automatic database backups also run every 6 hours.</div></div>
 </div>
 

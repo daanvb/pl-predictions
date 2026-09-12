@@ -2,6 +2,11 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.7] - 2026-09-12
+### Changed
+- Moved the Champions League round opening and first Signal notice to the Sunday 20:00 refresh sequence.
+- Send the opening Signal message only after the fixture and head-to-head updates complete; retry a temporary Signal failure without repeating the data imports.
+
 ## [1.8.6] - 2026-09-12
 ### Changed
 - Simplified Admin Data Refresh & Tests into a chronological refresh schedule, immediate refresh controls, live-feed status and completed refresh history.

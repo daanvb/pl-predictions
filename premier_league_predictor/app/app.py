@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.6"
+APP_VERSION = "1.8.7"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -3819,7 +3819,7 @@ def archive_completed_fixture_history(conn, competition=None):
 
 
 def refresh_champions_league_fixture_schedule_automatically():
-    """Keep the displayed CL round and its successor ready for predictions."""
+    """Prepare the next CL round on Sunday, then announce it once ready."""
     token = get_setting("football_api_token")
     if not token:
         return 0
@@ -3830,25 +3830,34 @@ def refresh_champions_league_fixture_schedule_automatically():
     ):
         return 0
     last_refresh = parse_utc(get_setting("champions_league_schedule_auto_refresh"))
-    if last_refresh and last_refresh.astimezone(UK).date() == now_london.date():
-        return 0
-    conn = get_db()
-    try:
-        current = champions_league_display_matchday(conn)
-    finally:
-        conn.close()
-    try:
-        current = int(current)
-    except (TypeError, ValueError):
-        current = 1
+    refreshed_today = (
+        last_refresh and last_refresh.astimezone(UK).date() == now_london.date()
+    )
     imported = 0
-    for matchday in (current, current + 1):
-        imported += import_champions_league_matches(matchday)
-    try:
-        import_champions_league_h2h_from_live_football_api()
-    except LiveFootballAPIError as exc:
-        set_setting("champions_league_h2h_schedule_error", str(exc))
-    set_setting("champions_league_schedule_auto_refresh", now_utc().isoformat())
+    if not refreshed_today:
+        conn = get_db()
+        try:
+            current = champions_league_display_matchday(conn)
+        finally:
+            conn.close()
+        try:
+            current = int(current)
+        except (TypeError, ValueError):
+            current = 1
+        for matchday in (current, current + 1):
+            imported += import_champions_league_matches(matchday)
+        try:
+            import_champions_league_h2h_from_live_football_api()
+        except Exception as exc:
+            set_setting("champions_league_h2h_schedule_error", str(exc))
+            return 0
+        set_setting("champions_league_h2h_schedule_error", "")
+        set_setting("champions_league_schedule_auto_refresh", now_utc().isoformat())
+
+    # The opening announcement is deliberately sent only after the fixture and
+    # head-to-head refresh has completed. If Signal is briefly unavailable, the
+    # next worker pass retries the message without re-running the imports.
+    send_champions_league_open_signal_for_scheduled_round()
     return imported
 
 
@@ -7689,6 +7698,42 @@ def signal_champions_league_round(conn):
     return round_number, fixtures
 
 
+def champions_league_open_message(round_number, fixtures):
+    active = [fixture for fixture in fixtures if fixture["status"] != "CANCELLED"]
+    if not active:
+        return None
+    return "\n".join([
+        f"🏆 Champions League R{round_number} — Put Your Pre-Dicks In", "",
+        f"First kick-off: {local_datetime(active[0]['utc_date'])}", "",
+        "https://predictions.battleship.live/champions-league/predict",
+    ])
+
+
+def send_champions_league_open_signal_for_scheduled_round():
+    """Send the CL opening notice after the Sunday data refresh has succeeded."""
+    settings = signal_settings()
+    if not settings["enabled"] or not settings["notify_gw_open"]:
+        return False
+    conn = get_db()
+    try:
+        round_number, fixtures = signal_champions_league_round(conn)
+    finally:
+        conn.close()
+    if not fixtures or get_setting("signal_last_cl_open_round") == str(round_number):
+        return False
+    message = champions_league_open_message(round_number, fixtures)
+    if not message:
+        return False
+    try:
+        send_signal_message(message)
+    except Exception as exc:
+        set_setting("champions_league_open_signal_error", str(exc))
+        return False
+    set_setting("champions_league_open_signal_error", "")
+    set_setting("signal_last_cl_open_round", str(round_number))
+    return True
+
+
 def signal_submission_status_for_fixtures(conn, fixtures):
     fixture_ids = [fixture["id"] for fixture in fixtures if fixture["status"] != "CANCELLED"]
     players = conn.execute("SELECT id, name FROM players ORDER BY name COLLATE NOCASE").fetchall()
@@ -7731,13 +7776,6 @@ def process_champions_league_signal_notifications(conn, settings):
         return
     first_kickoff = parse_utc(active[0]["utc_date"])
     round_key = str(round_number)
-    if settings["notify_gw_open"] and get_setting("signal_last_cl_open_round") != round_key:
-        send_signal_message("\n".join([
-            f"🏆 Champions League R{round_number} — Put Your Pre-Dicks In", "",
-            f"First kick-off: {local_datetime(active[0]['utc_date'])}", "",
-            "https://predictions.battleship.live/champions-league/predict",
-        ]))
-        set_setting("signal_last_cl_open_round", round_key)
     if first_kickoff and settings["notify_reminder"]:
         remaining = first_kickoff - now_utc()
         statuses = signal_submission_status_for_fixtures(conn, active)

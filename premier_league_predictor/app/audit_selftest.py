@@ -1615,6 +1615,81 @@ try:
 finally:
     predictor.now_utc = original_now_utc
 
+# The Sunday Champions League refresh must finish fixture and H2H imports
+# before its opening Signal message is eligible to send. A failed H2H import
+# must not mark the refresh complete or announce an unprepared round.
+original_now_utc = predictor.now_utc
+original_display_matchday = predictor.champions_league_display_matchday
+original_import_cl_matches = predictor.import_champions_league_matches
+original_import_cl_h2h = predictor.import_champions_league_h2h_from_live_football_api
+original_send_cl_open = predictor.send_champions_league_open_signal_for_scheduled_round
+original_token = predictor.get_setting("football_api_token")
+original_cl_schedule_refresh = predictor.get_setting("champions_league_schedule_auto_refresh")
+try:
+    predictor.set_setting("football_api_token", "audit-token")
+    predictor.set_setting("champions_league_schedule_auto_refresh", "")
+    predictor.now_utc = lambda: datetime(2026, 9, 13, 20, 0, tzinfo=timezone.utc)
+    refresh_order = []
+    predictor.champions_league_display_matchday = lambda conn: 7
+    predictor.import_champions_league_matches = lambda matchday: (
+        refresh_order.append(f"fixtures-{matchday}") or 1
+    )
+    predictor.import_champions_league_h2h_from_live_football_api = lambda: (
+        refresh_order.append("h2h") or 1
+    )
+    predictor.send_champions_league_open_signal_for_scheduled_round = lambda: (
+        refresh_order.append("signal") or True
+    )
+    assert predictor.refresh_champions_league_fixture_schedule_automatically() == 2
+    assert refresh_order == ["fixtures-7", "fixtures-8", "h2h", "signal"]
+    assert predictor.get_setting("champions_league_schedule_auto_refresh")
+
+    predictor.set_setting("champions_league_schedule_auto_refresh", "")
+    refresh_order.clear()
+    predictor.import_champions_league_h2h_from_live_football_api = lambda: (_ for _ in ()).throw(RuntimeError("H2H unavailable"))
+    assert predictor.refresh_champions_league_fixture_schedule_automatically() == 0
+    assert refresh_order == ["fixtures-7", "fixtures-8"]
+    assert not predictor.get_setting("champions_league_schedule_auto_refresh")
+finally:
+    predictor.now_utc = original_now_utc
+    predictor.champions_league_display_matchday = original_display_matchday
+    predictor.import_champions_league_matches = original_import_cl_matches
+    predictor.import_champions_league_h2h_from_live_football_api = original_import_cl_h2h
+    predictor.send_champions_league_open_signal_for_scheduled_round = original_send_cl_open
+    predictor.set_setting("football_api_token", original_token)
+    predictor.set_setting("champions_league_schedule_auto_refresh", original_cl_schedule_refresh)
+
+cl_open_message = predictor.champions_league_open_message(7, [{
+    "status": "SCHEDULED", "utc_date": "2026-09-15T19:00:00+00:00",
+}])
+assert cl_open_message.startswith("🏆 Champions League R7 — Put Your Pre-Dicks In\n")
+assert "First kick-off:" in cl_open_message
+assert "champions-league/predict" in cl_open_message
+assert "signal_last_cl_open_round" not in inspect.getsource(
+    predictor.process_champions_league_signal_notifications
+)
+original_signal_settings = predictor.signal_settings
+original_signal_cl_round = predictor.signal_champions_league_round
+original_send_signal_message = predictor.send_signal_message
+original_cl_open_round = predictor.get_setting("signal_last_cl_open_round")
+try:
+    predictor.set_setting("signal_last_cl_open_round", "")
+    sent_cl_open_messages = []
+    predictor.signal_settings = lambda: {"enabled": True, "notify_gw_open": True}
+    predictor.signal_champions_league_round = lambda conn: (7, [{
+        "status": "SCHEDULED", "utc_date": "2026-09-15T19:00:00+00:00",
+    }])
+    predictor.send_signal_message = lambda message: sent_cl_open_messages.append(message)
+    assert predictor.send_champions_league_open_signal_for_scheduled_round() is True
+    assert predictor.get_setting("signal_last_cl_open_round") == "7"
+    assert len(sent_cl_open_messages) == 1
+    assert predictor.send_champions_league_open_signal_for_scheduled_round() is False
+finally:
+    predictor.signal_settings = original_signal_settings
+    predictor.signal_champions_league_round = original_signal_cl_round
+    predictor.send_signal_message = original_send_signal_message
+    predictor.set_setting("signal_last_cl_open_round", original_cl_open_round)
+
 signal_positions = [
     {"name": f"Player {index}", "points": 10 - index}
     for index in range(1, 6)
