@@ -2677,10 +2677,10 @@ Preddies v{{ app_version }}
     const width = card.clientWidth;
     const height = card.clientHeight;
     trail.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    border.setAttribute('x', '1');
-    border.setAttribute('y', '1');
-    border.setAttribute('width', String(Math.max(1, width - 2)));
-    border.setAttribute('height', String(Math.max(1, height - 2)));
+    border.setAttribute('x', '0');
+    border.setAttribute('y', '0');
+    border.setAttribute('width', String(width));
+    border.setAttribute('height', String(height));
     border.setAttribute('rx', '10');
   }
   const trails = Array.from(document.querySelectorAll('.exact-dp-border-trail'));

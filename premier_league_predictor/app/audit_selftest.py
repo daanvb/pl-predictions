@@ -2328,6 +2328,7 @@ assert "exact-score-dp-row" in fixture_prediction_template
 assert "💥 Exact DP" in fixture_prediction_template
 assert "exact-dp-border-trail" in fixture_prediction_template
 assert 'attributeName="stroke-dashoffset"' in fixture_prediction_template
+assert 'dur="5.6s"' in fixture_prediction_template
 assert "champions_summary_hidden" in champions_template
 assert "YOUR CL TOTAL" in champions_template
 assert "CL LEAGUE POSITION" in champions_template
@@ -2436,6 +2437,7 @@ assert "stroke-dasharray:18 82" in base_template
 assert "> :not(.exact-dp-border-trail)" in base_template
 assert "sizeExactDpTrail" in base_template
 assert "vector-effect:non-scaling-stroke" in base_template
+assert "border.setAttribute('x', '0')" in base_template
 assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
 assert 'width:118px;' in base_template
 assert 'grid-template-columns:42px 20px 42px;' in base_template
