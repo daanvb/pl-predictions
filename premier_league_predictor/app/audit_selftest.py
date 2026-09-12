@@ -2635,6 +2635,35 @@ delay = predictor.next_api_refresh_delay()
 assert delay < predictor.QUIET_REFRESH_SECONDS
 assert delay <= (2 * 60 * 60)
 
+# Quiet sleeps must end at 20:00 UK in both summer and winter. A failed
+# scheduled update retries, while a completed one returns to quiet operation.
+saved_schedule_now = predictor.now_utc
+saved_schedule_setting = predictor.get_setting
+try:
+    schedule_settings = {"football_api_token": "test"}
+    predictor.get_setting = lambda key: schedule_settings.get(key)
+    for before, due in (
+        (datetime(2026, 9, 13, 18, 59, 50, tzinfo=timezone.utc),
+         datetime(2026, 9, 13, 19, 0, tzinfo=timezone.utc)),
+        (datetime(2026, 10, 25, 19, 59, 50, tzinfo=timezone.utc),
+         datetime(2026, 10, 25, 20, 0, tzinfo=timezone.utc)),
+    ):
+        schedule_settings.pop("champions_league_schedule_auto_refresh", None)
+        predictor.now_utc = lambda: before
+        assert predictor.scheduled_api_refresh_delay() == 10
+        predictor.now_utc = lambda: due
+        assert predictor.scheduled_api_refresh_delay() == 300
+        schedule_settings["champions_league_schedule_auto_refresh"] = due.isoformat()
+        assert predictor.scheduled_api_refresh_delay() == predictor.QUIET_REFRESH_SECONDS
+        schedule_settings["champions_league_open_signal_error"] = "Temporary outage"
+        assert predictor.scheduled_api_refresh_delay() == 300
+        schedule_settings.pop("champions_league_open_signal_error")
+    schedule_settings.clear()
+    assert predictor.scheduled_api_refresh_delay() == predictor.QUIET_REFRESH_SECONDS
+finally:
+    predictor.now_utc = saved_schedule_now
+    predictor.get_setting = saved_schedule_setting
+
 # A general fixture refresh must not erase a completed result or overwrite
 # SportScore's authoritative in-play state with a competing provider update.
 conn = database.get_db()
@@ -3391,6 +3420,69 @@ assert tuple(pl_trial[:5]) == (-99010, "IN_PLAY", 2, 1, 18)
 assert "Primary Scorer" in pl_trial["goals_json"]
 assert pl_trial["incidents_json"] == "[]"
 assert pl_trial["live_data_source"] == "Live Football API"
+conn.close()
+
+# Replay the same failure/recovery sequence through both competition adapters.
+# All provider calls are mocked: this consumes no live API credits or messages.
+original_refresh_points = predictor.refresh_points
+try:
+    predictor.set_setting("live_football_api_key", "test-key")
+    for competition in ("premier_league", "champions_league"):
+        conn = database.get_db()
+        conn.execute("UPDATE fixtures SET competition = ?, status = 'IN_PLAY', home_score = 2, away_score = 1, goals_json = ?, minute = 45, injury_time = 2 WHERE id = -99010", (competition, pl_trial["goals_json"]))
+        conn.execute("DELETE FROM provider_live_states WHERE fixture_id = -99010")
+        conn.commit()
+        conn.close()
+        feed = {
+            "id": "lf-99010", "home": {"name": "Primary Home", "score": 2},
+            "away": {"name": "Primary Away", "score": 1},
+            "status": {"state": "inPlay", "display": "46'"},
+        }
+        predictor.get_live_football_matches = lambda key, day: [feed]
+        def unavailable_details(key, match_id):
+            raise predictor.LiveFootballAPIError("Simulated details timeout")
+        predictor.get_live_football_match_details = unavailable_details
+        point_refreshes = []
+        predictor.refresh_points = lambda conn: point_refreshes.append(True)
+        assert predictor._import_competition_live_from_live_football_api(competition) == 1
+        conn = database.get_db()
+        row = conn.execute("SELECT * FROM fixtures WHERE id = -99010").fetchone()
+        assert row["minute"] == 46 and row["injury_time"] is None
+        assert "Primary Scorer" in row["goals_json"]
+        assert not point_refreshes, "Clock-only updates must not recalculate points"
+        conn.close()
+
+        # FT and the final score survive an unavailable event endpoint.
+        feed["home"]["score"] = 3
+        feed["status"] = {"status": "finished", "display": "FT"}
+        assert predictor._import_competition_live_from_live_football_api(competition) == 1
+        assert point_refreshes
+        assert predictor.competition_needs_event_repair(competition)
+        conn = database.get_db()
+        row = conn.execute("SELECT * FROM fixtures WHERE id = -99010").fetchone()
+        assert row["status"] == "FINISHED" and row["home_score"] == 3
+        assert predictor._fixture_goal_event_coverage_missing(row)
+        conn.close()
+
+        # Repair a partially populated scorer list, with events nested in match.
+        events = [
+            {"type": "Goal", "time": str(minute), "side": side,
+             "detail": {"player": {"name": "Recovered Scorer"}}}
+            for minute, side in ((3, "home"), (12, "home"), (15, "away"), (88, "home"))
+        ]
+        predictor.get_live_football_match_details = lambda key, match_id: {"match": {**feed, "events": events}}
+        assert predictor._import_competition_live_from_live_football_api(competition) == 1
+        conn = database.get_db()
+        row = conn.execute("SELECT * FROM fixtures WHERE id = -99010").fetchone()
+        assert len(json.loads(row["goals_json"])) == 4
+        assert not predictor._fixture_goal_event_coverage_missing(row)
+        conn.close()
+finally:
+    predictor.refresh_points = original_refresh_points
+    predictor.get_live_football_matches = original_live_football_matches
+    predictor.get_live_football_match_details = original_live_football_details
+    predictor.set_setting("live_football_api_key", "")
+conn = database.get_db()
 conn.execute("DELETE FROM fixtures WHERE id = -99010")
 conn.commit()
 conn.close()

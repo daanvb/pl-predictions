@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.7"
+APP_VERSION = "1.8.8"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -5280,11 +5280,7 @@ def _import_competition_live_from_live_football_api(competition):
         active = []
         for fixture in fixtures:
             kickoff = parse_utc(fixture["utc_date"])
-            try:
-                total_goals = int(fixture["home_score"] or 0) + int(fixture["away_score"] or 0)
-            except (TypeError, ValueError):
-                total_goals = 0
-            missing_goals = total_goals > 0 and fixture["goals_json"] in (None, "", "[]")
+            missing_goals = _fixture_goal_event_coverage_missing(fixture)
             needs_event_repair = bool(
                 kickoff
                 and fixture["status"] == "FINISHED"
@@ -5303,14 +5299,10 @@ def _import_competition_live_from_live_football_api(competition):
             if match_date not in matches_by_date:
                 matches_by_date[match_date] = get_live_football_matches(api_key, match_date)
         for stored in active:
-            try:
-                stored_total_goals = int(stored["home_score"] or 0) + int(stored["away_score"] or 0)
-            except (TypeError, ValueError):
-                stored_total_goals = 0
             repair_events = bool(
                 stored["status"] == "FINISHED"
                 and (
-                    (stored_total_goals > 0 and stored["goals_json"] in (None, "", "[]"))
+                    _fixture_goal_event_coverage_missing(stored)
                     or stored["incidents_json"] is None
                 )
             )
@@ -5343,8 +5335,15 @@ def _import_competition_live_from_live_football_api(competition):
                     conn, stored["id"], state_changed, score_changed
                 )
             ):
-                details = get_live_football_match_details(api_key, provider_id)
-                details_checked = True
+                try:
+                    details = get_live_football_match_details(api_key, provider_id)
+                    details_checked = True
+                except LiveFootballAPIError as exc:
+                    # Retain the list score/clock and previously saved events.
+                    # One unavailable detail endpoint must not roll back every
+                    # other match in this competition's transaction.
+                    details = None
+                    print(f"[Live Football API] Details unavailable for fixture {stored['id']}: {exc}", flush=True)
                 if isinstance(details, dict):
                     detail_match = details.get("match")
                     if not isinstance(detail_match, dict):
@@ -5359,11 +5358,20 @@ def _import_competition_live_from_live_football_api(competition):
                     match_phase = _live_football_match_phase(provider_match)
                     home_penalty_score, away_penalty_score = _live_football_penalty_scores(provider_match)
                     events = _live_football_events(provider_match)
+                    events_available = events_available or isinstance(detail_match.get("events"), list) or isinstance(detail_match.get("incidents"), list)
             # The detailed record is authoritative. Its score can differ from
             # the list response, so calculate the trigger after both reads.
             state_changed = status != stored["status"]
             score_changed = home_score is not None and away_score is not None and (
                 home_score != stored["home_score"] or away_score != stored["away_score"]
+            )
+            clock_changed = minute is not None and (
+                minute != stored["minute"] or injury_time != stored["injury_time"]
+            )
+            penalties_changed = (
+                home_penalty_score is not None and home_penalty_score != stored["home_penalty_score"]
+            ) or (
+                away_penalty_score is not None and away_penalty_score != stored["away_penalty_score"]
             )
             goals = [goal for goal in (_live_football_goal_event(event, stored) for event in events) if goal]
             cards = [card for card in (_live_football_card_event(event, stored) for event in events) if card]
@@ -5389,7 +5397,7 @@ def _import_competition_live_from_live_football_api(competition):
                      str(event.get("time") or event.get("minute") or ""), checked_at.isoformat(),
                      json.dumps(event, sort_keys=True)),
                 )
-            if events or state_changed or score_changed or clock_changed or repair_events:
+            if events_available or state_changed or score_changed or clock_changed or repair_events or penalties_changed:
                 conn.execute(
                     """UPDATE fixtures SET status = ?, home_score = COALESCE(?, home_score),
                            away_score = COALESCE(?, away_score), minute = COALESCE(?, minute),
@@ -5399,13 +5407,14 @@ def _import_competition_live_from_live_football_api(competition):
                            away_penalty_score = COALESCE(?, away_penalty_score),
                            goals_json = COALESCE(?, goals_json), incidents_json = COALESCE(?, incidents_json),
                            last_updated = ?, live_data_source = 'Live Football API' WHERE id = ?""",
-                    (status, home_score, away_score, minute, injury_time, injury_time,
+                    (status, home_score, away_score, minute, minute, injury_time,
                      match_phase, home_penalty_score, away_penalty_score,
                      goals_json, incidents_json,
                      checked_at.isoformat(), stored["id"]),
                 )
                 updated += 1
-                affected_matchdays.add(stored["matchday"])
+                if state_changed or score_changed or penalties_changed:
+                    affected_matchdays.add(stored["matchday"])
                 if score_changed:
                     score_change_causes[stored["matchday"]] = stored["id"]
             if details_checked:
@@ -6374,6 +6383,28 @@ def next_api_refresh_delay():
     )
 
 
+def scheduled_api_refresh_delay():
+    """Wake for the Sunday UK refresh without treating it as a live match."""
+    if not get_setting("football_api_token"):
+        return QUIET_REFRESH_SECONDS
+    now = now_utc()
+    local_now = now.astimezone(UK)
+    scheduled = local_now.replace(
+        hour=CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_HOUR,
+        minute=0, second=0, microsecond=0,
+    ) + timedelta(days=(CHAMPIONS_LEAGUE_SCHEDULE_REFRESH_WEEKDAY - local_now.weekday()) % 7)
+    if scheduled <= local_now:
+        refreshed = parse_utc(get_setting("champions_league_schedule_auto_refresh"))
+        if not refreshed or refreshed.astimezone(UK).date() != local_now.date():
+            # A failed refresh needs another attempt within this Sunday window.
+            return LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS
+        if get_setting("champions_league_open_signal_error"):
+            return LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS
+        scheduled += timedelta(days=7)
+    seconds = (scheduled.astimezone(timezone.utc) - now).total_seconds()
+    return max(1, min(QUIET_REFRESH_SECONDS, seconds))
+
+
 def current_gameweek_needs_result_repair():
     """Return true when a recently played fixture has lost either score."""
     conn = get_db()
@@ -6385,7 +6416,7 @@ def current_gameweek_needs_result_repair():
         current = now_utc().isoformat()
         return bool(conn.execute(
             """SELECT 1 FROM fixtures
-               WHERE season = ? AND matchday = ?
+               WHERE season = ? AND matchday = ? AND competition = 'premier_league'
                  AND status != 'CANCELLED'
                  AND utc_date BETWEEN ? AND ?
                  AND (home_score IS NULL OR away_score IS NULL)
@@ -6404,19 +6435,16 @@ def competition_needs_event_repair(competition):
     try:
         cutoff = (now_utc() - timedelta(hours=48)).isoformat()
         current = now_utc().isoformat()
-        return bool(conn.execute(
-            """SELECT 1 FROM fixtures
+        rows = conn.execute(
+            """SELECT home_team, away_team, home_score, away_score,
+                      goals_json, incidents_json FROM fixtures
                WHERE season = ? AND competition = ?
                  AND status = 'FINISHED'
-                 AND utc_date BETWEEN ? AND ?
-                 AND (
-                   ((COALESCE(home_score, 0) + COALESCE(away_score, 0)) > 0
-                    AND COALESCE(goals_json, '') IN ('', '[]'))
-                   OR incidents_json IS NULL
-                 )
-               LIMIT 1""",
+                 AND utc_date BETWEEN ? AND ?""",
             (SEASON, competition, cutoff, current),
-        ).fetchone())
+        ).fetchall()
+        return any(row["incidents_json"] is None or
+                   _fixture_goal_event_coverage_missing(row) for row in rows)
     finally:
         conn.close()
 
@@ -6583,7 +6611,7 @@ def api_refresh_worker():
             ):
                 try:
                     live_football_updates[label] = importer()
-                except LiveFootballAPIError as exc:
+                except Exception as exc:
                     live_football_errors.append(f"{label}: {exc}")
             if live_football_errors:
                 error_text = "; ".join(live_football_errors)
@@ -6624,7 +6652,7 @@ def api_refresh_worker():
                         flush=True,
                     )
                 set_setting("last_api_football_error", "")
-            except APIFootballError as exc:
+            except Exception as exc:
                 set_setting("last_api_football_error", str(exc))
                 set_setting("last_api_football_error_at", now_utc().isoformat())
                 print(f"[API-Football] {exc}", flush=True)
@@ -6646,6 +6674,7 @@ def api_refresh_worker():
         except Exception as exc:
             print(f"[champions-league-chart] {exc}", flush=True)
 
+        delay = min(delay, scheduled_api_refresh_delay())
         print(
             f"[auto-refresh] "
             f"Next check in {delay}s",

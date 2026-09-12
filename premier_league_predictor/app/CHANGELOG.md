@@ -2,6 +2,15 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.8] - 2026-09-12
+### Fixed
+- Preserve PL and CL scores and clocks when detailed event requests fail, and keep fallback processing running after provider errors.
+- Repair partially missing scorers, accept nested event responses and clear stale stoppage time.
+- Wake the background worker for Sunday's 20:00 UK refresh during quiet periods.
+
+### Changed
+- Avoid points and position recalculation for clock-only live updates.
+
 ## [1.8.7] - 2026-09-12
 ### Changed
 - Moved the Champions League round opening and first Signal notice to the Sunday 20:00 refresh sequence.
