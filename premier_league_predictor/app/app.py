@@ -79,7 +79,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.14"
+APP_VERSION = "1.8.15"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -6344,10 +6344,7 @@ def next_api_refresh_delay():
         SELECT utc_date, status
         FROM fixtures
         WHERE season = ?
-          AND status NOT IN (
-              'FINISHED',
-              'CANCELLED'
-          )
+          AND status != 'CANCELLED'
         ORDER BY utc_date
         """,
         (SEASON,),
@@ -6361,16 +6358,25 @@ def next_api_refresh_delay():
     for fixture in fixtures:
         status = fixture["status"]
 
+        kickoff = parse_utc(
+            fixture["utc_date"]
+        )
+
+        # Retain the short post-match wake-up window so a delayed provider FT
+        # score can be reconciled even after every fixture is marked finished.
+        if (
+            status == "FINISHED"
+            and kickoff
+            and kickoff <= now <= kickoff + timedelta(hours=3)
+        ):
+            return LIVE_REFRESH_SECONDS
+
         if status in (
             "LIVE",
             "IN_PLAY",
             "PAUSED",
         ):
             return LIVE_REFRESH_SECONDS
-
-        kickoff = parse_utc(
-            fixture["utc_date"]
-        )
 
         if not kickoff:
             continue

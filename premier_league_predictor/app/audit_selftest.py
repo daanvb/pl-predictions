@@ -2635,6 +2635,17 @@ delay = predictor.next_api_refresh_delay()
 assert delay < predictor.QUIET_REFRESH_SECONDS
 assert delay <= (2 * 60 * 60)
 
+# A completed fixture remains on the one-minute schedule during the
+# three-hour reconciliation window, so a delayed final score is not missed.
+conn = database.get_db()
+conn.execute(
+    "UPDATE fixtures SET status='FINISHED', utc_date=? WHERE id=99001",
+    ((datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),),
+)
+conn.commit()
+conn.close()
+assert predictor.next_api_refresh_delay() == predictor.LIVE_REFRESH_SECONDS
+
 # Quiet sleeps must end at 20:00 UK in both summer and winter. A failed
 # scheduled update retries, while a completed one returns to quiet operation.
 saved_schedule_now = predictor.now_utc

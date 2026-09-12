@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.15] - 2026-09-12
+### Fixed
+- Keep the background worker checking recently finished fixtures every minute during the final-score reconciliation window.
+
 ## [1.8.14] - 2026-09-12
 ### Fixed
 - Reconcile recently finished PL and CL scores when a provider publishes the final result late.
