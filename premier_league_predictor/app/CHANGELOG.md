@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.9] - 2026-09-12
+### Fixed
+- Show recorded live providers in the dashboard source footer, including Live Football API, instead of assuming live games use SportScore.
+
 ## [1.8.8] - 2026-09-12
 ### Fixed
 - Preserve PL and CL scores and clocks when detailed event requests fail, and keep fallback processing running after provider errors.

@@ -78,7 +78,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.8"
+APP_VERSION = "1.8.9"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -9675,23 +9675,14 @@ def dashboard():
             )
             current_fixtures.append(fixture)
 
-        # The stored fixture list is supplied by football-data.org when its
-        # feed is configured; SportScore enriches matching fixtures with the
-        # live clock, scorers and incidents. Keep this as one list-level
-        # attribution rather than repeating it on every card.
+        # Attribute live data to the providers recorded on these fixtures.
+        # A live status alone does not tell us which feed supplied the data.
+        for provider in ("Live Football API", "SportScore", "API-Football"):
+            if any(fixture.get("live_data_source") == provider
+                   for fixture in current_fixtures):
+                dashboard_sources.append(provider)
         if get_setting("football_api_token"):
             dashboard_sources.append("football-data.org")
-        if any(
-            fixture.get("live_data_source") in ("SportScore", "API-Football")
-            or fixture.get("status") in ("LIVE", "IN_PLAY", "PAUSED")
-            for fixture in current_fixtures
-        ):
-            dashboard_sources.insert(0, "SportScore")
-        if any(
-            fixture.get("live_data_source") == "API-Football"
-            for fixture in current_fixtures
-        ):
-            dashboard_sources.insert(0, "API-Football")
 
         refresh_points(conn)
         record_live_position_snapshot(conn, current_matchday)
