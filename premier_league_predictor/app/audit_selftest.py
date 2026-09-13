@@ -2365,7 +2365,7 @@ assert 'href="#live-gameweek"' not in dashboard_template
 assert '_fixture_card_meta.html' in fixture_card_core_template
 assert '_fixture_card_meta.html' in gameweek_template
 assert "position_chart=dashboard_position_chart" in inspect.getsource(predictor.dashboard)
-assert "{% if live_gameweek_visible and position_chart.snapshots|length > 0 %}" in gameweek_template
+assert "{% if live_gameweek_visible and not history_view and position_chart.snapshots|length > 0 %}" in gameweek_template
 assert "team-badge-slot" in gameweek_template
 assert "team-badge-slot" in fixture_card_core_template
 api_import_source = inspect.getsource(predictor.import_matches_from_api)
