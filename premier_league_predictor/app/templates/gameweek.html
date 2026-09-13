@@ -4,24 +4,24 @@
 {% block title %}Live {{ "Champions League" if is_champions else "GW " ~ matchday }}{% endblock %}
 {% block content %}
 
-<meta http-equiv="refresh" content="60">
+{% if live_gameweek_visible and not history_view %}<meta http-equiv="refresh" content="60">{% endif %}
 
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">{{ "CHAMPIONS LEAGUE HUB" if is_champions else "GAMEWEEK HUB" }}</div>
-<h1>{% if is_champions %}<span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Live Champions League · Round {{ matchday }}{% else %}📊 Live GW {{ matchday }}{% endif %}</h1>
-<p>Each fixture reveals its predictions at its own kick-off. Live points are provisional until full-time.</p>
+<h1>{% if is_champions %}<span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Live Champions League · Round {{ matchday }}{% elif history_view %}📊 Gameweek {{ matchday }} Results{% else %}📊 Live GW {{ matchday }}{% endif %}</h1>
+<p>{% if history_view %}Final scores, predictions and the settled gameweek table.{% else %}Each fixture reveals its predictions at its own kick-off. Live points are provisional until full-time.{% endif %}</p>
 </div>
 
 <div class="nav">
 <a href="{{ '/champions-league' if is_champions else '/dashboard' }}">← {{ 'Champions League' if is_champions else 'Dashboard' }}</a>
-<a href="{{ '/champions-league/predict' if is_champions else '/predict/' ~ matchday }}">✍️ My Predictions</a>
+<a href="{{ '/champions-league/predict' if is_champions else '/predict/' ~ matchday ~ ('?history=1' if history_view else '') }}">✍️ My Predictions</a>
 {% if is_champions %}<a href="/champions-league/league"><span class="nav-trophy-icon"><img src="/static/champions-league-trophy.png" alt=""></span> Competition table</a>{% endif %}
 </div>
 
-{% if live_gameweek_visible %}
+{% if live_gameweek_visible or history_view %}
 <div class="card live-table-card">
 
-<h2><span class="competition-icon {{ 'competition-icon-cl' if is_champions else 'competition-icon-pl' }} live-table-title-icon" aria-hidden="true"><img src="/static/{{ 'champions-league-trophy.png' if is_champions else 'premier-league-trophy.png' }}" alt=""></span> Live {{ 'Champions League' if is_champions else 'Gameweek' }} Table</h2>
+<h2><span class="competition-icon {{ 'competition-icon-cl' if is_champions else 'competition-icon-pl' }} live-table-title-icon" aria-hidden="true"><img src="/static/{{ 'champions-league-trophy.png' if is_champions else 'premier-league-trophy.png' }}" alt=""></span> {{ 'Gameweek' if history_view else 'Live ' ~ ('Champions League' if is_champions else 'Gameweek') }} Table</h2>
 
 {% for player in live_table %}
 
@@ -70,7 +70,7 @@
 
 {% endfor %}
 
-{% if live_gameweek_visible and position_chart.snapshots|length > 0 %}
+{% if live_gameweek_visible and not history_view and position_chart.snapshots|length > 0 %}
 <section class="position-chart" aria-labelledby="position-chart-title">
 <div class="position-chart-heading">
 <div>
@@ -89,7 +89,7 @@
 
 <p class="small">
 Ordered by the current {{ "Champions League" if is_champions else "overall league" }} position. The large total is the live season score.<br>
-Page and live match data refresh every 60 seconds while matches are active.<br>
+{% if not history_view %}Page and live match data refresh every 60 seconds while matches are active.<br>{% endif %}
 Match data from <a href="https://sportscore.com/" rel="dofollow">SportScore</a>
 and <a href="https://www.football-data.org/">football-data.org</a>.
 </p>
@@ -97,7 +97,7 @@ and <a href="https://www.football-data.org/">football-data.org</a>.
 </div>
 {% endif %}
 
-{% if live_gameweek_visible and position_chart.snapshots|length > 0 %}
+{% if live_gameweek_visible and not history_view and position_chart.snapshots|length > 0 %}
 <script>
 (() => {
     const dataNode = document.getElementById("position-chart-data");

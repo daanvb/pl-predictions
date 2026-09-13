@@ -1450,7 +1450,7 @@ def build_live_table(fixtures, players, predictions, previous_league):
 def _snapshot_rows(conn, matchday):
     fixtures = conn.execute(
         """SELECT * FROM fixtures
-           WHERE season = ? AND matchday = ?
+           WHERE season = ? AND matchday = ? AND competition = 'premier_league'
            ORDER BY utc_date""",
         (SEASON, matchday),
     ).fetchall()
@@ -1462,7 +1462,8 @@ def _snapshot_rows(conn, matchday):
                   COALESCE(p.dp, 0) AS dp
            FROM predictions p
            JOIN fixtures f ON f.id = p.fixture_id
-           WHERE f.season = ? AND f.matchday = ?""",
+           WHERE f.season = ? AND f.matchday = ?
+             AND f.competition = 'premier_league'""",
         (SEASON, matchday),
     ).fetchall()
     previous_league = overall_table_at_matchday(conn, matchday - 1)
@@ -10083,6 +10084,7 @@ def history():
             ) AS finished_count
         FROM fixtures
         WHERE season = ?
+          AND competition = 'premier_league'
           AND matchday IS NOT NULL
         GROUP BY matchday
         ORDER BY matchday ASC
@@ -10512,12 +10514,14 @@ def gameweek(matchday):
 
     conn = get_db()
 
+    history_view = request.args.get("history") == "1"
     fixtures = conn.execute(
         """
         SELECT *
         FROM fixtures
         WHERE season = ?
           AND matchday = ?
+          AND competition = 'premier_league'
         ORDER BY utc_date
         """,
         (SEASON, matchday),
@@ -10532,7 +10536,8 @@ def gameweek(matchday):
     # provider update even if the background worker crossed directly from a
     # live refresh into its quiet interval before storing the last snapshot.
     refresh_points(conn)
-    record_live_position_snapshot(conn, matchday)
+    if not history_view:
+        record_live_position_snapshot(conn, matchday)
     conn.commit()
 
     players = conn.execute(
@@ -10555,6 +10560,7 @@ def gameweek(matchday):
         JOIN fixtures f ON f.id = p.fixture_id
         WHERE f.season = ?
           AND f.matchday = ?
+          AND f.competition = 'premier_league'
         """,
         (SEASON, matchday),
     ).fetchall()
@@ -10610,6 +10616,8 @@ def gameweek(matchday):
         gameweek_progress=gameweek_progress_label(fixtures),
         live_gameweek_visible=live_gameweek_visible(fixtures),
         position_chart=position_chart,
+        competition="premier_league",
+        history_view=history_view,
     )
 
 

@@ -1467,6 +1467,13 @@ for fixture_id, matchday in ((8701, 37), (8702, 38)):
             f"History Away {matchday}",
         ),
     )
+conn.execute(
+    """INSERT INTO fixtures(
+        id, season, competition, matchday, utc_date, status,
+        home_team, away_team, home_score, away_score
+    ) VALUES (?, ?, 'champions_league', 39, ?, 'FINISHED', ?, ?, 1, 0)""",
+    (8703, predictor.SEASON, datetime.now(timezone.utc).isoformat(), "CL History Home", "CL History Away"),
+)
 conn.commit()
 conn.close()
 history_response = client.get("/history")
@@ -1474,8 +1481,14 @@ history_gw37 = history_response.data.find(b"Gameweek 37")
 history_gw38 = history_response.data.find(b"Gameweek 38")
 assert history_gw37 >= 0 and history_gw38 >= 0
 assert history_gw37 < history_gw38
+assert b"Gameweek 39" not in history_response.data
+history_results_response = client.get("/gameweek/37?history=1")
+assert history_results_response.status_code == 200
+assert b"Gameweek 37 Results" in history_results_response.data
+assert b"Gameweek Table" in history_results_response.data
+assert b'http-equiv="refresh"' not in history_results_response.data
 conn = database.get_db()
-conn.execute("DELETE FROM fixtures WHERE id IN (8701, 8702)")
+conn.execute("DELETE FROM fixtures WHERE id IN (8701, 8702, 8703)")
 conn.commit()
 conn.close()
 seasons_response = client.get("/seasons")
@@ -2431,11 +2444,14 @@ assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
 assert "exact-dp-border-pulse" in base_template
-assert "background:linear-gradient(110deg,rgba(29,78,216,.56),rgba(124,58,237,.5) 48%,rgba(219,39,119,.52))" in base_template
+assert "background:linear-gradient(110deg,rgba(29,78,216,.32),rgba(124,58,237,.28) 48%,rgba(219,39,119,.30))" in base_template
 assert "border-color:#facc15" in base_template
 assert "border-color:#22d3ee" in base_template
 assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
-assert "width:min(220px,100%)" in base_template
+assert "width:min(180px,100%)" in base_template
+assert "grid-template-columns:minmax(0,430px)" in base_template
+assert "dashboard-stats-signal-only" in dashboard_template
+assert "dashboard-stats-signal-only" in champions_template
 assert 'width:118px;' in base_template
 assert 'grid-template-columns:42px 20px 42px;' in base_template
 assert 'column-gap:12px' in base_template
