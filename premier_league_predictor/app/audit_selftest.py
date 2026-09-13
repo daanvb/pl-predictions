@@ -1413,6 +1413,7 @@ assert b"Fixture &amp; head-to-head refresh history" in admin_data_response.data
 assert b"Premier League fixtures" in admin_data_response.data
 assert b"Champions League head-to-head history" in admin_data_response.data
 assert b"Live Football API /h2h" in admin_data_response.data
+assert b"API-Football fallback" not in admin_data_response.data
 assert b'href="/admin/settings"' not in admin_data_response.data
 assert predictor.admin_data_refresh_log("pl_fixtures")["records"] == 10
 health = predictor.database_health()
@@ -2593,6 +2594,8 @@ assert '.fixture-predictions .pick-grid > strong.player-name-compact .player-nam
 assert "name.scrollWidth > name.clientWidth" in base_template
 assert "name.classList.remove('player-name-compact')" in base_template
 assert 'repair_champions_events = champions_league_needs_event_repair()' in inspect.getsource(predictor.api_refresh_worker)
+assert 'import_live_matches_from_api_football_fallback()' not in inspect.getsource(predictor.api_refresh_worker)
+assert 'test_api_football_connection' not in inspect.getsource(predictor.test_api_football)
 assert 'if (isMobileChart) { svg.style.width' not in dashboard_live_summary_template
 assert 'flex:0 0 32px' in base_template
 assert 'height:32px;min-height:32px;max-height:32px;inline-size:32px;block-size:32px' in base_template

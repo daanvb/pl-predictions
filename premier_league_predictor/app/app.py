@@ -54,11 +54,9 @@ from football_api import (
     test_connection,
 )
 from api_football import (
-    APIFootballError,
     get_fixture_events as get_api_football_fixture_events,
     get_live_fixtures as get_api_football_live_fixtures,
     get_premier_league_fixtures_for_date as get_api_football_premier_league_fixtures_for_date,
-    test_connection as test_api_football_connection,
 )
 import live_football_api
 from live_football_api import (
@@ -6858,19 +6856,6 @@ def api_refresh_worker():
                 set_setting("last_sportscore_error_at", now_utc().isoformat())
                 print(f"[SportScore] {exc}", flush=True)
 
-            try:
-                fallback_updates = import_live_matches_from_api_football_fallback()
-                if fallback_updates:
-                    print(
-                        f"[API-Football] Filled {fallback_updates} live data gap(s)",
-                        flush=True,
-                    )
-                set_setting("last_api_football_error", "")
-            except Exception as exc:
-                set_setting("last_api_football_error", str(exc))
-                set_setting("last_api_football_error_at", now_utc().isoformat())
-                print(f"[API-Football] {exc}", flush=True)
-
         if repair_premier_events or repair_champions_events:
             delay = min(delay, LIVE_FOOTBALL_API_DETAILS_INTERVAL_SECONDS)
 
@@ -9957,7 +9942,7 @@ def dashboard():
 
         # Attribute live data to the providers recorded on these fixtures.
         # A live status alone does not tell us which feed supplied the data.
-        for provider in ("Live Football API", "SportScore", "API-Football"):
+        for provider in ("Live Football API", "SportScore"):
             if any(fixture.get("live_data_source") == provider
                    for fixture in current_fixtures):
                 dashboard_sources.append(provider)
@@ -11121,7 +11106,6 @@ def admin():
     google_backup_error = get_setting("last_google_backup_error")
     system_status = [
         ("football-data.org", bool(get_setting("football_api_token")), last_api_error),
-        ("API-Football", bool(get_setting("api_football_key")), ""),
         ("Live Football API", bool(get_setting("live_football_api_key")), get_setting("last_live_football_api_error")),
         ("Google Drive backup", google_drive_connected(), google_backup_error),
         ("Signal", signal["enabled"], "" if signal_status.get("ok") else "Connection unavailable"),
@@ -11202,12 +11186,12 @@ def admin_data():
             {
                 "label": "Premier League live scores, status and events",
                 "at": setting_time("last_live_football_api_pl_refresh"),
-                "sources": ["Live Football API", "SportScore fallback", "API-Football fallback"],
+                "sources": ["Live Football API", "SportScore fallback"],
             },
             {
                 "label": "Champions League live scores, status and events",
                 "at": setting_time("last_live_football_api_refresh"),
-                "sources": ["Live Football API", "SportScore fallback", "API-Football fallback"],
+                "sources": ["Live Football API", "SportScore fallback"],
             },
         ],
         last_api_refresh=(
@@ -12168,19 +12152,6 @@ def settings():
                 "/admin/settings"
             )
 
-        if action == "api_football":
-            api_football_key = request.form.get("api_football_key", "").strip()
-            if api_football_key:
-                set_setting("api_football_key", api_football_key)
-                flash(
-                    "API-Football key saved. It will only be used by the "
-                    "targeted live-data fallback once that is enabled.",
-                    "success",
-                )
-            else:
-                flash("Please enter an API-Football key.", "error")
-            return redirect("/admin/settings")
-
         if action == "live_football_api":
             live_football_api_key = request.form.get("live_football_api_key", "").strip()
             if live_football_api_key:
@@ -12229,7 +12200,6 @@ def settings():
                 "football_api_token"
             )
         ),
-        api_football_configured=bool(get_setting("api_football_key")),
         live_football_api_configured=bool(get_setting("live_football_api_key")),
         last_sportscore_refresh=(
             local_timestamp(get_setting("last_sportscore_refresh"))
@@ -12259,11 +12229,7 @@ def settings():
 def test_api_football():
     if not is_admin():
         return redirect("/")
-    try:
-        test_api_football_connection(get_setting("api_football_key"))
-        flash("API-Football connection is working.", "success")
-    except APIFootballError as exc:
-        flash(str(exc), "error")
+    flash("API-Football live fallback has been retired.", "success")
     return redirect("/admin/settings")
 
 
