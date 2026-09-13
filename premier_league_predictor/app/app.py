@@ -12673,9 +12673,14 @@ def import_yesterdays_premier_league_results_from_live_football_api():
 
 @app.route("/admin/live-football-api/test")
 def live_football_api_test():
-    """Read-only diagnostic for today or yesterday's provider match list."""
+    """Retired diagnostic route; production monitoring now covers this data."""
     if not is_admin():
         return redirect("/")
+    flash("The Live Football API test screen has been retired. Live monitoring runs automatically.", "success")
+    return redirect("/admin/data")
+
+    # Retained below temporarily as reference-only parsing code. The early
+    # return above ensures the diagnostic can no longer make provider calls.
     day = request.args.get("day", "today")
     if day not in ("today", "yesterday"):
         day = "today"
@@ -12811,6 +12816,8 @@ def live_football_api_test():
 def import_live_football_api_yesterday():
     if not is_admin():
         return redirect("/")
+    flash("The Live Football API test import has been retired. Production refreshes reconcile completed results automatically.", "success")
+    return redirect("/admin/data")
     try:
         imported = import_yesterdays_premier_league_results_from_live_football_api()
         flash(f"Imported {imported} verified English Premier League result(s) from Live Football API.", "success")
@@ -12821,7 +12828,7 @@ def import_live_football_api_yesterday():
 
 @app.route("/admin/settings/live-football-api/today", methods=["POST"])
 def test_live_football_api_today():
-    return redirect("/admin/live-football-api/test?day=today")
+    return redirect("/admin/data")
 
 
 @app.route(

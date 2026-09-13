@@ -4,7 +4,8 @@
 {% block title %}Live {{ "Champions League" if is_champions else "GW " ~ matchday }}{% endblock %}
 {% block content %}
 
-{% if live_gameweek_visible and not history_view %}<meta http-equiv="refresh" content="60">{% endif %}
+{# Re-render live scoreboards more promptly from the local database; provider polling remains 60 seconds. #}
+{% if live_gameweek_visible and not history_view %}<meta http-equiv="refresh" content="30">{% endif %}
 
 <div class="hero">
 <div style="font-size:14px;font-weight:800;color:#94a3b8">{{ "CHAMPIONS LEAGUE HUB" if is_champions else "GAMEWEEK HUB" }}</div>

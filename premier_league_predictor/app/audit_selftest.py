@@ -833,10 +833,8 @@ try:
 finally:
     predictor.get_live_football_matches = original_test_matches
     predictor._live_football_test_premier_league_pairs = original_test_premier_league_pairs
-assert response.status_code == 200
-assert b"LIVE 45+2&#39;" in response.data
-assert b"Home FC" in response.data
-assert b"Other Home" not in response.data
+assert response.status_code == 302
+assert response.headers["Location"].endswith("/admin/data")
 
 # Yesterday follows the same safe, filtered rendering path.
 original_test_matches = predictor.get_live_football_matches
@@ -852,8 +850,8 @@ try:
 finally:
     predictor.get_live_football_matches = original_test_matches
     predictor._live_football_test_premier_league_pairs = original_test_premier_league_pairs
-assert response.status_code == 200
-assert b"FT" in response.data
+assert response.status_code == 302
+assert response.headers["Location"].endswith("/admin/data")
 
 # Detailed endpoint payloads nest the authoritative status in `match`; the
 # diagnostic must use it so a finished score cannot be labelled Upcoming.
@@ -883,10 +881,8 @@ finally:
     predictor.get_live_football_matches = original_test_matches
     predictor.get_live_football_match_details = original_test_details
     predictor._live_football_test_premier_league_pairs = original_test_premier_league_pairs
-assert response.status_code == 200
-assert b"FT" in response.data
-assert b"(Pen)" in response.data
-assert b"Late Winner" in response.data
+assert response.status_code == 302
+assert response.headers["Location"].endswith("/admin/data")
 
 # Provider change logs must preserve the observation time and identify new
 # clock and scorer events, rather than only retaining a single timestamp.
@@ -2365,6 +2361,8 @@ assert 'href="#live-gameweek"' not in dashboard_template
 assert '_fixture_card_meta.html' in fixture_card_core_template
 assert '_fixture_card_meta.html' in gameweek_template
 assert "position_chart=dashboard_position_chart" in inspect.getsource(predictor.dashboard)
+assert 'meta http-equiv="refresh" content="30"' in gameweek_template
+assert 'return redirect("/admin/data")' in inspect.getsource(predictor.live_football_api_test)
 assert "{% if live_gameweek_visible and not history_view and position_chart.snapshots|length > 0 %}" in gameweek_template
 assert "team-badge-slot" in gameweek_template
 assert "team-badge-slot" in fixture_card_core_template
@@ -2951,7 +2949,7 @@ assert predictor.confirmed_champions_league_broadcaster({
     "home_team": "Manchester United", "away_team": "Sabah FK",
 }) == "TNT Sports 1"
 assert "champions_league_display_matchday" in inspect.getsource(predictor.champions_league)
-assert "live-football-api/today" in inspect.getsource(predictor.test_live_football_api_today)
+assert 'redirect("/admin/data")' in inspect.getsource(predictor.test_live_football_api_today)
 
 class TeamPageTVResponse:
     def __init__(self, text):
