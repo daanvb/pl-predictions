@@ -2444,6 +2444,7 @@ assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
 assert "exact-dp-border-pulse" in base_template
+assert "background:linear-gradient(110deg,rgba(29,78,216,.46),rgba(124,58,237,.40) 48%,rgba(219,39,119,.43))" in base_template
 assert "background:linear-gradient(110deg,rgba(29,78,216,.32),rgba(124,58,237,.28) 48%,rgba(219,39,119,.30))" in base_template
 assert "border-color:#facc15" in base_template
 assert "border-color:#22d3ee" in base_template
