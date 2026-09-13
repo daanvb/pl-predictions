@@ -2450,7 +2450,7 @@ assert "border-color:#facc15" in base_template
 assert "border-color:#22d3ee" in base_template
 assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
 assert "width:min(180px,100%)" in base_template
-assert "grid-template-columns:minmax(0,320px)" in base_template
+assert "grid-template-columns:minmax(0,260px)" in base_template
 assert "dashboard-stats-signal-only" in dashboard_template
 assert "dashboard-stats-signal-only" in champions_template
 assert 'width:118px;' in base_template
