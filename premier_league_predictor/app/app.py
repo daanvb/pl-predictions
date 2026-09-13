@@ -77,7 +77,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.22"
+APP_VERSION = "1.8.23"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -122,6 +122,13 @@ LIVE_WINDOW_BEFORE_SECONDS = 20 * 60
 LIVE_WINDOW_AFTER_SECONDS = 3 * 60 * 60
 MIN_REFRESH_SLEEP_SECONDS = 60
 FOOTBALL_DATA_RATE_LIMIT_COOLDOWN_SECONDS = 5 * 60
+# The 2026/27 rounds are a live proving season. From the following campaign,
+# player predictions open only once football-data.org identifies a knockout
+# stage; league-phase scores still import for H2H.
+CHAMPIONS_LEAGUE_KNOCKOUT_ONLY_FROM_SEASON = 2027
+# The current league-phase format has eight rounds. This drives the one-off
+# player notice that is included with the normal final-round opening Signal.
+CHAMPIONS_LEAGUE_LEAGUE_PHASE_FINAL_MATCHDAY = 8
 
 LOGIN_ATTEMPT_WINDOW_SECONDS = 10 * 60
 LOGIN_ATTEMPT_LIMIT = 5
@@ -939,6 +946,87 @@ def gameweek_predictions_open(fixtures):
     return bool(kickoffs and now_utc() < max(kickoffs))
 
 
+def champions_league_knockout_stage(stage):
+    """Return whether a football-data.org stage is part of the knockout path."""
+    value = re.sub(r"[^a-z0-9]+", "_", str(stage or "").casefold()).strip("_")
+    return value in {
+        "knockout_stage", "knockout_playoff", "play_off", "playoffs",
+        "playoff_round_1", "playoff_round_2", "last_32", "last_16",
+        "round_of_16", "quarter_finals", "semi_finals", "final",
+    }
+
+
+def champions_league_prediction_start_matchday(conn):
+    """Return the first player-eligible CL round for this season, if known."""
+    configured_row = conn.execute(
+        "SELECT value FROM settings WHERE key = ?",
+        (f"champions_league_prediction_start_{SEASON}",),
+    ).fetchone()
+    configured = configured_row["value"] if configured_row else None
+    try:
+        return int(configured) if configured else None
+    except (TypeError, ValueError):
+        return None
+
+
+def champions_league_player_competition_active(conn, fixtures=None):
+    """League-phase fixtures remain data-only from the first real campaign."""
+    if SEASON < CHAMPIONS_LEAGUE_KNOCKOUT_ONLY_FROM_SEASON:
+        return True
+    start_matchday = champions_league_prediction_start_matchday(conn)
+    if not start_matchday:
+        return False
+    rows = fixtures or []
+    return not rows or all((row["matchday"] or 0) >= start_matchday for row in rows)
+
+
+def activate_champions_league_knockout_competition(conn):
+    """Start player scoring at the first imported knockout round.
+
+    League-phase results stay in historical_fixtures for H2H; only test
+    predictions are removed from the active player competition.
+    """
+    row = conn.execute(
+        """SELECT matchday, competition_stage FROM fixtures
+           WHERE season = ? AND competition = 'champions_league'
+             AND matchday IS NOT NULL AND competition_stage IS NOT NULL
+           ORDER BY matchday""",
+        (SEASON,),
+    ).fetchall()
+    start_matchday = next(
+        (item["matchday"] for item in row if champions_league_knockout_stage(item["competition_stage"])),
+        None,
+    )
+    if start_matchday is None:
+        return None
+    setting_key = f"champions_league_prediction_start_{SEASON}"
+    configured = conn.execute(
+        "SELECT value FROM settings WHERE key = ?", (setting_key,)
+    ).fetchone()
+    if configured and configured["value"]:
+        return int(configured["value"])
+    archive_completed_fixture_history(conn, "champions_league")
+    conn.execute(
+        """DELETE FROM predictions WHERE fixture_id IN (
+               SELECT id FROM fixtures
+               WHERE season = ? AND competition = 'champions_league'
+                 AND matchday < ?
+           )""",
+        (SEASON, start_matchday),
+    )
+    conn.execute(
+        """INSERT INTO settings(key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (setting_key, str(start_matchday)),
+    )
+    conn.execute(
+        """INSERT INTO settings(key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (f"champions_league_knockout_activated_{SEASON}", now_utc().isoformat()),
+    )
+    return start_matchday
+
+
 def premier_league_gameweek_complete(conn, matchday):
     """Return true only when a populated Premier League gameweek is settled."""
     row = conn.execute(
@@ -1092,6 +1180,10 @@ def overall_table_at_matchday(
             """
         ).fetchall()
 
+    competition_start_matchday = (
+        champions_league_prediction_start_matchday(conn)
+        if competition == "champions_league" else 0
+    ) or 0
     return conn.execute(
         """
         SELECT
@@ -1167,9 +1259,10 @@ def overall_table_at_matchday(
           ON p.player_id = pl.id
 
         LEFT JOIN fixtures f
-          ON f.id = p.fixture_id
+         ON f.id = p.fixture_id
          AND f.season = ?
          AND f.competition = ?
+         AND f.matchday >= ?
 
         GROUP BY pl.id
 
@@ -1187,22 +1280,28 @@ def overall_table_at_matchday(
             matchday,
             SEASON,
             competition,
+            competition_start_matchday,
         ),
     ).fetchall()
 
 
 def competition_completed_matchdays(conn, competition):
     """Return settled rounds/gameweeks for one competition only."""
+    competition_start_matchday = (
+        champions_league_prediction_start_matchday(conn)
+        if competition == "champions_league" else 0
+    ) or 0
     return [
         row["matchday"]
         for row in conn.execute(
             """SELECT matchday FROM fixtures
                WHERE season = ? AND competition = ? AND matchday IS NOT NULL
+                 AND matchday >= ?
                GROUP BY matchday
                HAVING SUM(CASE WHEN status NOT IN ('FINISHED', 'CANCELLED')
                                THEN 1 ELSE 0 END) = 0
                ORDER BY matchday""",
-            (SEASON, competition),
+            (SEASON, competition, competition_start_matchday),
         ).fetchall()
     ]
 
@@ -3944,8 +4043,9 @@ def import_champions_league_matches(matchday):
                        home_score, away_score, last_updated, minute, injury_time,
                        match_phase, home_penalty_score, away_penalty_score, goals_json,
                        live_data_source, competition, source_provider, source_fixture_id,
+                       competition_stage,
                        home_logo, away_logo
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                      matchday = excluded.matchday, utc_date = excluded.utc_date,
                      status = excluded.status, home_team = excluded.home_team,
@@ -3965,6 +4065,7 @@ def import_champions_league_matches(matchday):
                      competition = excluded.competition,
                      source_provider = excluded.source_provider,
                      source_fixture_id = excluded.source_fixture_id,
+                     competition_stage = excluded.competition_stage,
                      home_logo = COALESCE(excluded.home_logo, fixtures.home_logo),
                      away_logo = COALESCE(excluded.away_logo, fixtures.away_logo)""",
                 (
@@ -3975,6 +4076,7 @@ def import_champions_league_matches(matchday):
                     home_penalty_score, away_penalty_score,
                     json.dumps(match.get("goals")) if match.get("goals") is not None else None,
                     "football-data.org", "champions_league", "football-data.org", source_id,
+                    match.get("stage"),
                     safe_team_logo_url(home.get("crest")), safe_team_logo_url(away.get("crest")),
                 ),
             )
@@ -3984,6 +4086,11 @@ def import_champions_league_matches(matchday):
             f"[champions-league-tv] Updated {tv_updated} broadcaster(s)",
             flush=True,
         )
+        # Keep every completed CL result locally for future H2H and form
+        # lookups, even when this scheduled fixture refresh is the only path
+        # that observed the final score.
+        archive_completed_fixture_history(conn, "champions_league")
+        activate_champions_league_knockout_competition(conn)
         conn.commit()
     finally:
         conn.close()
@@ -6808,6 +6915,19 @@ def api_refresh_worker():
         except Exception as exc:
             print(f"[result-repair] {exc}", flush=True)
 
+        try:
+            cup_conn = get_db()
+            try:
+                refresh_points(cup_conn)
+                settled_cup_matches = settle_cockfight_cup_trial(cup_conn)
+                cup_conn.commit()
+                if settled_cup_matches:
+                    print(f"[cockfight-cup] Settled {settled_cup_matches} match(es)", flush=True)
+            finally:
+                cup_conn.close()
+        except Exception as exc:
+            print(f"[cockfight-cup] {exc}", flush=True)
+
         delay = next_api_refresh_delay()
         repair_results = current_gameweek_needs_result_repair()
         repair_premier_events = competition_needs_event_repair("premier_league")
@@ -7930,11 +8050,24 @@ def champions_league_open_message(round_number, fixtures):
     active = [fixture for fixture in fixtures if fixture["status"] != "CANCELLED"]
     if not active:
         return None
-    return "\n".join([
+    lines = [
         f"🏆 Champions League R{round_number} — Put Your Pre-Dicks In", "",
         f"First kick-off: {local_datetime(active[0]['utc_date'])}", "",
-        "https://predictions.battleship.live/champions-league/predict",
-    ])
+    ]
+    if round_number == CHAMPIONS_LEAGUE_LEAGUE_PHASE_FINAL_MATCHDAY:
+        lines += [
+            "📣 Final league-phase round",
+            "After this round, test player predictions and points will be removed from the app.",
+            "🏆 The Preddies competition begins when the February knockout play-off fixtures are imported.",
+            "",
+        ]
+    lines.append("https://predictions.battleship.live/champions-league/predict")
+    return "\n".join(lines)
+
+
+def champions_league_transition_notice_key(player_id):
+    """Keep the final league-phase acknowledgement per player and season."""
+    return f"champions_league_transition_notice_seen_{SEASON}_{player_id}"
 
 
 def send_champions_league_open_signal_for_scheduled_round():
@@ -8462,6 +8595,227 @@ def head_to_head_details():
     if not logged_in(): return redirect("/")
     return render_template("head_to_head_details.html")
 
+
+def cockfight_cup_trial(conn):
+    return conn.execute(
+        "SELECT * FROM cockfight_cup_trials WHERE season = ?", (SEASON,)
+    ).fetchone()
+
+
+def cockfight_cup_next_matchday(conn):
+    row = conn.execute(
+        """SELECT matchday FROM fixtures
+           WHERE season = ? AND competition = 'premier_league'
+             AND matchday IS NOT NULL AND utc_date > ?
+           ORDER BY utc_date LIMIT 1""",
+        (SEASON, now_utc().isoformat()),
+    ).fetchone()
+    return row["matchday"] if row else None
+
+
+def cockfight_cup_round_robin(players):
+    """Create balanced home/away pairings for an even number of entrants."""
+    rotation = list(players)
+    rounds = []
+    for round_index in range(len(rotation) - 1):
+        pairs = []
+        for index in range(len(rotation) // 2):
+            home, away = rotation[index], rotation[-index - 1]
+            pairs.append((away, home) if round_index % 2 else (home, away))
+        rounds.append(pairs)
+        rotation = [rotation[0], rotation[-1], *rotation[1:-1]]
+    return rounds + [[(away, home) for home, away in pairs] for pairs in rounds]
+
+
+def cockfight_cup_trial_rounds(conn, start_matchday, players):
+    """Seed the four-player trial from the PL table, then complete both legs."""
+    standings = overall_table_at_matchday(
+        conn, max(0, start_matchday - 1), "premier_league"
+    )
+    ranked = [row["id"] for row in standings if row["id"] in set(players)]
+    if len(players) == 4 and len(ranked) == 4:
+        first, second, third, fourth = ranked
+        first_leg = [
+            [(second, fourth), (first, third)],  # 2nd v 4th; 1st v 3rd
+            [(first, fourth), (third, second)],
+            [(first, second), (third, fourth)],
+        ]
+        return first_leg + [[(away, home) for home, away in pairs] for pairs in first_leg]
+    return cockfight_cup_round_robin(players)
+
+
+def create_cockfight_cup_trial(conn, player_ids=None):
+    if cockfight_cup_trial(conn):
+        raise ValueError("A Cockfight Cup trial already exists for this season.")
+    start_matchday = cockfight_cup_next_matchday(conn)
+    if player_ids is None:
+        players = conn.execute("SELECT id FROM players ORDER BY name COLLATE NOCASE").fetchall()
+    else:
+        placeholders = ",".join("?" for _ in player_ids)
+        players = conn.execute(
+            f"SELECT id FROM players WHERE id IN ({placeholders}) ORDER BY name COLLATE NOCASE",
+            tuple(player_ids),
+        ).fetchall()
+    if start_matchday is None:
+        raise ValueError("No upcoming Premier League gameweek is available yet.")
+    if len(players) < 2 or len(players) % 2:
+        raise ValueError("The Cockfight Cup trial needs an even number of at least two players.")
+    refresh_points(conn)
+    rounds = cockfight_cup_trial_rounds(
+        conn, start_matchday, [row["id"] for row in players]
+    )
+    final_matchday = start_matchday + len(rounds)
+    cursor = conn.execute(
+        """INSERT INTO cockfight_cup_trials(
+               season, start_matchday, final_matchday, created_at
+           ) VALUES (?, ?, ?, ?)""",
+        (SEASON, start_matchday, final_matchday, now_utc().isoformat()),
+    )
+    trial_id = cursor.lastrowid
+    for round_number, pairs in enumerate(rounds, start=1):
+        matchday = start_matchday + round_number - 1
+        for match_index, (home_id, away_id) in enumerate(pairs, start=1):
+            conn.execute(
+                """INSERT INTO cockfight_cup_matches(
+                       trial_id, stage, round_number, matchday,
+                       home_player_id, away_player_id
+                   ) VALUES (?, 'LEAGUE', ?, ?, ?, ?)""",
+                (trial_id, round_number * 100 + match_index, matchday, home_id, away_id),
+            )
+    return trial_id
+
+
+def cockfight_cup_gameweek_score(conn, player_id, matchday):
+    row = conn.execute(
+        """SELECT COALESCE(SUM(p.points), 0) AS points
+           FROM predictions p JOIN fixtures f ON f.id = p.fixture_id
+           WHERE p.player_id = ? AND f.season = ?
+             AND f.competition = 'premier_league' AND f.matchday = ?
+             AND f.status = 'FINISHED'""",
+        (player_id, SEASON, matchday),
+    ).fetchone()
+    return row["points"]
+
+
+def cockfight_cup_gameweek_complete(conn, matchday):
+    return premier_league_gameweek_complete(conn, matchday)
+
+
+def cockfight_cup_standings(conn, trial_id):
+    players = conn.execute(
+        """SELECT DISTINCT pl.id, pl.name FROM players pl
+           JOIN cockfight_cup_matches cm
+             ON pl.id IN (cm.home_player_id, cm.away_player_id)
+           WHERE cm.trial_id = ? ORDER BY pl.name COLLATE NOCASE""", (trial_id,)
+    ).fetchall()
+    totals = {
+        row["id"]: {
+            "id": row["id"], "name": row["name"], "points": 0,
+            "for": 0, "against": 0, "head_to_head_points": 0,
+            "head_to_head_difference": 0,
+        }
+        for row in players
+    }
+    matches = conn.execute(
+        "SELECT * FROM cockfight_cup_matches WHERE trial_id = ? AND stage = 'LEAGUE' AND status = 'FINISHED'", (trial_id,)
+    ).fetchall()
+    for match in matches:
+        home, away = totals[match["home_player_id"]], totals[match["away_player_id"]]
+        home["for"] += match["home_score"]; home["against"] += match["away_score"]
+        away["for"] += match["away_score"]; away["against"] += match["home_score"]
+        if match["home_score"] > match["away_score"]: home["points"] += 3
+        elif match["home_score"] < match["away_score"]: away["points"] += 3
+        else: home["points"] += 1; away["points"] += 1
+    # Apply the published tie-breaks within each tied Cup-points group.  The
+    # mini-table only contains matches between the players currently tied.
+    for tied_points in {row["points"] for row in totals.values()}:
+        tied_ids = {row["id"] for row in totals.values() if row["points"] == tied_points}
+        if len(tied_ids) < 2:
+            continue
+        for match in matches:
+            if match["home_player_id"] not in tied_ids or match["away_player_id"] not in tied_ids:
+                continue
+            home, away = totals[match["home_player_id"]], totals[match["away_player_id"]]
+            home["head_to_head_difference"] += match["home_score"] - match["away_score"]
+            away["head_to_head_difference"] += match["away_score"] - match["home_score"]
+            if match["home_score"] > match["away_score"]:
+                home["head_to_head_points"] += 3
+            elif match["away_score"] > match["home_score"]:
+                away["head_to_head_points"] += 3
+            else:
+                home["head_to_head_points"] += 1
+                away["head_to_head_points"] += 1
+    completed_matchday = conn.execute(
+        """SELECT MAX(matchday) FROM fixtures WHERE season = ?
+           AND competition = 'premier_league' AND status = 'FINISHED'""",
+        (SEASON,),
+    ).fetchone()[0] or 0
+    pl_positions = {
+        row["id"]: position
+        for position, row in enumerate(
+            overall_table_at_matchday(conn, completed_matchday, "premier_league"), start=1
+        )
+    }
+    rows = sorted(
+        totals.values(),
+        key=lambda row: (
+            -row["points"], -row["head_to_head_points"],
+            -row["head_to_head_difference"], -row["for"],
+            pl_positions.get(row["id"], 9999), row["name"].casefold(),
+        ),
+    )
+    for position, row in enumerate(rows, start=1): row["position"] = position
+    return rows
+
+
+def settle_cockfight_cup_trial(conn):
+    trial = cockfight_cup_trial(conn)
+    if not trial or trial["status"] == "COMPLETE": return 0
+    updated = 0
+    for match in conn.execute("SELECT * FROM cockfight_cup_matches WHERE trial_id = ? AND stage = 'LEAGUE' AND status = 'SCHEDULED'", (trial["id"],)).fetchall():
+        if cockfight_cup_gameweek_complete(conn, match["matchday"]):
+            conn.execute("UPDATE cockfight_cup_matches SET home_score=?, away_score=?, status='FINISHED' WHERE id=?", (cockfight_cup_gameweek_score(conn, match["home_player_id"], match["matchday"]), cockfight_cup_gameweek_score(conn, match["away_player_id"], match["matchday"]), match["id"]))
+            updated += 1
+    league_unfinished = conn.execute("SELECT COUNT(*) FROM cockfight_cup_matches WHERE trial_id=? AND stage='LEAGUE' AND status != 'FINISHED'", (trial["id"],)).fetchone()[0]
+    final = conn.execute("SELECT * FROM cockfight_cup_matches WHERE trial_id=? AND stage='FINAL'", (trial["id"],)).fetchone()
+    if not league_unfinished and not final:
+        table = cockfight_cup_standings(conn, trial["id"])
+        conn.execute("""INSERT INTO cockfight_cup_matches(trial_id, stage, round_number, matchday, home_player_id, away_player_id)
+                        VALUES (?, 'FINAL', 1, ?, ?, ?)""", (trial["id"], trial["final_matchday"], table[0]["id"], table[1]["id"]))
+    elif final and final["status"] == "SCHEDULED" and cockfight_cup_gameweek_complete(conn, final["matchday"]):
+        home_score = cockfight_cup_gameweek_score(conn, final["home_player_id"], final["matchday"])
+        away_score = cockfight_cup_gameweek_score(conn, final["away_player_id"], final["matchday"])
+        if home_score == away_score:
+            standings = {row["id"]: row for row in cockfight_cup_standings(conn, trial["id"])}
+            winner_id = (
+                final["home_player_id"]
+                if standings[final["home_player_id"]]["position"] < standings[final["away_player_id"]]["position"]
+                else final["away_player_id"]
+            )
+        else:
+            winner_id = final["home_player_id"] if home_score > away_score else final["away_player_id"]
+        conn.execute(
+            """UPDATE cockfight_cup_matches
+               SET home_score=?, away_score=?, winner_player_id=?, status='FINISHED'
+               WHERE id=?""",
+            (home_score, away_score, winner_id, final["id"]),
+        )
+        winner = conn.execute("SELECT name FROM players WHERE id=?", (winner_id,)).fetchone()["name"]
+        conn.execute("UPDATE cockfight_cup_trials SET status='COMPLETE' WHERE id=?", (trial["id"],))
+        conn.execute("INSERT OR REPLACE INTO competition_winners(competition, season_label, winner_name) VALUES ('head_to_head', ?, ?)", (season_label(SEASON), winner))
+    return updated
+
+
+def cockfight_cup_context(conn, trial):
+    matches = conn.execute("""SELECT cm.*, hp.name AS home_name, ap.name AS away_name,
+                                     wp.name AS winner_name
+                              FROM cockfight_cup_matches cm
+                              LEFT JOIN players hp ON hp.id=cm.home_player_id
+                              LEFT JOIN players ap ON ap.id=cm.away_player_id
+                              LEFT JOIN players wp ON wp.id=cm.winner_player_id
+                              WHERE cm.trial_id=? ORDER BY cm.matchday, cm.id""", (trial["id"],)).fetchall()
+    return {"trial": dict(trial), "matches": matches, "standings": cockfight_cup_standings(conn, trial["id"])}
+
 @app.route("/side-events")
 def side_events():
     if not logged_in():
@@ -8474,7 +8828,37 @@ def champions_league():
     if not logged_in():
         return redirect("/")
     conn = get_db()
-    selected_matchday = champions_league_display_matchday(conn)
+    current_matchday = champions_league_display_matchday(conn)
+    prediction_start_matchday = champions_league_prediction_start_matchday(conn)
+    available_matchdays = [
+        row["matchday"] for row in conn.execute(
+            """SELECT DISTINCT matchday FROM fixtures
+               WHERE competition = 'champions_league' AND season = ?
+                 AND matchday IS NOT NULL
+                 AND matchday >= ?
+               ORDER BY matchday""",
+            (SEASON, prediction_start_matchday or 0),
+        ).fetchall()
+    ]
+    # Once the knockout boundary has been set, the general display resolver
+    # can still point at the last completed league-phase round while the next
+    # knockout fixture is upcoming. Never let that stale round reappear in the
+    # player competition.
+    current_matchday = (
+        current_matchday
+        if current_matchday in available_matchdays
+        else (available_matchdays[0] if available_matchdays else current_matchday)
+    )
+    requested_matchday = request.args.get("round", type=int)
+    selected_matchday = (
+        requested_matchday
+        if requested_matchday in available_matchdays
+        else current_matchday
+    )
+    history_view = selected_matchday != current_matchday
+    previous_matchdays = [
+        matchday for matchday in available_matchdays if matchday < selected_matchday
+    ]
     fixtures = conn.execute(
         """SELECT * FROM fixtures
            WHERE competition = 'champions_league' AND season = ?
@@ -8490,10 +8874,11 @@ def champions_league():
     prediction_map = {}
     reveal_map = {}
     fixture_players = {}
-    round_in_progress = competition_round_in_progress(fixtures)
-    round_summary_visible = competition_round_summary_visible(fixtures)
+    round_in_progress = not history_view and competition_round_in_progress(fixtures)
+    round_summary_visible = history_view or competition_round_summary_visible(fixtures)
     champions_has_live_fixtures = competition_has_live_fixtures(fixtures)
-    if fixtures:
+    player_competition_active = champions_league_player_competition_active(conn, fixtures)
+    if fixtures and player_competition_active:
         players = conn.execute("SELECT id, name FROM players ORDER BY name COLLATE NOCASE").fetchall()
         predictions = conn.execute("""SELECT p.player_id, p.fixture_id, p.home_score, p.away_score, COALESCE(p.dp, 0) AS dp FROM predictions p JOIN fixtures f ON f.id=p.fixture_id WHERE f.season=? AND f.competition='champions_league' AND f.matchday=?""", (SEASON, selected_matchday)).fetchall()
         prediction_map = {(row["player_id"], row["fixture_id"]): row for row in predictions}
@@ -8516,10 +8901,16 @@ def champions_league():
             )
             for fixture in fixtures
         }
-    champions_player_summary = competition_player_summary(
-        conn, "champions_league", session["player_id"]
+    champions_player_summary = (
+        competition_player_summary(conn, "champions_league", session["player_id"])
+        if player_competition_active else {"total_points": 0, "league_position": None, "league_size": 0}
     )
     show_champions_h2h = request.args.get("h2h") == "1"
+    champions_knockout_transition_notice = (
+        not history_view
+        and selected_matchday == CHAMPIONS_LEAGUE_LEAGUE_PHASE_FINAL_MATCHDAY
+        and not get_setting(champions_league_transition_notice_key(session["player_id"]))
+    )
     for fixture in fixtures:
         if (
             fixture["competition"] == "champions_league"
@@ -8546,7 +8937,7 @@ def champions_league():
         show_champions_h2h=show_champions_h2h,
         has_live_fixtures=round_in_progress,
         champions_has_live_fixtures=champions_has_live_fixtures,
-        champions_summary_hidden=round_in_progress,
+        champions_summary_hidden=round_in_progress or not player_competition_active,
         champions_total_points=champions_player_summary["total_points"],
         champions_league_position=champions_player_summary["league_position"],
         champions_league_size=champions_player_summary["league_size"],
@@ -8562,8 +8953,29 @@ def champions_league():
         prediction_map=prediction_map,
         reveal_map=reveal_map,
         fixture_players=fixture_players,
-        gameweek_predictions_open=gameweek_predictions_open(fixtures),
+        gameweek_predictions_open=player_competition_active and gameweek_predictions_open(fixtures),
+        player_competition_active=player_competition_active,
+        history_view=history_view,
+        champions_knockout_transition_notice=champions_knockout_transition_notice,
+        previous_matchday=previous_matchdays[-1] if previous_matchdays else None,
+        current_matchday=current_matchday,
     )
+
+
+@app.route("/champions-league/transition-notice/read", methods=["POST"])
+def confirm_champions_league_transition_notice():
+    """Record that a player has read the league-phase transition notice."""
+    if not logged_in():
+        return redirect("/")
+    if request.form.get("confirmed") != "1":
+        flash("Please tick the confirmation box before continuing.", "error")
+        return redirect("/champions-league")
+    set_setting(
+        champions_league_transition_notice_key(session["player_id"]),
+        now_utc().isoformat(),
+    )
+    flash("Thanks — the Champions League transition has been confirmed.", "success")
+    return redirect("/champions-league")
 
 
 @app.route("/admin/champions-league/h2h/import", methods=["POST"])
@@ -8611,7 +9023,32 @@ def import_champions_league_fixtures():
 def head_to_head():
     if not logged_in():
         return redirect("/")
-    return render_template("head_to_head.html")
+    conn = get_db()
+    try:
+        refresh_points(conn)
+        settle_cockfight_cup_trial(conn)
+        conn.commit()
+        trial = cockfight_cup_trial(conn)
+        context = cockfight_cup_context(conn, trial) if trial else None
+    finally:
+        conn.close()
+    return render_template("head_to_head.html", cup=context)
+
+
+@app.route("/admin/cockfight-cup/trial/start", methods=["POST"])
+def start_cockfight_cup_trial():
+    if not is_admin():
+        return redirect("/")
+    conn = get_db()
+    try:
+        trial_id = create_cockfight_cup_trial(conn)
+        conn.commit()
+        flash(f"Cockfight Cup trial {trial_id} starts with the next Premier League gameweek.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    finally:
+        conn.close()
+    return redirect("/head-to-head")
 
 
 @app.route("/tegrity")
@@ -9367,6 +9804,7 @@ def champions_league_stats():
     try:
         refresh_points(conn)
         conn.commit()
+        prediction_start_matchday = champions_league_prediction_start_matchday(conn) or 0
         matchday = conn.execute(
             """SELECT MAX(matchday) AS matchday FROM fixtures
                WHERE season = ? AND competition = 'champions_league'""",
@@ -9387,10 +9825,11 @@ def champions_league_stats():
                     JOIN players pl ON pl.id = p.player_id
                     JOIN fixtures f ON f.id = p.fixture_id
                     WHERE f.season = ? AND f.competition = 'champions_league'
+                      AND f.matchday >= ?
                       AND f.status = 'FINISHED' AND ({condition})
                     GROUP BY pl.id
                     ORDER BY total DESC, pl.name COLLATE NOCASE""",
-                (SEASON,),
+                (SEASON, prediction_start_matchday),
             ).fetchall()
 
         def leaders_for(rows):
@@ -10079,11 +10518,29 @@ def history():
         (SEASON,),
     ).fetchall()
 
+    champions_rounds = conn.execute(
+        """
+        SELECT
+            matchday,
+            COUNT(*) AS fixture_count,
+            SUM(CASE WHEN status = 'FINISHED' THEN 1 ELSE 0 END) AS finished_count
+        FROM fixtures
+        WHERE season = ?
+          AND competition = 'champions_league'
+          AND matchday IS NOT NULL
+          AND matchday >= ?
+        GROUP BY matchday
+        ORDER BY matchday ASC
+        """,
+        (SEASON, champions_league_prediction_start_matchday(conn) or 0),
+    ).fetchall()
+
     conn.close()
 
     return render_template(
         "history.html",
         gameweeks=gameweeks,
+        champions_rounds=champions_rounds,
     )
 
 
@@ -10133,6 +10590,14 @@ def predictions(matchday):
             "error"
         )
         return redirect("/dashboard")
+
+    if (
+        competition == "champions_league"
+        and not champions_league_player_competition_active(conn, fixtures)
+    ):
+        conn.close()
+        flash("Champions League predictions open with the knockout stage.", "error")
+        return redirect("/champions-league")
 
     locked_dp_fixture_id = None
 

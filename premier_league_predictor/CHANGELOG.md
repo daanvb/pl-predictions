@@ -2,6 +2,18 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.23] - 2026-09-13
+### Added
+- Pull down from the top of a page on touch devices to refresh the current view.
+- Champions League previous-round history, including links to prior round predictions and results.
+- A final league-phase transition notice in Signal and the Champions League hub, with a per-player Read confirmation.
+- Public MCFG Cockfight Cup trial: seeded from the Premier League table, using each player’s settled Premier League gameweek score including Double Points.
+
+### Changed
+- Champions League player predictions and statistics now begin at the knockout play-offs from 2027/28; league-phase results continue to be retained in the background.
+- Recognise football-data.org's documented knockout play-off stage variants before starting the Champions League player competition.
+- Cockfight Cup trial opening fixtures are 2nd v 4th and 1st v 3rd from the Premier League table; the final uses the Cup table to break a tied gameweek score.
+
 ## [1.8.22] - 2026-09-12
 ### Fixed
 - Keep the moving Exact Double Points trail precisely on top of the card border.

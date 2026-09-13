@@ -178,6 +178,13 @@ assert predictor.news_cache["fetched_at"] == 0.0
 assert predictor.LIVE_REFRESH_SECONDS == 60
 assert predictor.POST_FINAL_RECONCILIATION_SECONDS == 15 * 60
 assert predictor.GOOGLE_BACKUP_LIMIT == 10
+assert predictor.champions_league_knockout_stage("KNOCKOUT_PLAYOFF")
+assert predictor.champions_league_knockout_stage("PLAYOFF_ROUND_1")
+assert predictor.champions_league_knockout_stage("PLAYOFF_ROUND_2")
+assert predictor.champions_league_knockout_stage("PLAYOFFS")
+assert predictor.champions_league_knockout_stage("LAST_16")
+assert predictor.champions_league_knockout_stage("FINAL")
+assert not predictor.champions_league_knockout_stage("REGULAR_SEASON")
 assert not predictor.competition_has_live_fixtures([{"status": "FINISHED"}])
 assert predictor.competition_has_live_fixtures([{"status": "IN_PLAY"}])
 premier_fixture_states = [{"status": "LIVE"}]
@@ -1683,6 +1690,33 @@ cl_open_message = predictor.champions_league_open_message(7, [{
 assert cl_open_message.startswith("🏆 Champions League R7 — Put Your Pre-Dicks In\n")
 assert "First kick-off:" in cl_open_message
 assert "champions-league/predict" in cl_open_message
+cl_final_league_phase_message = predictor.champions_league_open_message(8, [{
+    "status": "SCHEDULED", "utc_date": "2027-01-27T20:00:00+00:00",
+}])
+assert "Final league-phase round" in cl_final_league_phase_message
+assert "head-to-head history" not in cl_final_league_phase_message
+assert "February knockout play-off fixtures" in cl_final_league_phase_message
+assert "champions_league_transition_notice_key" in inspect.getsource(predictor)
+notice_test_key = predictor.champions_league_transition_notice_key(audit_player_id)
+original_notice_value = predictor.get_setting(notice_test_key)
+try:
+    predictor.set_setting(notice_test_key, "")
+    with predictor.app.test_client() as notice_client:
+        with notice_client.session_transaction() as notice_session:
+            notice_session["player_id"] = audit_player_id
+            notice_session["player_name"] = "Audit Player"
+        missing_confirmation = notice_client.post(
+            "/champions-league/transition-notice/read", data={}
+        )
+        assert missing_confirmation.status_code == 302
+        assert not predictor.get_setting(notice_test_key)
+        confirmed_notice = notice_client.post(
+            "/champions-league/transition-notice/read", data={"confirmed": "1"}
+        )
+        assert confirmed_notice.status_code == 302
+        assert predictor.get_setting(notice_test_key)
+finally:
+    predictor.set_setting(notice_test_key, original_notice_value)
 assert "signal_last_cl_open_round" not in inspect.getsource(
     predictor.process_champions_league_signal_notifications
 )
@@ -2525,8 +2559,11 @@ assert "one Double Points fixture" in champions_league_details_template
 assert "wins the competition and the £20 prize" in champions_league_details_template
 assert "champions-matchday-select" not in champions_league_template
 assert "Make Predictions" in champions_league_template
-assert "{% if gameweek_predictions_open %}" in champions_league_template
-assert "gameweek_predictions_open=gameweek_predictions_open(fixtures)" in inspect.getsource(predictor.champions_league)
+assert "gameweek_predictions_open" in champions_league_template
+assert 'action="/champions-league/transition-notice/read"' in champions_league_template
+assert 'name="confirmed" value="1" required' in champions_league_template
+assert '> Read</label>' in champions_league_template
+assert "gameweek_predictions_open=player_competition_active and gameweek_predictions_open(fixtures)" in inspect.getsource(predictor.champions_league)
 assert "Refresh current fixtures" not in champions_league_template
 assert '{% include "_dashboard_live_summary.html" %}' in champions_league_template
 with open(os.path.join(templates_dir, "stats.html"), "r", encoding="utf-8") as handle:
@@ -2542,7 +2579,12 @@ assert "competition_player_summary" in inspect.getsource(predictor.dashboard)
 assert "competition_player_summary" in inspect.getsource(predictor.champions_league)
 assert "competition_has_live_fixtures" in inspect.getsource(predictor.dashboard)
 assert "competition_has_live_fixtures" in inspect.getsource(predictor.champions_league)
-assert "round_in_progress = competition_round_in_progress(fixtures)" in inspect.getsource(predictor.champions_league)
+assert "round_in_progress = not history_view and competition_round_in_progress(fixtures)" in inspect.getsource(predictor.champions_league)
+assert 'requested_matchday = request.args.get("round", type=int)' in inspect.getsource(predictor.champions_league)
+assert "champions_rounds=champions_rounds" in inspect.getsource(predictor.history)
+assert 'archive_completed_fixture_history(conn, "champions_league")' in inspect.getsource(predictor.import_champions_league_matches)
+assert "competition_stage" in inspect.getsource(predictor.import_champions_league_matches)
+assert "DELETE FROM predictions" in inspect.getsource(predictor.activate_champions_league_knockout_competition)
 assert "competition_round_summary_visible(previous_fixtures)" in inspect.getsource(predictor.champions_league_display_matchday)
 assert "competition_round_summary_visible(champions_fixtures)" in inspect.getsource(predictor.dashboard)
 
@@ -2593,6 +2635,9 @@ assert '.fixture-predictions .pick-grid > strong.player-name-compact .player-nam
 assert '.fixture-predictions .pick-grid > strong.player-name-compact .player-name-mobile{display:inline;white-space:nowrap}' in base_template
 assert "name.scrollWidth > name.clientWidth" in base_template
 assert "name.classList.remove('player-name-compact')" in base_template
+assert 'id="pull-refresh"' in base_template
+assert "Release to refresh" in base_template
+assert "window.location.reload()" in base_template
 assert 'repair_champions_events = champions_league_needs_event_repair()' in inspect.getsource(predictor.api_refresh_worker)
 assert 'import_live_matches_from_api_football_fallback()' not in inspect.getsource(predictor.api_refresh_worker)
 assert 'test_api_football_connection' not in inspect.getsource(predictor.test_api_football)
@@ -2864,6 +2909,7 @@ predictor.get_football_champions_league_matches = lambda token, season, matchday
     "matchday": 1,
     "utcDate": datetime.now(timezone.utc).isoformat(),
     "status": "SCHEDULED",
+    "stage": "REGULAR_SEASON",
     "homeTeam": {"name": "CL Home", "crest": "https://example.test/cl-home.png"},
     "awayTeam": {"name": "CL Away", "crest": "https://example.test/cl-away.png"},
     "score": {"fullTime": {"home": None, "away": None}},
@@ -2889,7 +2935,7 @@ finally:
 conn = database.get_db()
 champions_fixture = conn.execute(
     """SELECT id, competition, source_provider, source_fixture_id, home_logo, away_logo,
-              goals_json
+              goals_json, competition_stage
        FROM fixtures WHERE source_fixture_id = '880001'"""
 ).fetchone()
 assert tuple(champions_fixture[:6]) == (
@@ -2897,6 +2943,7 @@ assert tuple(champions_fixture[:6]) == (
     "https://example.test/cl-home.png", "https://example.test/cl-away.png",
 )
 assert champions_fixture["goals_json"] == retained_cl_goals
+assert champions_fixture["competition_stage"] == "REGULAR_SEASON"
 conn.execute("DELETE FROM fixtures WHERE id = -880001")
 conn.commit()
 conn.close()
@@ -3816,6 +3863,217 @@ with patch.object(credit_api.requests, "get", return_value=Mock(
     assert credit_api.get_matches("test-key", "2026-09-12") == []
 predictor.app.jinja_env.get_template("admin.html")
 predictor.app.jinja_env.get_template("base.html")
+predictor.app.jinja_env.get_template("head_to_head.html")
+cup_schema = database.get_db()
+assert cup_schema.execute(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cockfight_cup_trials'"
+).fetchone()
+assert cup_schema.execute(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cockfight_cup_matches'"
+).fetchone()
+assert "winner_player_id" in {
+    row["name"] for row in cup_schema.execute("PRAGMA table_info(cockfight_cup_matches)")
+}
+cup_schema.close()
+
+# Complete Cockfight Cup trial: seed from the PL table, settle all six league
+# rounds from normal PL prediction points, then create and resolve the final.
+cup_season = 2096
+cup_fixture_base = -930000
+cup_conn = database.get_db()
+cup_players = []
+for suffix in ("Alpha", "Bravo", "Charlie", "Delta"):
+    cursor = cup_conn.execute(
+        "INSERT INTO players(name, pin_hash, login_name) VALUES (?, 'test', ?)",
+        (f"Cup {suffix}", f"cup-{suffix.casefold()}"),
+    )
+    cup_players.append(cursor.lastrowid)
+for matchday in range(10, 17):
+    fixture_id = cup_fixture_base - matchday
+    cup_conn.execute(
+        """INSERT INTO fixtures(id, season, matchday, utc_date, status,
+                                  home_team, away_team, home_score, away_score,
+                                  competition)
+           VALUES (?, ?, ?, ?, 'FINISHED', 'Cup Home', 'Cup Away', 0, 0,
+                   'premier_league')""",
+        (fixture_id, cup_season, matchday, f"2096-09-{matchday:02d}T15:00:00+00:00"),
+    )
+    cup_conn.executemany(
+        """INSERT INTO predictions(player_id, fixture_id, home_score, away_score)
+           VALUES (?, ?, 0, 0)""",
+        [(player_id, fixture_id) for player_id in cup_players],
+    )
+cup_conn.commit()
+original_cup_season = predictor.SEASON
+original_cup_now = predictor.now_utc
+try:
+    predictor.SEASON = cup_season
+    predictor.now_utc = lambda: datetime(2096, 8, 1, tzinfo=timezone.utc)
+    trial_id = predictor.create_cockfight_cup_trial(cup_conn, cup_players)
+    first_round = cup_conn.execute(
+        """SELECT home_player_id, away_player_id FROM cockfight_cup_matches
+           WHERE trial_id = ? AND stage = 'LEAGUE' AND matchday = 10
+           ORDER BY id""", (trial_id,)
+    ).fetchall()
+    # Alpha/Bravo/Charlie/Delta are the tied PL ordering in this audit.
+    assert [(row["home_player_id"], row["away_player_id"]) for row in first_round] == [
+        (cup_players[1], cup_players[3]), (cup_players[0], cup_players[2]),
+    ]
+    predictor.refresh_points(cup_conn)
+    assert predictor.settle_cockfight_cup_trial(cup_conn) == 12
+    assert predictor.settle_cockfight_cup_trial(cup_conn) == 0
+    trial = predictor.cockfight_cup_trial(cup_conn)
+    assert trial["status"] == "COMPLETE"
+    assert cup_conn.execute(
+        "SELECT COUNT(*) FROM cockfight_cup_matches WHERE trial_id = ? AND stage = 'FINAL' AND status = 'FINISHED'",
+        (trial_id,),
+    ).fetchone()[0] == 1
+    assert cup_conn.execute(
+        "SELECT winner_name FROM competition_winners WHERE competition = 'head_to_head' AND season_label = '2096/97'"
+    ).fetchone() is not None
+finally:
+    predictor.SEASON = original_cup_season
+    predictor.now_utc = original_cup_now
+    cup_conn.execute("DELETE FROM cockfight_cup_matches WHERE trial_id IN (SELECT id FROM cockfight_cup_trials WHERE season = ?)", (cup_season,))
+    cup_conn.execute("DELETE FROM cockfight_cup_trials WHERE season = ?", (cup_season,))
+    cup_conn.execute("DELETE FROM competition_winners WHERE competition='head_to_head' AND season_label='2096/97'")
+    cup_conn.execute(
+        "DELETE FROM prediction_audit_events WHERE player_id IN (?, ?, ?, ?)",
+        tuple(cup_players),
+    )
+    cup_conn.execute("DELETE FROM predictions WHERE fixture_id >= ? AND fixture_id <= ?", (cup_fixture_base - 16, cup_fixture_base - 10))
+    cup_conn.execute("DELETE FROM fixtures WHERE id >= ? AND id <= ?", (cup_fixture_base - 16, cup_fixture_base - 10))
+    assert cup_conn.execute(
+        """SELECT COUNT(*) FROM cockfight_cup_matches
+           WHERE home_player_id IN (?, ?, ?, ?) OR away_player_id IN (?, ?, ?, ?)
+              OR winner_player_id IN (?, ?, ?, ?)""",
+        tuple(cup_players) * 3,
+    ).fetchone()[0] == 0
+    assert cup_conn.execute(
+        "SELECT COUNT(*) FROM predictions WHERE player_id IN (?, ?, ?, ?)",
+        tuple(cup_players),
+    ).fetchone()[0] == 0
+    cup_conn.executemany("DELETE FROM players WHERE id = ?", [(player_id,) for player_id in cup_players])
+    cup_conn.commit()
+    cup_conn.close()
+
+# Knockout activation is deliberately tested in its own future-season sandbox.
+# It must remove league-phase *player* picks while retaining finished scores for
+# local H2H, then only expose knockout rounds to the player competition.
+activation_season = 2098
+activation_regular_fixture = -920001
+activation_knockout_fixture = -920002
+activation_start_key = f"champions_league_prediction_start_{activation_season}"
+activation_marker_key = f"champions_league_knockout_activated_{activation_season}"
+activation_conn = database.get_db()
+activation_player = activation_conn.execute(
+    "SELECT id FROM players ORDER BY id LIMIT 1"
+).fetchone()["id"]
+activation_conn.execute(
+    "DELETE FROM settings WHERE key IN (?, ?)",
+    (activation_start_key, activation_marker_key),
+)
+activation_conn.execute(
+    "DELETE FROM predictions WHERE fixture_id IN (?, ?)",
+    (activation_regular_fixture, activation_knockout_fixture),
+)
+activation_conn.execute(
+    "DELETE FROM historical_fixtures WHERE id IN (?, ?)",
+    (activation_regular_fixture, activation_knockout_fixture),
+)
+activation_conn.execute(
+    "DELETE FROM fixtures WHERE id IN (?, ?)",
+    (activation_regular_fixture, activation_knockout_fixture),
+)
+activation_conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           home_score, away_score, competition, competition_stage
+       ) VALUES (?, ?, 0, '2098-09-01T19:00:00+00:00', 'FINISHED',
+                 'Archive Home', 'Archive Away', 2, 1,
+                 'champions_league', 'REGULAR_SEASON')""",
+    (activation_regular_fixture, activation_season),
+)
+activation_conn.execute(
+    """INSERT INTO fixtures(
+           id, season, matchday, utc_date, status, home_team, away_team,
+           competition, competition_stage
+       ) VALUES (?, ?, 1, '2099-02-10T20:00:00+00:00', 'SCHEDULED',
+                 'Knockout Home', 'Knockout Away', 'champions_league', 'LAST_16')""",
+    (activation_knockout_fixture, activation_season),
+)
+activation_conn.execute(
+    """INSERT INTO predictions(player_id, fixture_id, home_score, away_score)
+       VALUES (?, ?, 2, 1)""",
+    (activation_player, activation_regular_fixture),
+)
+activation_conn.commit()
+original_season = predictor.SEASON
+original_knockout_only_season = predictor.CHAMPIONS_LEAGUE_KNOCKOUT_ONLY_FROM_SEASON
+try:
+    predictor.SEASON = activation_season
+    predictor.CHAMPIONS_LEAGUE_KNOCKOUT_ONLY_FROM_SEASON = activation_season
+    assert predictor.activate_champions_league_knockout_competition(activation_conn) == 1
+    activation_conn.commit()
+    assert activation_conn.execute(
+        "SELECT 1 FROM predictions WHERE fixture_id = ?", (activation_regular_fixture,)
+    ).fetchone() is None
+    archived_activation_score = activation_conn.execute(
+        "SELECT home_score, away_score FROM historical_fixtures WHERE id = ?",
+        (activation_regular_fixture,),
+    ).fetchone()
+    assert (archived_activation_score["home_score"], archived_activation_score["away_score"]) == (2, 1)
+    assert predictor.champions_league_prediction_start_matchday(activation_conn) == 1
+    assert not predictor.champions_league_player_competition_active(
+        activation_conn, [{"matchday": 0}]
+    )
+    assert predictor.champions_league_player_competition_active(
+        activation_conn, [{"matchday": 1}]
+    )
+    assert predictor.competition_completed_matchdays(
+        activation_conn, "champions_league"
+    ) == []
+    # Route-level coverage prevents a bookmarked league-phase prediction URL
+    # from bypassing the data-only boundary, and verifies history lists only
+    # the eligible knockout round.
+    with predictor.app.test_client() as activation_client:
+        with activation_client.session_transaction() as activation_session:
+            activation_session["player_id"] = activation_player
+            activation_session["player_name"] = "Audit Player"
+        history_response = activation_client.get("/history")
+        assert history_response.status_code == 200
+        assert b"Champions League Round 1" in history_response.data
+        assert b"Round 0" not in history_response.data
+        champions_response = activation_client.get("/champions-league?round=0")
+        assert champions_response.status_code == 200
+        assert b"Knockout Home" in champions_response.data
+        assert b"Archive Home" not in champions_response.data
+        blocked_prediction_response = activation_client.get(
+            "/predict/0?competition=champions_league"
+        )
+        assert blocked_prediction_response.status_code == 302
+        assert blocked_prediction_response.headers["Location"].endswith("/champions-league")
+finally:
+    predictor.SEASON = original_season
+    predictor.CHAMPIONS_LEAGUE_KNOCKOUT_ONLY_FROM_SEASON = original_knockout_only_season
+    activation_conn.execute(
+        "DELETE FROM predictions WHERE fixture_id IN (?, ?)",
+        (activation_regular_fixture, activation_knockout_fixture),
+    )
+    activation_conn.execute(
+        "DELETE FROM historical_fixtures WHERE id IN (?, ?)",
+        (activation_regular_fixture, activation_knockout_fixture),
+    )
+    activation_conn.execute(
+        "DELETE FROM fixtures WHERE id IN (?, ?)",
+        (activation_regular_fixture, activation_knockout_fixture),
+    )
+    activation_conn.execute(
+        "DELETE FROM settings WHERE key IN (?, ?)",
+        (activation_start_key, activation_marker_key),
+    )
+    activation_conn.commit()
+    activation_conn.close()
 
 os.remove(tmp.name)
 print("Preddies self-test: PASS")

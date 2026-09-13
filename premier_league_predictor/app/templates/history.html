@@ -14,45 +14,43 @@
 </div>
 
 <div class="card">
-
+<h2><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> Premier League</h2>
 {% for gw in gameweeks %}
-
 <div class="fixture">
-
 <div class="history-row">
-
 <div>
-<div class="history-gameweek-title">
-Gameweek {{ gw.matchday }}
+<div class="history-gameweek-title">Gameweek {{ gw.matchday }}</div>
+{% if gw.finished_count %}<div class="small">{{ gw.finished_count }} of {{ gw.fixture_count }} matches finished</div>{% endif %}
 </div>
-
-{% if gw.finished_count %}<div class="small">
-{{ gw.finished_count }} of {{ gw.fixture_count }} matches finished
-</div>{% endif %}
-</div>
-
 <div class="history-actions">
-
-<a href="/predict/{{ gw.matchday }}?history=1">
-<button>My Picks</button>
-</a>
-
-<a href="/gameweek/{{ gw.matchday }}?history=1">
-<button class="primary">Results / Table</button>
-</a>
-
+<a href="/predict/{{ gw.matchday }}?history=1"><button>My Picks</button></a>
+<a href="/gameweek/{{ gw.matchday }}?history=1"><button class="primary">Results / Table</button></a>
 </div>
-
 </div>
-
 </div>
-
 {% else %}
-
 <p class="muted">No gameweeks available yet.</p>
-
 {% endfor %}
+</div>
 
+<div class="card">
+<h2><span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League</h2>
+{% for round in champions_rounds %}
+<div class="fixture">
+<div class="history-row">
+<div>
+<div class="history-gameweek-title">Champions League Round {{ round.matchday }}</div>
+{% if round.finished_count %}<div class="small">{{ round.finished_count }} of {{ round.fixture_count }} matches finished</div>{% endif %}
+</div>
+<div class="history-actions">
+<a href="/predict/{{ round.matchday }}?competition=champions_league&amp;history=1"><button>My Picks</button></a>
+<a href="/champions-league?round={{ round.matchday }}"><button class="primary">Results / Table</button></a>
+</div>
+</div>
+</div>
+{% else %}
+<p class="muted">No Champions League rounds available yet.</p>
+{% endfor %}
 </div>
 
 </div>

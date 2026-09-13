@@ -26,7 +26,20 @@
 </a>
 </div>
 
-<div class="card" style="text-align:center;padding:24px"><div class="small">CURRENT ROUND</div><h2>Champions League · Round {{ fixtures[0].matchday if fixtures else '—' }}</h2>{% if gameweek_predictions_open %}<a href="/champions-league/predict"><button class="primary" type="button">✍️ Make Predictions</button></a>{% endif %}</div>
+<div class="card" style="text-align:center;padding:24px"><div class="small">{{ 'PREVIOUS ROUND' if history_view else 'CURRENT ROUND' }}</div><h2>Champions League · Round {{ fixtures[0].matchday if fixtures else '—' }}</h2>{% if history_view %}<a href="/champions-league"><button type="button">Current Round</button></a>{% elif gameweek_predictions_open %}<a href="/champions-league/predict"><button class="primary" type="button">✍️ Make Predictions</button></a>{% endif %}{% if previous_matchday %}<a href="/champions-league?round={{ previous_matchday }}"><button type="button">← Previous Round</button></a>{% endif %}</div>
+
+{% if champions_knockout_transition_notice %}
+<div class="card champions-transition-notice">
+<div class="small">CHAMPIONS LEAGUE UPDATE</div>
+<h2>🏆 The Preddies competition starts with the knockout play-offs</h2>
+<p>This is the final league-phase round. After it finishes, the test player predictions and points will be removed from the app.</p>
+<p>The player competition opens when the February knockout play-off fixtures are imported.</p>
+<form method="post" action="/champions-league/transition-notice/read">
+<label class="champions-transition-confirm"><input type="checkbox" name="confirmed" value="1" required> Read</label>
+<button class="primary" type="submit">Confirm</button>
+</form>
+</div>
+{% endif %}
 
 {% include "_dashboard_live_summary.html" %}
 {% if fixtures %}
@@ -38,7 +51,7 @@
 {% for fixture in fixtures %}
 <div class="fixture fixture-set champions-fixture-card{% if fixture.status in ('LIVE', 'IN_PLAY', 'PAUSED') %} fixture-live{% endif %}">
 {% include "_fixture_card_core.html" %}
-{% include "_fixture_prediction_rows.html" %}
+{% if player_competition_active %}{% include "_fixture_prediction_rows.html" %}{% endif %}
 {% if show_champions_h2h %}
 <details class="match-stats">
 <summary><span>📊 Head-to-head · last 5</span><span class="match-stats-chevron">⌄</span></summary>

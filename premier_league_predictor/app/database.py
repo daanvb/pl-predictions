@@ -139,6 +139,7 @@ def init_db(seed_default_player=True):
     )
     _add_column_if_missing(conn, "fixtures", "source_provider", "TEXT")
     _add_column_if_missing(conn, "fixtures", "source_fixture_id", "TEXT")
+    _add_column_if_missing(conn, "fixtures", "competition_stage", "TEXT")
     conn.execute(
         "UPDATE fixtures SET competition = 'premier_league' "
         "WHERE competition IS NULL OR TRIM(competition) = ''"
@@ -451,6 +452,45 @@ def init_db(seed_default_player=True):
             winner_name TEXT NOT NULL,
             UNIQUE(competition, season_label)
         )
+    """)
+
+    # The Cockfight Cup is separate from PL predictions: it only stores the
+    # pairing and copies each player's already-calculated PL gameweek total.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cockfight_cup_trials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season INTEGER NOT NULL,
+            start_matchday INTEGER NOT NULL,
+            final_matchday INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            created_at TEXT NOT NULL,
+            UNIQUE(season)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cockfight_cup_matches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trial_id INTEGER NOT NULL,
+            stage TEXT NOT NULL,
+            round_number INTEGER NOT NULL,
+            matchday INTEGER NOT NULL,
+            home_player_id INTEGER,
+            away_player_id INTEGER,
+            winner_player_id INTEGER,
+            home_score INTEGER,
+            away_score INTEGER,
+            status TEXT NOT NULL DEFAULT 'SCHEDULED',
+            UNIQUE(trial_id, stage, round_number),
+            FOREIGN KEY(trial_id) REFERENCES cockfight_cup_trials(id) ON DELETE CASCADE,
+            FOREIGN KEY(home_player_id) REFERENCES players(id),
+            FOREIGN KEY(away_player_id) REFERENCES players(id),
+            FOREIGN KEY(winner_player_id) REFERENCES players(id)
+        )
+    """)
+    _add_column_if_missing(conn, "cockfight_cup_matches", "winner_player_id", "INTEGER")
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cockfight_cup_matches_trial
+        ON cockfight_cup_matches(trial_id, matchday, stage)
     """)
 
     known_champions = (
