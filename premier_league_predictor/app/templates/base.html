@@ -469,7 +469,7 @@ input{
   position:relative;
   border:2px solid #fbbf24;
   background:linear-gradient(100deg,#ecfdf5 0%,#fef3c7 58%,#fffbeb 100%);
-  box-shadow:0 0 0 2px rgba(245,158,11,.14),0 8px 20px rgba(245,158,11,.16);
+  box-shadow:0 8px 20px rgba(245,158,11,.16);
   animation:exact-dp-border-pulse 2.8s ease-in-out infinite
 }
 .dp-exact-badge{
@@ -2527,8 +2527,8 @@ html[data-theme="dark"] .pick-grid.exact-score-dp-row{
   color:#fef3c7
 }
 @keyframes exact-dp-border-pulse{
-  0%,100%{border-color:#fbbf24;box-shadow:0 0 0 2px rgba(245,158,11,.14),0 8px 20px rgba(245,158,11,.16)}
-  50%{border-color:#fef08a;box-shadow:0 0 0 3px rgba(250,204,21,.34),0 0 18px rgba(250,204,21,.55),0 8px 20px rgba(245,158,11,.2)}
+  0%,100%{border-color:#fbbf24;box-shadow:0 8px 20px rgba(245,158,11,.16)}
+  50%{border-color:#fff7a8;box-shadow:inset 0 0 0 1px rgba(254,240,138,.7),0 8px 20px rgba(245,158,11,.2)}
 }
 .dashboard-stats > .dashboard-signal-stat.dashboard-signal-stat:only-child{
   grid-column:1 / -1;
