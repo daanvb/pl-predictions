@@ -2552,6 +2552,7 @@ assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predi
 assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predictor.import_champions_league_live_from_sportscore)
 assert 'href="/champions-league/predict"' not in leaderboard_template
 assert 'champions-live-button' in dashboard_template
+assert 'champions-live-button-pulse' in base_template
 assert 'premier-league-trophy.png' in dashboard_template
 assert 'row["points"], row.get("gameweek_points", 0)' in inspect.getsource(predictor.record_competition_live_position_snapshot)
 assert 'champions_league_stats' in inspect.getsource(predictor)
