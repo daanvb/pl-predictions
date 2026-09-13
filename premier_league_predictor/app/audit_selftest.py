@@ -2444,13 +2444,13 @@ assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
 assert "exact-dp-border-pulse" in base_template
-assert "background:linear-gradient(110deg,rgba(29,78,216,.46),rgba(124,58,237,.40) 48%,rgba(219,39,119,.43))" in base_template
+assert "background:linear-gradient(110deg,rgba(29,78,216,.58),rgba(124,58,237,.51) 48%,rgba(219,39,119,.54))" in base_template
 assert "background:linear-gradient(110deg,rgba(29,78,216,.32),rgba(124,58,237,.28) 48%,rgba(219,39,119,.30))" in base_template
 assert "border-color:#facc15" in base_template
 assert "border-color:#22d3ee" in base_template
 assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
 assert "width:min(180px,100%)" in base_template
-assert "grid-template-columns:minmax(0,430px)" in base_template
+assert "grid-template-columns:minmax(0,320px)" in base_template
 assert "dashboard-stats-signal-only" in dashboard_template
 assert "dashboard-stats-signal-only" in champions_template
 assert 'width:118px;' in base_template
