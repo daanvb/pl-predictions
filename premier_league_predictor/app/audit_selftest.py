@@ -2432,6 +2432,7 @@ assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
 assert "exact-dp-border-pulse" in base_template
 assert "border-color:#fff7a8" in base_template
+assert "border-color:#22c55e" in base_template
 assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
 assert "width:min(220px,100%)" in base_template
 assert 'width:118px;' in base_template
