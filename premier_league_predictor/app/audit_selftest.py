@@ -2988,8 +2988,8 @@ with open(
 assert 'UK TV pending' in fixture_card_meta_template
 assert 'tv-channel-label' not in fixture_card_meta_template
 
-# The HRK Metric counts the score value lost when an added-time goal changes
-# a completed Premier League result, including Double Points awards.
+# The HRK Metric counts the score value lost when a 90th-minute or later goal
+# changes a completed Premier League result, including Double Points awards.
 conn = database.get_db()
 conn.execute(
     """INSERT INTO players(name, pin_hash, login_name)
@@ -3005,7 +3005,7 @@ conn.execute(
        ) VALUES (99010, ?, 3, ?, 'FINISHED', 'HRK Home', 'HRK Away', 1, 1,
                  ?, 'premier_league')""",
     (season, datetime.now(timezone.utc).isoformat(), json.dumps([{
-        "minute": 90, "injuryTime": 1,
+        "minute": 90, "injuryTime": 0,
         "team": {"name": "HRK Away"},
     }])),
 )

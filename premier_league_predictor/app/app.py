@@ -9305,7 +9305,7 @@ def historical_season(season):
 
 
 def late_goal_points_lost(conn, fixture_ids=None):
-    """Total points lost when added-time goals changed a final scoreline."""
+    """Total points lost when 90th-minute or later goals changed a scoreline."""
     losses = {}
     fixture_filter = ""
     parameters = [SEASON]
@@ -9332,10 +9332,12 @@ def late_goal_points_lost(conn, fixture_ids=None):
         for goal in goals if isinstance(goals, list) else []:
             try:
                 minute = int(goal.get("minute") or 0)
-                extra = int(goal.get("injuryTime") or 0)
             except (TypeError, ValueError):
                 continue
-            if minute < 90 or (minute == 90 and extra <= 0):
+            # Providers do not consistently attach injury time to a 90th-minute
+            # goal. For this metric, the whole 90th minute belongs to the
+            # late-goal window, alongside every later recorded minute.
+            if minute < 90:
                 continue
             team = normalized_team_name((goal.get("team") or {}).get("name"))
             if team == normalized_team_name(fixture["home_team"]):
