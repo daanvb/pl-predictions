@@ -2431,6 +2431,7 @@ assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
 assert "exact-dp-border-pulse" in base_template
+assert "background:linear-gradient(110deg,#1d4ed8,#7c3aed 48%,#db2777)" in base_template
 assert "border-color:#fff7a8" in base_template
 assert "border-color:#22c55e" in base_template
 assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
@@ -2553,6 +2554,7 @@ assert 'affected_matchdays.add(stored[\"matchday\"])' in inspect.getsource(predi
 assert 'href="/champions-league/predict"' not in leaderboard_template
 assert 'champions-live-button' in dashboard_template
 assert 'champions-live-button-pulse' in base_template
+assert "border-color:#ef4444" in base_template
 assert 'premier-league-trophy.png' in dashboard_template
 assert 'row["points"], row.get("gameweek_points", 0)' in inspect.getsource(predictor.record_competition_live_position_snapshot)
 assert 'champions_league_stats' in inspect.getsource(predictor)
