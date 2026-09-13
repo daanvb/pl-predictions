@@ -2330,7 +2330,7 @@ assert "exact-dp-border-trail" in fixture_prediction_template
 assert 'attributeName="stroke-dashoffset"' in fixture_prediction_template
 assert 'dur="5.6s"' in fixture_prediction_template
 assert "exact-dp-border-tail" in fixture_prediction_template
-assert "exact-dp-border-mid" in fixture_prediction_template
+assert "exact-dp-border-mid" not in fixture_prediction_template
 assert "champions_summary_hidden" in champions_template
 assert "YOUR CL TOTAL" in champions_template
 assert "CL LEAGUE POSITION" in champions_template
@@ -2440,7 +2440,7 @@ assert "> :not(.exact-dp-border-trail)" in base_template
 assert "sizeExactDpTrail" in base_template
 assert "vector-effect:non-scaling-stroke" in base_template
 assert "borders.forEach" in base_template
-assert "stroke-opacity:.12" in base_template
+assert "filter:blur(1.5px)" in base_template
 assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
 assert 'width:118px;' in base_template
 assert 'grid-template-columns:42px 20px 42px;' in base_template
