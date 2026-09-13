@@ -487,11 +487,19 @@ input{
   stroke-width:2;
   vector-effect:non-scaling-stroke;
   stroke-linecap:round;
-  stroke-dasharray:18 82;
 }
 .exact-dp-border-trail .exact-dp-border-tail{
   stroke:#fbbf24;
-  stroke-opacity:.32;
+  stroke-opacity:.12;
+  stroke-dasharray:18 82;
+}
+.exact-dp-border-trail .exact-dp-border-mid{
+  stroke:#86efac;
+  stroke-opacity:.36;
+  stroke-dasharray:12 88;
+}
+.exact-dp-border-trail .exact-dp-border-head{
+  stroke-dasharray:7 93;
 }
 .pick-grid.exact-score-dp-row > :not(.exact-dp-border-trail){
   position:relative;
