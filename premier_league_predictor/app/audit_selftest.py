@@ -2431,8 +2431,9 @@ assert 'family=Inter:wght@400;500;600;700' in base_template
 assert 'font-family:"Inter"' in base_template
 assert '.prediction-scoreline' in base_template
 assert "exact-dp-border-pulse" in base_template
-assert "border-color:#fff0a3" in base_template
+assert "border-color:#fff7a8" in base_template
 assert "dashboard-signal-stat.dashboard-signal-stat:only-child" in base_template
+assert "width:min(220px,100%)" in base_template
 assert 'width:118px;' in base_template
 assert 'grid-template-columns:42px 20px 42px;' in base_template
 assert 'column-gap:12px' in base_template
