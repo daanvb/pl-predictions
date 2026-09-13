@@ -474,9 +474,9 @@ input{
 }
 .exact-dp-border-trail{
   position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
+  inset:-2px;
+  width:calc(100% + 4px);
+  height:calc(100% + 4px);
   z-index:2;
   pointer-events:none;
   overflow:visible
@@ -488,6 +488,10 @@ input{
   vector-effect:non-scaling-stroke;
   stroke-linecap:round;
   stroke-dasharray:18 82;
+}
+.exact-dp-border-trail .exact-dp-border-tail{
+  stroke:#fbbf24;
+  stroke-opacity:.32;
 }
 .pick-grid.exact-score-dp-row > :not(.exact-dp-border-trail){
   position:relative;
@@ -2672,16 +2676,19 @@ Preddies v{{ app_version }}
 (function () {
   function sizeExactDpTrail(trail) {
     const card = trail.closest('.exact-score-dp-row');
-    const border = trail.querySelector('rect');
-    if (!card || !border || !card.clientWidth || !card.clientHeight) return;
-    const width = card.clientWidth;
-    const height = card.clientHeight;
+    const borders = trail.querySelectorAll('rect');
+    const bounds = trail.getBoundingClientRect();
+    if (!card || !borders.length || !bounds.width || !bounds.height) return;
+    const width = Math.round(bounds.width);
+    const height = Math.round(bounds.height);
     trail.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    border.setAttribute('x', '0');
-    border.setAttribute('y', '0');
-    border.setAttribute('width', String(width));
-    border.setAttribute('height', String(height));
-    border.setAttribute('rx', '10');
+    borders.forEach(function (border) {
+      border.setAttribute('x', '1');
+      border.setAttribute('y', '1');
+      border.setAttribute('width', String(Math.max(1, width - 2)));
+      border.setAttribute('height', String(Math.max(1, height - 2)));
+      border.setAttribute('rx', '10');
+    });
   }
   const trails = Array.from(document.querySelectorAll('.exact-dp-border-trail'));
   trails.forEach(sizeExactDpTrail);
