@@ -1223,11 +1223,12 @@ html[data-theme="dark"] .tv-logo-dark {
   text-decoration:none
 }
 .dashboard-menu-drawer nav a .menu-nav-label{
-  display:inline-flex;
+  display:grid;
+  grid-template-columns:24px minmax(0,1fr);
   align-items:center;
-  gap:4px;
+  column-gap:6px;
   min-height:24px;
-  line-height:1.15
+  line-height:24px
 }
 .dashboard-menu-drawer nav a .menu-nav-emoji{
   display:inline-grid;
@@ -1236,13 +1237,6 @@ html[data-theme="dark"] .tv-logo-dark {
   height:24px;
   flex:0 0 24px;
   line-height:1
-}
-.dashboard-menu-drawer nav a .competition-icon,
-.dashboard-menu-drawer nav a .menu-nav-emoji{
-  transform:translateY(1px)
-}
-.dashboard-menu-drawer nav a .competition-icon img{
-  transform:translateY(1px)
 }
 body.dashboard-menu-open{overflow:hidden}
 .competition-icon{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:900;line-height:1;vertical-align:middle;flex:0 0 24px}
@@ -1255,6 +1249,11 @@ body.dashboard-menu-open{overflow:hidden}
 .competition-icon-h2h img{transform:scale(.94) scaleX(.82)}
 .player-title-icon{width:1.3rem;height:1.3rem;flex-basis:1.3rem;margin-right:1px;vertical-align:-.32rem}
 .player-title-icon img{width:1.3rem;height:1.3rem}
+/* Player title trophies share the Premier League trophy's visual height and baseline. */
+.player-title-icon.competition-icon-cl img,
+.player-title-icon.competition-icon-h2h img{transform:scaleX(.9)}
+.player-title-icons{display:inline-flex;align-items:center;gap:2px;margin-right:2px;vertical-align:-.32rem}
+.player-title-icons .player-title-icon{margin-right:0;vertical-align:0}
 .player-name-mobile{display:none}
 .live-table-card .leader-row{grid-template-columns:38px 22px minmax(0,1fr) 72px;column-gap:2px;row-gap:0}
 .live-table-card .leader-row > .rank{grid-column:1;grid-row:1;align-self:center}
