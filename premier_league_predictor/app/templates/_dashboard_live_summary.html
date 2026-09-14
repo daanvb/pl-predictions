@@ -5,7 +5,7 @@
 <h2><span class="competition-icon {{ "competition-icon-cl" if is_champions else "competition-icon-pl" }} live-table-title-icon" aria-hidden="true"><img src="/static/{{ "champions-league-trophy.png" if is_champions else "premier-league-trophy.png" }}" alt=""></span> {% if is_champions and history_view %}Champions League Round Table{% else %}Live {{ "Champions League" if is_champions else "Gameweek" }} Table{% endif %}</h2>
 {% for player in live_table %}
 <div class="leader-row">
-<div class="rank">{% if player.position == 1 %}🥇{% elif player.position == 2 %}🥈{% elif player.position == 3 %}🥉{% elif player.position == 4 %}💩{% else %}{{ player.position }}{% endif %}</div>
+<div class="rank">{% if player.position == 1 %}🥇{% elif player.position == 2 %}🥈{% elif player.position == 3 %}🥉{% elif player.position == 4 %}🥄{% else %}{{ player.position }}{% endif %}</div>
 <div>{% if player.position_change > 0 %}<span class="position-move position-up">▲{% if player.position_change > 1 %}{{ player.position_change }}{% endif %}</span>{% elif player.position_change < 0 %}<span class="position-move position-down">▼{% if player.position_change < -1 %}{{ -player.position_change }}{% endif %}</span>{% else %}<span class="position-move position-flat">–</span>{% endif %}</div>
 <strong class="live-player-name">{{ display_player_name(player.name) }}</strong>
 {% if gameweek_progress %}<div class="small live-player-progress">{{ gameweek_progress }}</div>{% endif %}

@@ -1760,7 +1760,7 @@ signal_positions = [
 results_message = predictor.signal_results_message(
     1, signal_positions, signal_positions
 )
-assert "💩 Player 4" in results_message
+assert "🥄 Player 4" in results_message
 assert "4. Player 4" not in results_message
 assert results_message.count("🥇 Player 1") == 2
 assert results_message.count("🥈 Player 2") == 2

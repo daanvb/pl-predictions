@@ -8016,7 +8016,7 @@ def signal_results_message(matchday, gw_table, overall_table):
             "🥇" if index == 1
             else "🥈" if index == 2
             else "🥉" if index == 3
-            else "💩" if index == 4
+            else "🥄" if index == 4
             else f"{index}."
         )
         lines.append(
@@ -8034,7 +8034,7 @@ def signal_results_message(matchday, gw_table, overall_table):
             "🥇" if index == 1
             else "🥈" if index == 2
             else "🥉" if index == 3
-            else "💩" if index == 4
+            else "🥄" if index == 4
             else f"{index}."
         )
         lines.append(

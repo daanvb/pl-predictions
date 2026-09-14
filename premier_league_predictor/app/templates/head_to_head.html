@@ -5,7 +5,7 @@
 <div style="font-size:14px;font-weight:800;color:#94a3b8">{% if cup %}PUBLIC TEST RUN{% else %}COMING SOON{% endif %}</div>
 <h1><span class="competition-icon competition-icon-h2h"><img src="/static/fa-cup-trophy.png" alt=""></span> MCFG Cockfight Cup</h1>
 </div>
-<div class="nav"><a href="/dashboard">← Dashboard</a></div>
+<div class="nav"><a href="/dashboard">← Dashboard</a><a href="/head-to-head/details">ℹ️ Competition Details</a></div>
 {% if cup %}
 <div class="card" style="text-align:center;padding:24px"><div class="small">PUBLIC TEST RUN</div><h2>⚔️ Cockfight Cup</h2><p class="muted">This is a public trial using each player’s complete Premier League gameweek score, including Double Points.</p><p class="small" style="margin-bottom:0">This notice and the opening pairings were published together for Premier League GW {{ cup.trial.start_matchday }}. They settle when that gameweek is complete. The trial will be removed after testing; Premier League predictions and results are unaffected.</p></div>
 <div class="card"><h2>📊 League table</h2><div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th><th>P</th><th>GD</th><th>GW pts</th></tr></thead><tbody>{% for row in cup.standings %}<tr><td>{{ row.position }}</td><td>{{ row.name }}</td><td>{{ row.points }}</td><td>{{ row.for - row.against }}</td><td>{{ row.for }}</td></tr>{% endfor %}</tbody></table></div></div>
@@ -20,6 +20,4 @@
 {% if scheduled_matchday %}<p class="small" style="text-align:center">Test trial scheduled for Premier League GW {{ scheduled_matchday }}. Its public notice, fixtures and Signal announcement will publish when that gameweek opens{% if scheduled_opens_label %} at {{ scheduled_opens_label }}{% endif %}.</p>{% else %}<form method="post" action="/admin/cockfight-cup/trial/start" style="text-align:center;margin:14px 0"><button class="primary" type="submit">Schedule public trial for next PL gameweek</button></form>{% endif %}
 {% endif %}
 {% endif %}
-
-<div class="nav"><a href="/head-to-head/details">ℹ️ Competition Details</a></div>
 {% endblock %}
