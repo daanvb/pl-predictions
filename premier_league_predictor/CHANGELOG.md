@@ -2,6 +2,10 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.24] - 2026-09-14
+### Fixed
+- Align all navigation trophy and emoji icons with their menu labels.
+
 ## [1.8.23] - 2026-09-13
 ### Added
 - Pull down from the top of a page on touch devices to refresh the current view.
