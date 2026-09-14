@@ -7,15 +7,18 @@
 </div>
 <div class="nav"><a href="/dashboard">← Dashboard</a></div>
 {% if cup %}
-<div class="card" style="text-align:center;padding:24px"><div class="small">PUBLIC TEST RUN</div><h2>⚔️ Cockfight Cup</h2><p class="muted" style="margin-bottom:0">Each match uses the players’ complete Premier League gameweek score, including Double Points.</p></div>
+<div class="card" style="text-align:center;padding:24px"><div class="small">PUBLIC TEST RUN</div><h2>⚔️ Cockfight Cup</h2><p class="muted">This is a public trial using each player’s complete Premier League gameweek score, including Double Points.</p><p class="small" style="margin-bottom:0">This notice and the opening pairings were published together for Premier League GW {{ cup.trial.start_matchday }}. They settle when that gameweek is complete. The trial will be removed after testing; Premier League predictions and results are unaffected.</p></div>
 <div class="card"><h2>📊 League table</h2><div class="table-wrap"><table><thead><tr><th>#</th><th>Player</th><th>P</th><th>GD</th><th>GW pts</th></tr></thead><tbody>{% for row in cup.standings %}<tr><td>{{ row.position }}</td><td>{{ row.name }}</td><td>{{ row.points }}</td><td>{{ row.for - row.against }}</td><td>{{ row.for }}</td></tr>{% endfor %}</tbody></table></div></div>
 <div class="card"><h2>📅 Fixtures & results</h2>{% for match in cup.matches %}<div class="fixture" style="margin:8px 0"><span class="small">{% if match.stage == 'FINAL' %}FINAL · {% else %}GW {{ match.matchday }} · {% endif %}{{ match.status }}</span><strong>{{ match.home_name or 'TBC' }} {% if match.status == 'FINISHED' %}{{ match.home_score }}–{{ match.away_score }}{% else %}v{% endif %} {{ match.away_name or 'TBC' }}</strong>{% if match.stage == 'FINAL' and match.status == 'FINISHED' and match.winner_name %}<span class="small">Winner: {{ match.winner_name }}{% if match.home_score == match.away_score %} (league position tie-break){% endif %}</span>{% endif %}</div>{% endfor %}</div>
+{% if is_admin and cup.trial.status == 'COMPLETE' %}<form method="post" action="/admin/cockfight-cup/trial/delete" style="text-align:center;margin:14px 0"><button class="secondary" type="submit">Remove completed trial data</button><p class="small">Removes Cup trial data only. Premier League data is retained.</p></form>{% endif %}
 {% else %}
 <div class="card" style="text-align:center;padding:34px 24px">
 <img src="/static/fa-cup-trophy.png" alt="MCFG Cockfight Cup trophy" style="width:78px;height:78px;object-fit:contain;transform:scale(.96) scaleX(.84);margin-bottom:12px">
 <p class="muted" style="margin-bottom:0">Fixtures, results and the league table will appear here when the competition launches.</p>
 </div>
-{% if is_admin %}<form method="post" action="/admin/cockfight-cup/trial/start" style="text-align:center;margin:14px 0"><button class="primary" type="submit">Start public trial from next PL gameweek</button></form>{% endif %}
+{% if is_admin %}
+{% if scheduled_matchday %}<p class="small" style="text-align:center">Test trial scheduled for Premier League GW {{ scheduled_matchday }}. Its public notice, fixtures and Signal announcement will publish when that gameweek opens{% if scheduled_opens_label %} at {{ scheduled_opens_label }}{% endif %}.</p>{% else %}<form method="post" action="/admin/cockfight-cup/trial/start" style="text-align:center;margin:14px 0"><button class="primary" type="submit">Schedule public trial for next PL gameweek</button></form>{% endif %}
+{% endif %}
 {% endif %}
 
 <div class="nav"><a href="/head-to-head/details">ℹ️ Competition Details</a></div>

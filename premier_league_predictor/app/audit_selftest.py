@@ -2582,6 +2582,7 @@ assert "competition_has_live_fixtures" in inspect.getsource(predictor.champions_
 assert "round_in_progress = not history_view and competition_round_in_progress(fixtures)" in inspect.getsource(predictor.champions_league)
 assert 'requested_matchday = request.args.get("round", type=int)' in inspect.getsource(predictor.champions_league)
 assert "champions_rounds=champions_rounds" in inspect.getsource(predictor.history)
+assert "history_competition=history_competition" in inspect.getsource(predictor.history)
 assert 'archive_completed_fixture_history(conn, "champions_league")' in inspect.getsource(predictor.import_champions_league_matches)
 assert "competition_stage" in inspect.getsource(predictor.import_champions_league_matches)
 assert "DELETE FROM predictions" in inspect.getsource(predictor.activate_champions_league_knockout_competition)
@@ -3888,7 +3889,7 @@ for suffix in ("Alpha", "Bravo", "Charlie", "Delta"):
         (f"Cup {suffix}", f"cup-{suffix.casefold()}"),
     )
     cup_players.append(cursor.lastrowid)
-for matchday in range(10, 17):
+for matchday in range(9, 17):
     fixture_id = cup_fixture_base - matchday
     cup_conn.execute(
         """INSERT INTO fixtures(id, season, matchday, utc_date, status,
@@ -3908,16 +3909,51 @@ original_cup_season = predictor.SEASON
 original_cup_now = predictor.now_utc
 try:
     predictor.SEASON = cup_season
-    predictor.now_utc = lambda: datetime(2096, 8, 1, tzinfo=timezone.utc)
-    trial_id = predictor.create_cockfight_cup_trial(cup_conn, cup_players)
+    # The public trial is armed in advance but does not create fixtures or
+    # announce itself until the normal next-gameweek 09:00 UK boundary.
+    predictor.now_utc = lambda: datetime(2096, 9, 10, 7, 59, tzinfo=timezone.utc)
+    scheduled_matchday, opens_at = predictor.schedule_cockfight_cup_trial(
+        cup_conn, cup_players
+    )
+    assert scheduled_matchday == 10
+    assert opens_at.hour == 9
+    assert predictor.start_scheduled_cockfight_cup_trial(cup_conn) is None
+    assert predictor.cockfight_cup_trial(cup_conn) is None
+    predictor.now_utc = lambda: opens_at.astimezone(timezone.utc)
+    trial_id = predictor.start_scheduled_cockfight_cup_trial(cup_conn)
+    assert trial_id is not None
+    assert predictor.cockfight_cup_trial_scheduled_matchday(cup_conn) is None
+    trial = predictor.cockfight_cup_trial(cup_conn)
+    cup_conn.commit()
+    assert "Test Run Now Open" in predictor.cockfight_cup_open_signal_message(trial)
+    assert "GW 10" in predictor.cockfight_cup_open_signal_message(trial)
+    original_cup_signal_settings = predictor.signal_settings
+    original_cup_send_signal = predictor.send_signal_message
+    sent_cup_messages = []
+    try:
+        predictor.signal_settings = lambda: {"enabled": True, "notify_gw_open": True}
+        predictor.send_signal_message = lambda message: sent_cup_messages.append(message)
+        assert predictor.send_cockfight_cup_open_signal(trial) is True
+        assert len(sent_cup_messages) == 1
+        assert predictor.send_cockfight_cup_open_signal(trial) is False
+    finally:
+        predictor.signal_settings = original_cup_signal_settings
+        predictor.send_signal_message = original_cup_send_signal
     first_round = cup_conn.execute(
         """SELECT home_player_id, away_player_id FROM cockfight_cup_matches
            WHERE trial_id = ? AND stage = 'LEAGUE' AND matchday = 10
            ORDER BY id""", (trial_id,)
     ).fetchall()
-    # Alpha/Bravo/Charlie/Delta are the tied PL ordering in this audit.
+    seeded_players = [
+        row["id"] for row in predictor.overall_table_at_matchday(
+            cup_conn, 9, "premier_league"
+        ) if row["id"] in set(cup_players)
+    ]
+    # The public opening must always be 2nd v 4th and 1st v 3rd in the
+    # preceding completed Premier League table, including its tie-breaks.
     assert [(row["home_player_id"], row["away_player_id"]) for row in first_round] == [
-        (cup_players[1], cup_players[3]), (cup_players[0], cup_players[2]),
+        (seeded_players[1], seeded_players[3]),
+        (seeded_players[0], seeded_players[2]),
     ]
     predictor.refresh_points(cup_conn)
     assert predictor.settle_cockfight_cup_trial(cup_conn) == 12
@@ -3931,9 +3967,27 @@ try:
     assert cup_conn.execute(
         "SELECT winner_name FROM competition_winners WHERE competition = 'head_to_head' AND season_label = '2096/97'"
     ).fetchone() is not None
+    assert predictor.delete_completed_cockfight_cup_trial(cup_conn) == trial_id
+    assert predictor.cockfight_cup_trial(cup_conn) is None
+    assert cup_conn.execute(
+        "SELECT COUNT(*) FROM cockfight_cup_matches WHERE trial_id = ?", (trial_id,)
+    ).fetchone()[0] == 0
+    # The trial cleanup must never delete the Premier League data it read.
+    assert cup_conn.execute(
+        "SELECT COUNT(*) FROM predictions WHERE fixture_id >= ? AND fixture_id <= ?",
+        (cup_fixture_base - 16, cup_fixture_base - 9),
+    ).fetchone()[0] == len(cup_players) * 8
 finally:
     predictor.SEASON = original_cup_season
     predictor.now_utc = original_cup_now
+    cup_conn.execute(
+        "DELETE FROM settings WHERE key IN (?, ?)",
+        (
+            f"cockfight_cup_trial_scheduled_matchday_{cup_season}",
+            f"cockfight_cup_trial_scheduled_players_{cup_season}",
+        ),
+    )
+    cup_conn.execute("DELETE FROM settings WHERE key = 'signal_last_cockfight_cup_open'")
     cup_conn.execute("DELETE FROM cockfight_cup_matches WHERE trial_id IN (SELECT id FROM cockfight_cup_trials WHERE season = ?)", (cup_season,))
     cup_conn.execute("DELETE FROM cockfight_cup_trials WHERE season = ?", (cup_season,))
     cup_conn.execute("DELETE FROM competition_winners WHERE competition='head_to_head' AND season_label='2096/97'")
@@ -3941,8 +3995,8 @@ finally:
         "DELETE FROM prediction_audit_events WHERE player_id IN (?, ?, ?, ?)",
         tuple(cup_players),
     )
-    cup_conn.execute("DELETE FROM predictions WHERE fixture_id >= ? AND fixture_id <= ?", (cup_fixture_base - 16, cup_fixture_base - 10))
-    cup_conn.execute("DELETE FROM fixtures WHERE id >= ? AND id <= ?", (cup_fixture_base - 16, cup_fixture_base - 10))
+    cup_conn.execute("DELETE FROM predictions WHERE fixture_id >= ? AND fixture_id <= ?", (cup_fixture_base - 16, cup_fixture_base - 9))
+    cup_conn.execute("DELETE FROM fixtures WHERE id >= ? AND id <= ?", (cup_fixture_base - 16, cup_fixture_base - 9))
     assert cup_conn.execute(
         """SELECT COUNT(*) FROM cockfight_cup_matches
            WHERE home_player_id IN (?, ?, ?, ?) OR away_player_id IN (?, ?, ?, ?)
@@ -4040,7 +4094,7 @@ try:
         with activation_client.session_transaction() as activation_session:
             activation_session["player_id"] = activation_player
             activation_session["player_name"] = "Audit Player"
-        history_response = activation_client.get("/history")
+        history_response = activation_client.get("/history?competition=champions_league")
         assert history_response.status_code == 200
         assert b"Champions League Round 1" in history_response.data
         assert b"Round 0" not in history_response.data

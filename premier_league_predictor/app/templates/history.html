@@ -5,14 +5,16 @@
 <div class="compact-page history-page">
 
 <div class="hero">
-<h1>🕘 Gameweek History</h1>
-<p>Revisit predictions, results and gameweek tables.</p>
+<h1>{% if history_competition == 'champions_league' %}🏆 Champions League History{% else %}🕘 Gameweek History{% endif %}</h1>
+<p>{% if history_competition == 'champions_league' %}Revisit Champions League trial predictions and round results.{% else %}Revisit Premier League predictions, results and gameweek tables.{% endif %}</p>
 </div>
 
 <div class="nav">
 <a href="/dashboard">← Dashboard</a>
+{% if history_competition == 'champions_league' %}<a href="/history">⚽ Premier League History</a>{% else %}<a href="/history?competition=champions_league">🏆 Champions League History</a>{% endif %}
 </div>
 
+{% if history_competition == 'premier_league' %}
 <div class="card">
 <h2><span class="competition-icon competition-icon-pl"><img src="/static/premier-league-trophy.png" alt=""></span> Premier League</h2>
 {% for gw in gameweeks %}
@@ -32,9 +34,12 @@
 <p class="muted">No gameweeks available yet.</p>
 {% endfor %}
 </div>
+{% endif %}
 
+{% if history_competition == 'champions_league' %}
 <div class="card">
 <h2><span class="competition-icon competition-icon-cl"><img src="/static/champions-league-trophy.png" alt=""></span> Champions League</h2>
+<p class="small">This trial history is removed when the Champions League player competition moves to the knockout stage.</p>
 {% for round in champions_rounds %}
 <div class="fixture">
 <div class="history-row">
@@ -52,6 +57,7 @@
 <p class="muted">No Champions League rounds available yet.</p>
 {% endfor %}
 </div>
+{% endif %}
 
 </div>
 

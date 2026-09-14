@@ -77,7 +77,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.24"
+APP_VERSION = "1.8.25"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -6624,10 +6624,16 @@ def next_api_refresh_delay():
         (SEASON,),
     ).fetchall()
 
-    conn.close()
-
     now = now_utc()
     next_wake = None
+
+    # A Cup trial that has been armed by an admin must go public on the same
+    # 09:00 UK gameweek boundary as the PL dashboard and opening Signal post.
+    cup_opens_at = cockfight_cup_trial_scheduled_open_at(conn)
+    if cup_opens_at and now < cup_opens_at.astimezone(timezone.utc):
+        next_wake = (cup_opens_at.astimezone(timezone.utc) - now).total_seconds()
+
+    conn.close()
 
     for fixture in fixtures:
         status = fixture["status"]
@@ -6918,9 +6924,18 @@ def api_refresh_worker():
         try:
             cup_conn = get_db()
             try:
+                started_cup_trial = start_scheduled_cockfight_cup_trial(cup_conn)
                 refresh_points(cup_conn)
                 settled_cup_matches = settle_cockfight_cup_trial(cup_conn)
                 cup_conn.commit()
+                trial = cockfight_cup_trial(cup_conn)
+                if trial:
+                    send_cockfight_cup_open_signal(trial)
+                if started_cup_trial:
+                    print(
+                        f"[cockfight-cup] Published public trial {started_cup_trial}",
+                        flush=True,
+                    )
                 if settled_cup_matches:
                     print(f"[cockfight-cup] Settled {settled_cup_matches} match(es)", flush=True)
             finally:
@@ -8613,6 +8628,69 @@ def cockfight_cup_next_matchday(conn):
     return row["matchday"] if row else None
 
 
+def cockfight_cup_trial_schedule_key():
+    return f"cockfight_cup_trial_scheduled_matchday_{SEASON}"
+
+
+def cockfight_cup_trial_scheduled_players_key():
+    return f"cockfight_cup_trial_scheduled_players_{SEASON}"
+
+
+def cockfight_cup_trial_scheduled_matchday(conn):
+    row = conn.execute(
+        "SELECT value FROM settings WHERE key = ?",
+        (cockfight_cup_trial_schedule_key(),),
+    ).fetchone()
+    try:
+        return int(row["value"]) if row and row["value"] else None
+    except (TypeError, ValueError):
+        return None
+
+
+def cockfight_cup_trial_scheduled_open_at(conn):
+    """Return the normal PL opening time for an armed Cup trial."""
+    if cockfight_cup_trial(conn):
+        return None
+    matchday = cockfight_cup_trial_scheduled_matchday(conn)
+    return gameweek_open_at(conn, matchday) if matchday is not None else None
+
+
+def cockfight_cup_trial_scheduled_players(conn):
+    row = conn.execute(
+        "SELECT value FROM settings WHERE key = ?",
+        (cockfight_cup_trial_scheduled_players_key(),),
+    ).fetchone()
+    try:
+        player_ids = json.loads(row["value"]) if row and row["value"] else None
+        return player_ids if isinstance(player_ids, list) else None
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def schedule_cockfight_cup_trial(conn, player_ids=None):
+    """Arm the public trial without exposing its fixtures before GW opening."""
+    if cockfight_cup_trial(conn):
+        raise ValueError("A Cockfight Cup trial already exists for this season.")
+    matchday = cockfight_cup_next_matchday(conn)
+    if matchday is None:
+        raise ValueError("No upcoming Premier League gameweek is available yet.")
+    if player_ids is None:
+        player_ids = [
+            row["id"] for row in conn.execute(
+                "SELECT id FROM players ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+        ]
+    conn.execute(
+        "INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)",
+        (cockfight_cup_trial_schedule_key(), str(matchday)),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)",
+        (cockfight_cup_trial_scheduled_players_key(), json.dumps(player_ids)),
+    )
+    return matchday, gameweek_open_at(conn, matchday)
+
+
 def cockfight_cup_round_robin(players):
     """Create balanced home/away pairings for an even number of entrants."""
     rotation = list(players)
@@ -8644,10 +8722,10 @@ def cockfight_cup_trial_rounds(conn, start_matchday, players):
     return cockfight_cup_round_robin(players)
 
 
-def create_cockfight_cup_trial(conn, player_ids=None):
+def create_cockfight_cup_trial(conn, player_ids=None, start_matchday=None):
     if cockfight_cup_trial(conn):
         raise ValueError("A Cockfight Cup trial already exists for this season.")
-    start_matchday = cockfight_cup_next_matchday(conn)
+    start_matchday = start_matchday or cockfight_cup_next_matchday(conn)
     if player_ids is None:
         players = conn.execute("SELECT id FROM players ORDER BY name COLLATE NOCASE").fetchall()
     else:
@@ -8682,6 +8760,60 @@ def create_cockfight_cup_trial(conn, player_ids=None):
                    ) VALUES (?, 'LEAGUE', ?, ?, ?, ?)""",
                 (trial_id, round_number * 100 + match_index, matchday, home_id, away_id),
             )
+    return trial_id
+
+
+def cockfight_cup_open_signal_message(trial):
+    return "\n".join([
+        "🏆 MCFG Cockfight Cup — Test Run Now Open",
+        "",
+        f"The public test begins with Premier League GW {trial['start_matchday']}.",
+        "Cup fixtures use each player’s full Premier League gameweek score, including Double Points.",
+        "",
+        "https://predictions.battleship.live/head-to-head",
+    ])
+
+
+def send_cockfight_cup_open_signal(trial):
+    """Send once, after the public Cup fixtures have been committed."""
+    settings = signal_settings()
+    if not settings["enabled"] or not settings["notify_gw_open"]:
+        return False
+    marker = f"{SEASON}:{trial['id']}"
+    if get_setting("signal_last_cockfight_cup_open") == marker:
+        return False
+    try:
+        send_signal_message(cockfight_cup_open_signal_message(trial))
+    except Exception as exc:
+        set_setting("cockfight_cup_open_signal_error", str(exc))
+        return False
+    set_setting("cockfight_cup_open_signal_error", "")
+    set_setting("signal_last_cockfight_cup_open", marker)
+    return True
+
+
+def start_scheduled_cockfight_cup_trial(conn):
+    """Publish an armed trial once its PL gameweek is officially open."""
+    if cockfight_cup_trial(conn):
+        return None
+    start_matchday = cockfight_cup_trial_scheduled_matchday(conn)
+    if start_matchday is None:
+        return None
+    opens_at = gameweek_open_at(conn, start_matchday)
+    if opens_at is not None and now_utc() < opens_at.astimezone(timezone.utc):
+        return None
+    trial_id = create_cockfight_cup_trial(
+        conn,
+        player_ids=cockfight_cup_trial_scheduled_players(conn),
+        start_matchday=start_matchday,
+    )
+    conn.execute(
+        "DELETE FROM settings WHERE key = ?", (cockfight_cup_trial_schedule_key(),)
+    )
+    conn.execute(
+        "DELETE FROM settings WHERE key = ?",
+        (cockfight_cup_trial_scheduled_players_key(),),
+    )
     return trial_id
 
 
@@ -8815,6 +8947,23 @@ def cockfight_cup_context(conn, trial):
                               LEFT JOIN players wp ON wp.id=cm.winner_player_id
                               WHERE cm.trial_id=? ORDER BY cm.matchday, cm.id""", (trial["id"],)).fetchall()
     return {"trial": dict(trial), "matches": matches, "standings": cockfight_cup_standings(conn, trial["id"])}
+
+
+def delete_completed_cockfight_cup_trial(conn):
+    """Remove only the completed public trial, never its PL source data."""
+    trial = cockfight_cup_trial(conn)
+    if not trial:
+        raise ValueError("There is no Cockfight Cup trial to remove.")
+    if trial["status"] != "COMPLETE":
+        raise ValueError("The Cockfight Cup trial can only be removed after it is complete.")
+    trial_id = trial["id"]
+    conn.execute("DELETE FROM cockfight_cup_matches WHERE trial_id = ?", (trial_id,))
+    conn.execute("DELETE FROM cockfight_cup_trials WHERE id = ?", (trial_id,))
+    conn.execute(
+        "DELETE FROM competition_winners WHERE competition = 'head_to_head' AND season_label = ?",
+        (season_label(SEASON),),
+    )
+    return trial_id
 
 @app.route("/side-events")
 def side_events():
@@ -9030,9 +9179,20 @@ def head_to_head():
         conn.commit()
         trial = cockfight_cup_trial(conn)
         context = cockfight_cup_context(conn, trial) if trial else None
+        scheduled_matchday = cockfight_cup_trial_scheduled_matchday(conn)
+        scheduled_opens_at = cockfight_cup_trial_scheduled_open_at(conn)
+        scheduled_opens_label = (
+            local_datetime(scheduled_opens_at.isoformat())
+            if scheduled_opens_at else None
+        )
     finally:
         conn.close()
-    return render_template("head_to_head.html", cup=context)
+    return render_template(
+        "head_to_head.html",
+        cup=context,
+        scheduled_matchday=scheduled_matchday,
+        scheduled_opens_label=scheduled_opens_label,
+    )
 
 
 @app.route("/admin/cockfight-cup/trial/start", methods=["POST"])
@@ -9041,9 +9201,38 @@ def start_cockfight_cup_trial():
         return redirect("/")
     conn = get_db()
     try:
-        trial_id = create_cockfight_cup_trial(conn)
+        matchday, opens_at = schedule_cockfight_cup_trial(conn)
+        trial_id = start_scheduled_cockfight_cup_trial(conn)
         conn.commit()
-        flash(f"Cockfight Cup trial {trial_id} starts with the next Premier League gameweek.", "success")
+        if trial_id:
+            trial = cockfight_cup_trial(conn)
+            send_cockfight_cup_open_signal(trial)
+            flash(
+                f"Cockfight Cup trial {trial_id} is now live with Premier League GW {matchday}.",
+                "success",
+            )
+        else:
+            opening = local_datetime(opens_at.isoformat()) if opens_at else "the next Premier League gameweek opening"
+            flash(
+                f"Cockfight Cup test trial scheduled for GW {matchday}. Its public notice and fixtures will appear at {opening}.",
+                "success",
+            )
+    except ValueError as exc:
+        flash(str(exc), "error")
+    finally:
+        conn.close()
+    return redirect("/head-to-head")
+
+
+@app.route("/admin/cockfight-cup/trial/delete", methods=["POST"])
+def delete_cockfight_cup_trial():
+    if not is_admin():
+        return redirect("/")
+    conn = get_db()
+    try:
+        delete_completed_cockfight_cup_trial(conn)
+        conn.commit()
+        flash("Completed Cockfight Cup trial data removed. Premier League data is unchanged.", "success")
     except ValueError as exc:
         flash(str(exc), "error")
     finally:
@@ -10494,6 +10683,10 @@ def history():
     if not logged_in():
         return redirect("/")
 
+    history_competition = request.args.get("competition")
+    if history_competition not in ("premier_league", "champions_league"):
+        history_competition = "premier_league"
+
     conn = get_db()
 
     gameweeks = conn.execute(
@@ -10541,6 +10734,7 @@ def history():
         "history.html",
         gameweeks=gameweeks,
         champions_rounds=champions_rounds,
+        history_competition=history_competition,
     )
 
 

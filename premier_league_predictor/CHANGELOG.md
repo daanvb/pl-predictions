@@ -2,6 +2,15 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.25] - 2026-09-14
+### Added
+- Schedule the public MCFG Cockfight Cup test trial to open with the next Premier League gameweek, including a separate one-off Signal announcement.
+- Add a separate Champions League history view under Previous GW History.
+- Provide an admin-only action to remove completed Cup trial data while retaining Premier League predictions and results.
+
+### Changed
+- Capture the Cup player list when the trial is scheduled, so the opening table seeds and fixtures are stable when it goes public.
+
 ## [1.8.24] - 2026-09-14
 ### Fixed
 - Align all navigation trophy and emoji icons with their menu labels.
