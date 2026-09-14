@@ -1449,7 +1449,7 @@ assert b"Correct Draws, then Correct Scores, then Correct Winners" in leaderboar
 stats_response = client.get("/stats")
 assert b"PREDICTIONS SCORED" not in stats_response.data
 assert b"Your Stats" in stats_response.data
-assert b"BEST GAMEWEEK" in stats_response.data
+assert b"HIGHEST GW SCORE" in stats_response.data
 assert b"CURRENT LEADER" not in stats_response.data
 league_stats_response = client.get("/league-stats")
 assert league_stats_response.status_code == 200
@@ -1765,6 +1765,80 @@ assert "4. Player 4" not in results_message
 assert results_message.count("🥇 Player 1") == 2
 assert results_message.count("🥈 Player 2") == 2
 assert results_message.count("🥉 Player 3") == 2
+
+# Premier League Signal summaries must never include Champions League points,
+# even when the two competitions use the same round number.
+conn = database.get_db()
+signal_test_player = conn.execute(
+    "SELECT id, name FROM players ORDER BY id LIMIT 1"
+).fetchone()
+signal_test_matchday = 97
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, competition, matchday, utc_date, status,
+           home_team, away_team, home_score, away_score
+       ) VALUES (-970001, ?, 'premier_league', ?, ?, 'FINISHED',
+                 'Signal PL Home', 'Signal PL Away', 2, 1)""",
+    (predictor.SEASON, signal_test_matchday, datetime.now(timezone.utc).isoformat()),
+)
+conn.execute(
+    """INSERT INTO fixtures(
+           id, season, competition, matchday, utc_date, status,
+           home_team, away_team, home_score, away_score
+       ) VALUES (-970002, ?, 'champions_league', ?, ?, 'FINISHED',
+                 'Signal CL Home', 'Signal CL Away', 3, 1)""",
+    (predictor.SEASON, signal_test_matchday, datetime.now(timezone.utc).isoformat()),
+)
+conn.execute(
+    """INSERT INTO predictions(player_id, fixture_id, home_score, away_score, dp)
+       VALUES (?, -970001, 2, 1, 0)""",
+    (signal_test_player["id"],),
+)
+conn.execute(
+    """INSERT INTO predictions(player_id, fixture_id, home_score, away_score, dp)
+       VALUES (?, -970002, 3, 1, 1)""",
+    (signal_test_player["id"],),
+)
+conn.commit()
+signal_gw_rows = {
+    row["name"]: row["points"]
+    for row in predictor.signal_gw_table(conn, signal_test_matchday)
+}
+assert signal_gw_rows[signal_test_player["name"]] == 5
+expected_pl_overall = {
+    row["name"]: row["points"]
+    for row in predictor.overall_table_at_matchday(
+        conn, signal_test_matchday, "premier_league"
+    )
+}
+signal_overall = {
+    row["name"]: row["points"]
+    for row in predictor.signal_overall_table(conn, signal_test_matchday)
+}
+assert signal_overall == expected_pl_overall
+original_correction_matchday = predictor.PL_RESULTS_CORRECTION_MATCHDAY
+original_send_signal_message = predictor.send_signal_message
+correction_key = f"signal_pl_results_correction_{predictor.SEASON}_gw{signal_test_matchday}"
+try:
+    predictor.PL_RESULTS_CORRECTION_MATCHDAY = signal_test_matchday
+    predictor.set_setting(correction_key, "")
+    corrected_messages = []
+    predictor.send_signal_message = corrected_messages.append
+    assert predictor.resend_corrected_premier_league_results(
+        conn, {"notify_results": True}
+    )
+    assert len(corrected_messages) == 1
+    assert corrected_messages[0].startswith(
+        f"🏆 GW{signal_test_matchday} Results (corrected)"
+    )
+    assert not predictor.resend_corrected_premier_league_results(
+        conn, {"notify_results": True}
+    )
+finally:
+    predictor.PL_RESULTS_CORRECTION_MATCHDAY = original_correction_matchday
+    predictor.send_signal_message = original_send_signal_message
+    predictor.set_setting(correction_key, "")
+conn.close()
 
 # Completed gameweeks opened from History no longer show Match Stats.
 past_predictions_response = client.get("/predict/1?history=1")
@@ -2461,7 +2535,7 @@ with open(
     stats_template = handle.read()
 
 assert "DPs USED" not in stats_template
-assert "BEST GAMEWEEK" in stats_template
+assert "HIGHEST GW SCORE" in stats_template
 assert "CURRENT LEADER" not in stats_template
 assert "CORRECT SCORES WITH DP" in stats_template
 assert "EXACT SCORES WITH DP" not in stats_template

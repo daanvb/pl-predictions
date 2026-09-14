@@ -77,7 +77,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.26"
+APP_VERSION = "1.8.27"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -7871,8 +7871,7 @@ def signal_gw_table(conn, matchday):
             COALESCE(
                 SUM(
                     CASE
-                    WHEN f.season = ?
-                     AND f.matchday = ?
+                    WHEN f.status = 'FINISHED'
                     THEN p.points
                     ELSE 0
                     END
@@ -7880,22 +7879,19 @@ def signal_gw_table(conn, matchday):
                 0
             ) AS points,
             COALESCE(SUM(CASE
-                WHEN f.season = ? AND f.matchday = ?
-                 AND f.status = 'FINISHED'
+                WHEN f.status = 'FINISHED'
                  AND p.home_score = f.home_score
                  AND p.away_score = f.away_score
                  AND f.home_score = f.away_score
                 THEN 1 ELSE 0 END), 0) AS exact_draws,
             COALESCE(SUM(CASE
-                WHEN f.season = ? AND f.matchday = ?
-                 AND f.status = 'FINISHED'
+                WHEN f.status = 'FINISHED'
                  AND p.home_score = f.home_score
                  AND p.away_score = f.away_score
                  AND f.home_score != f.away_score
                 THEN 1 ELSE 0 END), 0) AS exact_scores,
             COALESCE(SUM(CASE
-                WHEN f.season = ? AND f.matchday = ?
-                 AND f.status = 'FINISHED'
+                WHEN f.status = 'FINISHED'
                  AND NOT (p.home_score = f.home_score AND p.away_score = f.away_score)
                  AND (
                     (f.home_score = f.away_score AND p.home_score = p.away_score)
@@ -7908,6 +7904,9 @@ def signal_gw_table(conn, matchday):
           ON p.player_id = pl.id
         LEFT JOIN fixtures f
           ON f.id = p.fixture_id
+         AND f.season = ?
+         AND f.competition = 'premier_league'
+         AND f.matchday = ?
         GROUP BY pl.id
         ORDER BY
             points DESC,
@@ -7916,59 +7915,18 @@ def signal_gw_table(conn, matchday):
             correct_results DESC,
             pl.name COLLATE NOCASE
         """,
-        (
-            SEASON, matchday,
-            SEASON, matchday,
-            SEASON, matchday,
-            SEASON, matchday,
-        ),
+        (SEASON, matchday),
     ).fetchall()
 
 
-def signal_overall_table(conn):
+def signal_overall_table(conn, matchday=None):
     refresh_points(conn)
     conn.commit()
-
-    return conn.execute(
-        """
-        SELECT
-            pl.name,
-            COALESCE(SUM(p.points), 0) AS points,
-            COALESCE(SUM(CASE
-                WHEN f.status = 'FINISHED'
-                 AND p.home_score = f.home_score
-                 AND p.away_score = f.away_score
-                 AND f.home_score = f.away_score
-                THEN 1 ELSE 0 END), 0) AS exact_draws,
-            COALESCE(SUM(CASE
-                WHEN f.status = 'FINISHED'
-                 AND p.home_score = f.home_score
-                 AND p.away_score = f.away_score
-                 AND f.home_score != f.away_score
-                THEN 1 ELSE 0 END), 0) AS exact_scores,
-            COALESCE(SUM(CASE
-                WHEN f.status = 'FINISHED'
-                 AND NOT (p.home_score = f.home_score AND p.away_score = f.away_score)
-                 AND (
-                    (f.home_score = f.away_score AND p.home_score = p.away_score)
-                    OR (f.home_score > f.away_score AND p.home_score > p.away_score)
-                    OR (f.home_score < f.away_score AND p.home_score < p.away_score)
-                 )
-                THEN 1 ELSE 0 END), 0) AS correct_results
-        FROM players pl
-        LEFT JOIN predictions p
-          ON p.player_id = pl.id
-        LEFT JOIN fixtures f
-          ON f.id = p.fixture_id
-        GROUP BY pl.id
-        ORDER BY
-            points DESC,
-            exact_draws DESC,
-            exact_scores DESC,
-            correct_results DESC,
-            pl.name COLLATE NOCASE
-        """
-    ).fetchall()
+    if matchday is None:
+        matchday = signal_latest_completed_gameweek(conn)
+    return overall_table_at_matchday(
+        conn, matchday or 0, "premier_league"
+    )
 
 
 def signal_manual_reminder_key(fixtures):
@@ -8005,9 +7963,9 @@ def signal_manual_reminder_key(fixtures):
     return None
 
 
-def signal_results_message(matchday, gw_table, overall_table):
+def signal_results_message(matchday, gw_table, overall_table, corrected=False):
     lines = [
-        f"🏆 GW{matchday} Results",
+        f"🏆 GW{matchday} Results{' (corrected)' if corrected else ''}",
         "",
     ]
 
@@ -8047,6 +8005,34 @@ def signal_results_message(matchday, gw_table, overall_table):
     ]
 
     return "\n".join(lines)
+
+
+PL_RESULTS_CORRECTION_MATCHDAY = 4
+
+
+def resend_corrected_premier_league_results(conn, settings):
+    """Send the one-off corrected GW4 PL result after the isolation fix ships."""
+    correction_key = (
+        f"signal_pl_results_correction_{SEASON}_gw{PL_RESULTS_CORRECTION_MATCHDAY}"
+    )
+    if (
+        not settings["notify_results"]
+        or get_setting(correction_key)
+        or not premier_league_gameweek_complete(
+            conn, PL_RESULTS_CORRECTION_MATCHDAY
+        )
+    ):
+        return False
+    send_signal_message(
+        signal_results_message(
+            PL_RESULTS_CORRECTION_MATCHDAY,
+            signal_gw_table(conn, PL_RESULTS_CORRECTION_MATCHDAY),
+            signal_overall_table(conn, PL_RESULTS_CORRECTION_MATCHDAY),
+            corrected=True,
+        )
+    )
+    set_setting(correction_key, now_utc().isoformat())
+    return True
 
 
 def signal_champions_league_round(conn):
@@ -8271,6 +8257,7 @@ def process_signal_notifications():
 
         # Results are independent of whether a future Gameweek has been imported.
         if settings["notify_results"]:
+            resend_corrected_premier_league_results(conn, settings)
             result_gw = signal_latest_completed_gameweek(conn)
             last_results = get_setting("signal_last_results_gw")
 
@@ -8282,7 +8269,7 @@ def process_signal_notifications():
                     signal_results_message(
                         result_gw,
                         signal_gw_table(conn, result_gw),
-                        signal_overall_table(conn)
+                        signal_overall_table(conn, result_gw)
                     )
                 )
                 set_setting(
@@ -11651,7 +11638,7 @@ def admin_signal_send_results():
                         matchday
                     ),
                     signal_overall_table(
-                        conn
+                        conn, matchday
                     )
                 )
             )

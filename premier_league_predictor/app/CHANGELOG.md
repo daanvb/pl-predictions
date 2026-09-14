@@ -2,6 +2,13 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.27] - 2026-09-14
+### Changed
+- Rename personal and league score records to Highest GW Score and Lowest GW Score.
+
+### Fixed
+- Keep Premier League Signal gameweek and overall results isolated from Champions League points.
+- Queue one corrected Premier League GW4 Signal results message after this update is installed.
 ## [1.8.26] - 2026-09-14
 ### Added
 - Dedicated Champions League round results and table pages from Previous GW History.
