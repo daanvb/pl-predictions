@@ -77,7 +77,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.25"
+APP_VERSION = "1.8.26"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -10751,6 +10751,7 @@ def predictions(matchday):
     competition = request.args.get("competition", "premier_league")
     if competition not in ("premier_league", "champions_league"):
         competition = "premier_league"
+    history_view = request.args.get("history") == "1"
 
     fixtures = list(conn.execute(
         """
@@ -11114,11 +11115,12 @@ def predictions(matchday):
 
         return redirect(
             f"/predict/{matchday}?competition={competition}"
+            f"{'&history=1' if history_view else ''}"
         )
 
     # Match stats are part of every live prediction card. History keeps its
     # existing lightweight, read-only view.
-    show_match_stats = request.args.get("history") != "1"
+    show_match_stats = not history_view
     fixture_stats = (
         build_fixture_stats(conn, fixtures)
         if show_match_stats
@@ -11135,6 +11137,7 @@ def predictions(matchday):
         fixture_stats=fixture_stats,
         show_match_stats=show_match_stats,
         competition=competition,
+        history_view=history_view,
     )
 
 
@@ -11161,29 +11164,35 @@ def gameweek(matchday):
     conn = get_db()
 
     history_view = request.args.get("history") == "1"
-    fixtures = conn.execute(
+    competition = request.args.get("competition", "premier_league")
+    if competition not in ("premier_league", "champions_league"):
+        competition = "premier_league"
+    fixtures = [dict(row) for row in conn.execute(
         """
         SELECT *
         FROM fixtures
         WHERE season = ?
           AND matchday = ?
-          AND competition = 'premier_league'
+          AND competition = ?
         ORDER BY utc_date
         """,
-        (SEASON, matchday),
-    ).fetchall()
+        (SEASON, matchday, competition),
+    ).fetchall()]
 
     if not fixtures:
         conn.close()
-        flash("That gameweek does not exist.", "error")
-        return redirect("/dashboard")
+        flash("That round does not exist.", "error")
+        return redirect("/champions-league" if competition == "champions_league" else "/dashboard")
 
     # Reconcile the graph with the table on every view. This catches a final
     # provider update even if the background worker crossed directly from a
     # live refresh into its quiet interval before storing the last snapshot.
     refresh_points(conn)
     if not history_view:
-        record_live_position_snapshot(conn, matchday)
+        if competition == "champions_league":
+            record_competition_live_position_snapshot(conn, competition, matchday)
+        else:
+            record_live_position_snapshot(conn, matchday)
     conn.commit()
 
     players = conn.execute(
@@ -11206,14 +11215,15 @@ def gameweek(matchday):
         JOIN fixtures f ON f.id = p.fixture_id
         WHERE f.season = ?
           AND f.matchday = ?
-          AND f.competition = 'premier_league'
+          AND f.competition = ?
         """,
-        (SEASON, matchday),
+        (SEASON, matchday, competition),
     ).fetchall()
 
     previous_league = overall_table_at_matchday(
         conn,
         matchday - 1,
+        competition,
     )
 
     prediction_map = {
@@ -11247,7 +11257,11 @@ def gameweek(matchday):
         )
         for fixture in fixtures
     }
-    position_chart = live_position_chart(conn, matchday)
+    position_chart = (
+        competition_live_position_chart(conn, competition, matchday)
+        if competition == "champions_league"
+        else live_position_chart(conn, matchday)
+    )
     conn.close()
 
     return render_template(
@@ -11262,7 +11276,7 @@ def gameweek(matchday):
         gameweek_progress=gameweek_progress_label(fixtures),
         live_gameweek_visible=live_gameweek_visible(fixtures),
         position_chart=position_chart,
-        competition="premier_league",
+        competition=competition,
         history_view=history_view,
     )
 

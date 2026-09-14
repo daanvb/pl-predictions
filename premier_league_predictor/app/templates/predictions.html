@@ -14,7 +14,7 @@
 </div>
 
 <div class="nav">
-<a href="{{ '/champions-league' if competition == 'champions_league' else '/dashboard' }}">← {{ 'Champions League' if competition == 'champions_league' else 'Dashboard' }}</a>
+<a href="{{ '/history?competition=champions_league' if competition == 'champions_league' and history_view else '/history' if history_view else '/champions-league' if competition == 'champions_league' else '/dashboard' }}">← {{ 'Previous GW History' if history_view else 'Champions League' if competition == 'champions_league' else 'Dashboard' }}</a>
 
 </div>
 

@@ -1491,6 +1491,17 @@ assert history_results_response.status_code == 200
 assert b"Gameweek 37 Results" in history_results_response.data
 assert b"Gameweek Table" in history_results_response.data
 assert b'http-equiv="refresh"' not in history_results_response.data
+assert b"Previous GW History" in history_results_response.data
+champions_history_response = client.get("/history?competition=champions_league")
+assert champions_history_response.status_code == 200
+assert b"Champions League Round 39" in champions_history_response.data
+champions_history_results = client.get(
+    "/gameweek/39?competition=champions_league&history=1"
+)
+assert champions_history_results.status_code == 200
+assert b"Champions League Round 39 Results" in champions_history_results.data
+assert b"Champions League Round Table" in champions_history_results.data
+assert b"Previous GW History" in champions_history_results.data
 conn = database.get_db()
 conn.execute("DELETE FROM fixtures WHERE id IN (8701, 8702, 8703)")
 conn.commit()

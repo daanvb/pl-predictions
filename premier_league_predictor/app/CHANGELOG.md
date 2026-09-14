@@ -2,6 +2,17 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.26] - 2026-09-14
+### Added
+- Dedicated Champions League round results and table pages from Previous GW History.
+
+### Changed
+- Add history-list back navigation to past Premier League and Champions League predictions and results.
+- Show Champions League total, position and Signal cards in one desktop row.
+
+### Fixed
+- Align menu icons with their labels and remove the redundant Champions League previous-round button.
+
 ## [1.8.25] - 2026-09-14
 ### Added
 - Schedule the public MCFG Cockfight Cup test trial to open with the next Premier League gameweek, including a separate one-off Signal announcement.

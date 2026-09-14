@@ -26,7 +26,7 @@
 </a>
 </div>
 
-<div class="card" style="text-align:center;padding:24px"><div class="small">{{ 'PREVIOUS ROUND' if history_view else 'CURRENT ROUND' }}</div><h2>Champions League · Round {{ fixtures[0].matchday if fixtures else '—' }}</h2>{% if history_view %}<a href="/champions-league"><button type="button">Current Round</button></a>{% elif gameweek_predictions_open %}<a href="/champions-league/predict"><button class="primary" type="button">✍️ Make Predictions</button></a>{% endif %}{% if previous_matchday %}<a href="/champions-league?round={{ previous_matchday }}"><button type="button">← Previous Round</button></a>{% endif %}</div>
+<div class="card" style="text-align:center;padding:24px"><div class="small">{{ 'PREVIOUS ROUND' if history_view else 'CURRENT ROUND' }}</div><h2>Champions League · Round {{ fixtures[0].matchday if fixtures else '—' }}</h2>{% if history_view %}<a href="/champions-league"><button type="button">Current Round</button></a>{% elif gameweek_predictions_open %}<a href="/champions-league/predict"><button class="primary" type="button">✍️ Make Predictions</button></a>{% endif %}</div>
 
 {% if champions_knockout_transition_notice %}
 <div class="card champions-transition-notice">
