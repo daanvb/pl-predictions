@@ -77,7 +77,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.27"
+APP_VERSION = "1.8.28"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -9177,6 +9177,7 @@ def head_to_head():
     return render_template(
         "head_to_head.html",
         cup=context,
+        is_admin=is_admin(),
         scheduled_matchday=scheduled_matchday,
         scheduled_opens_label=scheduled_opens_label,
     )

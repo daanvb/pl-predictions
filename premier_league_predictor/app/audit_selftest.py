@@ -1345,6 +1345,10 @@ for route in [
     response = client.get(route)
     assert response.status_code == 200, (route, response.status_code)
 
+cup_admin_response = client.get("/head-to-head")
+assert b"Schedule public trial for next PL gameweek" in cup_admin_response.data
+assert "is_admin=is_admin()" in inspect.getsource(predictor.head_to_head)
+
 assert client.get("/side-events").status_code == 302
 
 # Only the assigned treasurer can change the shared payment register. Admin

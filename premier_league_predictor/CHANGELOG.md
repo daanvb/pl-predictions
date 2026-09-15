@@ -2,6 +2,9 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.28] - 2026-09-15
+### Fixed
+- Restore the admin control that schedules the MCFG Cockfight Cup public trial and its opening Signal announcement at the Premier League gameweek boundary.
 ## [1.8.27] - 2026-09-14
 ### Changed
 - Rename personal and league score records to Highest GW Score and Lowest GW Score.
