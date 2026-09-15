@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.31] - 2026-09-15
+### Added
+- Add grouped MCFG Cockfight Cup fixtures, live Cup fixture status, position movement and an automatic 1st-v-2nd final.
+
+### Changed
+- Use aligned Cup trophy assets and FA Cup red styling across the Cup dashboard and Final cards.
 ## [1.8.30] - 2026-09-15
 ### Changed
 - Rework MCFG Cockfight Cup testing notices and fixture rows for clear mobile layouts.

@@ -77,7 +77,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.30"
+APP_VERSION = "1.8.31"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -8835,7 +8835,7 @@ def cockfight_cup_gameweek_complete(conn, matchday):
     return premier_league_gameweek_complete(conn, matchday)
 
 
-def cockfight_cup_standings(conn, trial_id):
+def cockfight_cup_standings(conn, trial_id, through_matchday=None):
     players = conn.execute(
         """SELECT DISTINCT pl.id, pl.name FROM players pl
            JOIN cockfight_cup_matches cm
@@ -8850,9 +8850,15 @@ def cockfight_cup_standings(conn, trial_id):
         }
         for row in players
     }
-    matches = conn.execute(
-        "SELECT * FROM cockfight_cup_matches WHERE trial_id = ? AND stage = 'LEAGUE' AND status = 'FINISHED'", (trial_id,)
-    ).fetchall()
+    match_query = (
+        "SELECT * FROM cockfight_cup_matches "
+        "WHERE trial_id = ? AND stage = 'LEAGUE' AND status = 'FINISHED'"
+    )
+    match_params = [trial_id]
+    if through_matchday is not None:
+        match_query += " AND matchday <= ?"
+        match_params.append(through_matchday)
+    matches = conn.execute(match_query, tuple(match_params)).fetchall()
     for match in matches:
         home, away = totals[match["home_player_id"]], totals[match["away_player_id"]]
         home["for"] += match["home_score"]; home["against"] += match["away_score"]
@@ -8902,6 +8908,58 @@ def cockfight_cup_standings(conn, trial_id):
     return rows
 
 
+def cockfight_cup_gameweek_in_play(conn, matchday):
+    """Show Cup fixtures as in play from PL kickoff until their GW settles."""
+    first_fixture = conn.execute(
+        """SELECT utc_date FROM fixtures WHERE season = ?
+           AND competition = 'premier_league' AND matchday = ?
+           ORDER BY utc_date LIMIT 1""",
+        (SEASON, matchday),
+    ).fetchone()
+    return bool(
+        first_fixture
+        and kickoff_passed(first_fixture["utc_date"])
+        and not cockfight_cup_gameweek_complete(conn, matchday)
+    )
+
+
+def cockfight_cup_display_status(conn, match):
+    if match["status"] == "FINISHED":
+        return "Finished"
+    return "In Play" if cockfight_cup_gameweek_in_play(conn, match["matchday"]) else "Scheduled"
+
+
+def cockfight_cup_standings_with_changes(conn, trial_id):
+    standings = cockfight_cup_standings(conn, trial_id)
+    latest_finished_round = conn.execute(
+        """SELECT MAX(matchday) FROM cockfight_cup_matches
+           WHERE trial_id = ? AND stage = 'LEAGUE' AND status = 'FINISHED'""",
+        (trial_id,),
+    ).fetchone()[0]
+    if latest_finished_round is None:
+        for row in standings:
+            row["position_delta"] = None
+        return standings
+    earlier_finished_rounds = conn.execute(
+        """SELECT COUNT(*) FROM cockfight_cup_matches
+           WHERE trial_id = ? AND stage = 'LEAGUE' AND status = 'FINISHED'
+             AND matchday < ?""",
+        (trial_id, latest_finished_round),
+    ).fetchone()[0]
+    if not earlier_finished_rounds:
+        for row in standings:
+            row["position_delta"] = None
+        return standings
+    previous_rows = cockfight_cup_standings(
+        conn, trial_id, through_matchday=latest_finished_round - 1
+    )
+    previous_positions = {row["id"]: row["position"] for row in previous_rows}
+    for row in standings:
+        previous = previous_positions.get(row["id"])
+        row["position_delta"] = previous - row["position"] if previous else None
+    return standings
+
+
 def settle_cockfight_cup_trial(conn):
     trial = cockfight_cup_trial(conn)
     if not trial or trial["status"] == "COMPLETE": return 0
@@ -8941,14 +8999,34 @@ def settle_cockfight_cup_trial(conn):
 
 
 def cockfight_cup_context(conn, trial):
-    matches = conn.execute("""SELECT cm.*, hp.name AS home_name, ap.name AS away_name,
-                                     wp.name AS winner_name
-                              FROM cockfight_cup_matches cm
-                              LEFT JOIN players hp ON hp.id=cm.home_player_id
-                              LEFT JOIN players ap ON ap.id=cm.away_player_id
-                              LEFT JOIN players wp ON wp.id=cm.winner_player_id
-                              WHERE cm.trial_id=? ORDER BY cm.matchday, cm.id""", (trial["id"],)).fetchall()
-    return {"trial": dict(trial), "matches": matches, "standings": cockfight_cup_standings(conn, trial["id"])}
+    rows = conn.execute("""SELECT cm.*, hp.name AS home_name, ap.name AS away_name,
+                                 wp.name AS winner_name
+                          FROM cockfight_cup_matches cm
+                          LEFT JOIN players hp ON hp.id=cm.home_player_id
+                          LEFT JOIN players ap ON ap.id=cm.away_player_id
+                          LEFT JOIN players wp ON wp.id=cm.winner_player_id
+                          WHERE cm.trial_id=? ORDER BY cm.matchday, cm.id""", (trial["id"],)).fetchall()
+    league_fixture_groups = []
+    groups_by_matchday = {}
+    final = None
+    for row in rows:
+        match = dict(row)
+        match["display_status"] = cockfight_cup_display_status(conn, match)
+        if match["stage"] == "FINAL":
+            final = match
+            continue
+        group = groups_by_matchday.get(match["matchday"])
+        if group is None:
+            group = {"matchday": match["matchday"], "matches": []}
+            groups_by_matchday[match["matchday"]] = group
+            league_fixture_groups.append(group)
+        group["matches"].append(match)
+    return {
+        "trial": dict(trial),
+        "league_fixture_groups": league_fixture_groups,
+        "final": final,
+        "standings": cockfight_cup_standings_with_changes(conn, trial["id"]),
+    }
 
 
 def delete_completed_cockfight_cup_trial(conn):

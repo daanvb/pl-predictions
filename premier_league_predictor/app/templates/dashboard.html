@@ -112,12 +112,11 @@ No position yet
 {% if show_cockfight_cup_trial_notice %}
 <div class="card dashboard-cup-trial-notice">
 <div>
-<div class="small">MCFG COCKFIGHT CUP · TESTING</div>
+<div class="small dashboard-cup-notice-label"><span class="competition-icon competition-icon-h2h"><img src="/static/fa-cup-trophy.png" alt=""></span> MCFG COCKFIGHT CUP · TESTING</div>
 <h2>The MCFG Cockfight Cup test is active</h2>
 <p class="muted">Uses each player's Premier League gameweek score, including Double Points. Premier League predictions and results are unchanged.</p>
 </div>
 <div class="dashboard-cup-trial-notice-actions">
-<a href="/head-to-head"><button class="primary" type="button">🏆 View table & fixtures</button></a>
 <form method="post" action="/cockfight-cup/trial-notice/dismiss"><button class="secondary" type="submit">Dismiss</button></form>
 </div>
 </div>
@@ -127,8 +126,7 @@ No position yet
 <div class="dashboard-cup-live-action">
 <a class="cockfight-cup-live-button" href="/head-to-head">
 <img src="/static/fa-cup-trophy.png" alt="">
-<span>MCFG Cockfight Cup is active</span>
-<span class="cockfight-cup-live-detail">View table & fixtures →</span>
+<span>MCFG Cockfight Cup</span>
 </a>
 </div>
 {% endif %}
@@ -181,7 +179,7 @@ No position yet
 Sources:
 {% for source in dashboard_sources %}
 {% if source == 'SportScore' %}<a href="https://sportscore.com/" rel="dofollow">SportScore</a>{% elif source == 'football-data.org' %}<a href="https://www.football-data.org/">football-data.org</a>{% else %}{{ source }}{% endif %}{% if not loop.last %} + {% endif %}
-{% endfor %}.
+{% endfor %}
 </p>
 {% endif %}
 

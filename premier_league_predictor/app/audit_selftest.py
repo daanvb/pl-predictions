@@ -2705,9 +2705,12 @@ assert 'champions-live-button-pulse' in base_template
 assert "border-color:#fb7185" in base_template
 assert 'premier-league-trophy.png' in dashboard_template
 assert 'show_cockfight_cup_trial_notice' in dashboard_template
-assert 'MCFG Cockfight Cup is active' in dashboard_template
+assert 'MCFG Cockfight Cup</span>' in dashboard_template
 assert '/cockfight-cup/trial-notice/dismiss' in dashboard_template
 assert 'cup-fixture-teams' in head_to_head_template
+assert 'cup-fixture-gameweek' in head_to_head_template
+assert 'Finalists are confirmed when the league stage is complete.' in head_to_head_template
+assert 'fitCupFixtureNames' in head_to_head_template
 assert 'PUBLIC TEST RUN' not in head_to_head_template
 assert 'cockfight_cup_trial_notice_unread' in inspect.getsource(predictor.dashboard)
 assert 'row["points"], row.get("gameweek_points", 0)' in inspect.getsource(predictor.record_competition_live_position_snapshot)
@@ -4021,6 +4024,14 @@ try:
     assert predictor.cockfight_cup_trial_scheduled_matchday(cup_conn) is None
     trial = predictor.cockfight_cup_trial(cup_conn)
     cup_conn.commit()
+    initial_cup_context = predictor.cockfight_cup_context(cup_conn, trial)
+    assert len(initial_cup_context["league_fixture_groups"]) == 6
+    assert initial_cup_context["final"] is None
+    assert all(
+        match["display_status"] == "Scheduled"
+        for group in initial_cup_context["league_fixture_groups"]
+        for match in group["matches"]
+    )
     assert "Test Run Now Open" in predictor.cockfight_cup_open_signal_message(trial)
     assert "GW 10" in predictor.cockfight_cup_open_signal_message(trial)
     assert predictor.cockfight_cup_trial_notice_unread(cup_conn, cup_players[0], trial)
@@ -4063,6 +4074,12 @@ try:
     assert predictor.settle_cockfight_cup_trial(cup_conn) == 0
     trial = predictor.cockfight_cup_trial(cup_conn)
     assert trial["status"] == "COMPLETE"
+    complete_cup_context = predictor.cockfight_cup_context(cup_conn, trial)
+    assert complete_cup_context["final"]["status"] == "FINISHED"
+    assert all(
+        row["position_delta"] is None or isinstance(row["position_delta"], int)
+        for row in complete_cup_context["standings"]
+    )
     assert cup_conn.execute(
         "SELECT COUNT(*) FROM cockfight_cup_matches WHERE trial_id = ? AND stage = 'FINAL' AND status = 'FINISHED'",
         (trial_id,),
