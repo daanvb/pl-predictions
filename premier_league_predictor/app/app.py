@@ -77,7 +77,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.28"
+APP_VERSION = "1.8.29"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -8604,6 +8604,21 @@ def cockfight_cup_trial(conn):
     ).fetchone()
 
 
+def cockfight_cup_trial_notice_key(player_id, trial_id):
+    """Keep the public-test acknowledgement separate for every trial/player."""
+    return f"cockfight_cup_trial_notice_seen_{SEASON}_{trial_id}_{player_id}"
+
+
+def cockfight_cup_trial_notice_unread(conn, player_id, trial):
+    """Only show the dashboard test notice while this trial is active."""
+    if not trial or trial["status"] == "COMPLETE":
+        return False
+    return conn.execute(
+        "SELECT 1 FROM settings WHERE key = ?",
+        (cockfight_cup_trial_notice_key(player_id, trial["id"]),),
+    ).fetchone() is None
+
+
 def cockfight_cup_next_matchday(conn):
     row = conn.execute(
         """SELECT matchday FROM fixtures
@@ -9181,6 +9196,28 @@ def head_to_head():
         scheduled_matchday=scheduled_matchday,
         scheduled_opens_label=scheduled_opens_label,
     )
+
+
+@app.route("/cockfight-cup/trial-notice/dismiss", methods=["POST"])
+def dismiss_cockfight_cup_trial_notice():
+    """Dismiss the one-off public-test announcement for the current player."""
+    if not logged_in():
+        return redirect("/")
+    conn = get_db()
+    try:
+        trial = cockfight_cup_trial(conn)
+        if trial and trial["status"] != "COMPLETE":
+            conn.execute(
+                "INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)",
+                (
+                    cockfight_cup_trial_notice_key(session["player_id"], trial["id"]),
+                    now_utc().isoformat(),
+                ),
+            )
+            conn.commit()
+    finally:
+        conn.close()
+    return redirect("/dashboard")
 
 
 @app.route("/admin/cockfight-cup/trial/start", methods=["POST"])
@@ -10639,6 +10676,11 @@ def dashboard():
     # Match the PL dashboard: retain a completed CL round until 09:00 UK time
     # on the day after its final fixture.
     champions_round_live = competition_round_summary_visible(champions_fixtures)
+    cockfight_cup = cockfight_cup_trial(conn)
+    cockfight_cup_active = bool(cockfight_cup and cockfight_cup["status"] != "COMPLETE")
+    show_cockfight_cup_trial_notice = cockfight_cup_trial_notice_unread(
+        conn, session["player_id"], cockfight_cup
+    )
 
     conn.close()
 
@@ -10660,6 +10702,8 @@ def dashboard():
         live_gameweek_visible=live_gameweek_visible(current_fixtures),
         gameweek_predictions_open=gameweek_predictions_open(current_fixtures),
         champions_round_live=champions_round_live,
+        cockfight_cup_active=cockfight_cup_active,
+        show_cockfight_cup_trial_notice=show_cockfight_cup_trial_notice,
         players=dashboard_players,
         fixture_players=dashboard_fixture_players,
         prediction_map=dashboard_prediction_map,

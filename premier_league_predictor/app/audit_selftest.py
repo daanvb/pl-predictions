@@ -2704,6 +2704,10 @@ assert 'champions-live-button' in dashboard_template
 assert 'champions-live-button-pulse' in base_template
 assert "border-color:#fb7185" in base_template
 assert 'premier-league-trophy.png' in dashboard_template
+assert 'show_cockfight_cup_trial_notice' in dashboard_template
+assert 'MCFG Cockfight Cup is active' in dashboard_template
+assert '/cockfight-cup/trial-notice/dismiss' in dashboard_template
+assert 'cockfight_cup_trial_notice_unread' in inspect.getsource(predictor.dashboard)
 assert 'row["points"], row.get("gameweek_points", 0)' in inspect.getsource(predictor.record_competition_live_position_snapshot)
 assert 'champions_league_stats' in inspect.getsource(predictor)
 assert 'champions_league_stats.html' in inspect.getsource(predictor.champions_league_stats)
@@ -4016,6 +4020,13 @@ try:
     cup_conn.commit()
     assert "Test Run Now Open" in predictor.cockfight_cup_open_signal_message(trial)
     assert "GW 10" in predictor.cockfight_cup_open_signal_message(trial)
+    assert predictor.cockfight_cup_trial_notice_unread(cup_conn, cup_players[0], trial)
+    cup_conn.execute(
+        "INSERT INTO settings(key, value) VALUES (?, 'seen')",
+        (predictor.cockfight_cup_trial_notice_key(cup_players[0], trial["id"]),),
+    )
+    assert not predictor.cockfight_cup_trial_notice_unread(cup_conn, cup_players[0], trial)
+    cup_conn.commit()
     original_cup_signal_settings = predictor.signal_settings
     original_cup_send_signal = predictor.send_signal_message
     sent_cup_messages = []
@@ -4077,6 +4088,10 @@ finally:
         ),
     )
     cup_conn.execute("DELETE FROM settings WHERE key = 'signal_last_cockfight_cup_open'")
+    cup_conn.execute(
+        "DELETE FROM settings WHERE key LIKE ?",
+        (f"cockfight_cup_trial_notice_seen_{cup_season}_%",),
+    )
     cup_conn.execute("DELETE FROM cockfight_cup_matches WHERE trial_id IN (SELECT id FROM cockfight_cup_trials WHERE season = ?)", (cup_season,))
     cup_conn.execute("DELETE FROM cockfight_cup_trials WHERE season = ?", (cup_season,))
     cup_conn.execute("DELETE FROM competition_winners WHERE competition='head_to_head' AND season_label='2096/97'")
