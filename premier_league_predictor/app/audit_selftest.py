@@ -1346,7 +1346,7 @@ for route in [
     assert response.status_code == 200, (route, response.status_code)
 
 cup_admin_response = client.get("/head-to-head")
-assert b"Schedule public trial for next PL gameweek" in cup_admin_response.data
+assert b"Schedule Cup testing for next PL gameweek" in cup_admin_response.data
 assert "is_admin=is_admin()" in inspect.getsource(predictor.head_to_head)
 
 assert client.get("/side-events").status_code == 302
@@ -2707,6 +2707,8 @@ assert 'premier-league-trophy.png' in dashboard_template
 assert 'show_cockfight_cup_trial_notice' in dashboard_template
 assert 'MCFG Cockfight Cup is active' in dashboard_template
 assert '/cockfight-cup/trial-notice/dismiss' in dashboard_template
+assert 'cup-fixture-teams' in head_to_head_template
+assert 'PUBLIC TEST RUN' not in head_to_head_template
 assert 'cockfight_cup_trial_notice_unread' in inspect.getsource(predictor.dashboard)
 assert 'row["points"], row.get("gameweek_points", 0)' in inspect.getsource(predictor.record_competition_live_position_snapshot)
 assert 'champions_league_stats' in inspect.getsource(predictor)
@@ -3957,6 +3959,7 @@ with patch.object(credit_api.requests, "get", return_value=Mock(
     assert credit_api.get_matches("test-key", "2026-09-12") == []
 predictor.app.jinja_env.get_template("admin.html")
 predictor.app.jinja_env.get_template("base.html")
+predictor.app.jinja_env.get_template("dashboard.html")
 predictor.app.jinja_env.get_template("head_to_head.html")
 cup_schema = database.get_db()
 assert cup_schema.execute(

@@ -1353,6 +1353,7 @@ html[data-theme="dark"] .winner-tab.is-active{background:var(--accent);color:#ff
 .dashboard-cup-trial-notice{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:14px 0;border-color:#f59e0b;background:linear-gradient(110deg,rgba(245,158,11,.13),rgba(234,88,12,.06))}
 .dashboard-cup-trial-notice h2{margin:5px 0 7px}.dashboard-cup-trial-notice p{margin:0;max-width:690px}.dashboard-cup-trial-notice-actions{display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;flex:0 0 auto}.dashboard-cup-trial-notice-actions form{margin:0}
 .dashboard-cup-live-action{display:flex;justify-content:center;margin:10px 0 14px}.cockfight-cup-live-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-width:min(460px,100%);padding:9px 20px;border:1px solid #f59e0b;border-radius:999px;background:linear-gradient(110deg,rgba(180,83,9,.94),rgba(217,119,6,.94));box-shadow:0 8px 20px rgba(180,83,9,.2);color:#fff;font-weight:800;text-decoration:none;letter-spacing:.01em}.cockfight-cup-live-button img{width:27px;height:27px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(15,23,42,.45))}.cockfight-cup-live-detail{font-size:12px;font-weight:700;opacity:.9}
+.cup-test-summary{text-align:center;padding:24px}.cup-test-summary h2{margin:6px 0}.cup-test-summary p{max-width:600px;margin:8px auto}.cup-fixture-list{display:grid;gap:9px}.cup-fixture{padding:12px 0;border-bottom:1px solid var(--line)}.cup-fixture:last-child{border-bottom:0;padding-bottom:0}.cup-fixture-meta{display:flex;justify-content:space-between;gap:12px;margin-bottom:7px;color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em}.cup-fixture-teams{display:grid;grid-template-columns:minmax(0,1fr) 38px minmax(0,1fr);align-items:center;gap:10px}.cup-fixture-home{text-align:right}.cup-fixture-away{text-align:left}.cup-fixture-home,.cup-fixture-away{overflow-wrap:anywhere}.cup-fixture-score{text-align:center;color:var(--muted)}.cup-fixture-winner{display:block;text-align:center;margin-top:7px}
 .champions-transition-notice{text-align:center;border-color:#c084fc;background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(14,165,233,.08))}
 .champions-transition-notice h2{margin:6px 0 10px}.champions-transition-notice p{max-width:660px;margin:8px auto;color:var(--muted)}
 .champions-transition-notice form{display:grid;justify-items:center;gap:12px;margin-top:16px}.champions-transition-confirm{display:flex;align-items:flex-start;gap:9px;text-align:left;font-weight:700}.champions-transition-confirm input{width:18px;height:18px;margin:1px 0 0;accent-color:#7c3aed}
@@ -2610,6 +2611,18 @@ html[data-theme="dark"] .pick-grid.exact-score-dp-row{
 }
 .dashboard-stats.dashboard-stats-signal-only > .dashboard-signal-stat{
   width:100%
+}
+@media (max-width:640px){
+  .dashboard-cup-trial-notice{display:block;padding:18px}
+  .dashboard-cup-trial-notice h2{font-size:22px;line-height:1.18}
+  .dashboard-cup-trial-notice-actions{margin-top:15px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);width:100%}
+  .dashboard-cup-trial-notice-actions a,.dashboard-cup-trial-notice-actions form{min-width:0}
+  .dashboard-cup-trial-notice-actions button{width:100%;padding-left:10px;padding-right:10px;white-space:nowrap}
+  .cockfight-cup-live-button{min-width:0;width:100%;padding:9px 13px;font-size:14px}
+  .cockfight-cup-live-detail{font-size:11px}
+  .cup-fixture{padding:13px 0}
+  .cup-fixture-teams{grid-template-columns:minmax(0,1fr) 28px minmax(0,1fr);gap:7px;font-size:15px;line-height:1.25}
+  .cup-fixture-meta{font-size:11px}
 }
 </style>
 </head>
