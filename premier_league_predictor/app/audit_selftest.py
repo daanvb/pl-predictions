@@ -1458,7 +1458,10 @@ assert b"CURRENT LEADER" not in stats_response.data
 league_stats_response = client.get("/league-stats")
 assert league_stats_response.status_code == 200
 assert b"League Stats" in league_stats_response.data
-assert b"CURRENT LEADER" in league_stats_response.data
+assert b"CURRENT LEADER" not in league_stats_response.data
+champions_league_stats_response = client.get("/champions-league/stats")
+assert champions_league_stats_response.status_code == 200
+assert b"CURRENT LEADER" not in champions_league_stats_response.data
 conn = database.get_db()
 for fixture_id, matchday in ((8701, 37), (8702, 38)):
     conn.execute(
@@ -2632,7 +2635,11 @@ with open(os.path.join(templates_dir, "head_to_head_details.html"), "r", encodin
     head_to_head_details_template = handle.read()
 assert "GW32–37" in head_to_head_details_template
 assert "Gameweek 38" in head_to_head_details_template
-assert "Head-to-head gameweek score difference" in head_to_head_details_template
+assert "Exact Double Point predictions" in head_to_head_details_template
+assert "Correct scores" in head_to_head_details_template
+assert "Correct winners" in head_to_head_details_template
+assert "GD — gameweek-score difference" in head_to_head_details_template
+assert "Current Premier League position" not in head_to_head_details_template
 assert "player who finished higher in the Cockfight Cup league wins" in head_to_head_details_template
 with open(
     os.path.join(templates_dir, "side_events.html"),
@@ -2711,7 +2718,18 @@ assert 'cup-fixture-teams' in head_to_head_template
 assert 'cup-fixture-gameweek' in head_to_head_template
 assert 'Finalists are confirmed when the league stage is complete.' in head_to_head_template
 assert 'fitCupFixtureNames' in head_to_head_template
+assert 'Pos</th>' in head_to_head_template
+assert 'group.status_label' in head_to_head_template
+assert "result_outcome in ('home', 'draw')" in head_to_head_template
 assert 'PUBLIC TEST RUN' not in head_to_head_template
+assert 'status_label' in inspect.getsource(predictor.cockfight_cup_context)
+assert 'result_outcome' in inspect.getsource(predictor.cockfight_cup_context)
+cup_standings_source = inspect.getsource(predictor.cockfight_cup_standings)
+assert 'exact_dps' in cup_standings_source
+assert 'correct_scores' in cup_standings_source
+assert 'correct_winners' in cup_standings_source
+assert '-(row["for"] - row["against"])' in cup_standings_source
+assert 'pl_positions' not in cup_standings_source
 assert 'cockfight_cup_trial_notice_unread' in inspect.getsource(predictor.dashboard)
 assert 'row["points"], row.get("gameweek_points", 0)' in inspect.getsource(predictor.record_competition_live_position_snapshot)
 assert 'champions_league_stats' in inspect.getsource(predictor)
@@ -4023,6 +4041,10 @@ try:
     assert trial_id is not None
     assert predictor.cockfight_cup_trial_scheduled_matchday(cup_conn) is None
     trial = predictor.cockfight_cup_trial(cup_conn)
+    cup_conn.execute(
+        "UPDATE predictions SET dp = 1 WHERE player_id = ? AND fixture_id = ?",
+        (cup_players[0], cup_fixture_base - 10),
+    )
     cup_conn.commit()
     initial_cup_context = predictor.cockfight_cup_context(cup_conn, trial)
     assert len(initial_cup_context["league_fixture_groups"]) == 6
@@ -4032,6 +4054,13 @@ try:
         for group in initial_cup_context["league_fixture_groups"]
         for match in group["matches"]
     )
+    assert {group["status_label"] for group in initial_cup_context["league_fixture_groups"]} == {"Upcoming"}
+    alpha_row = next(
+        row for row in initial_cup_context["standings"] if row["id"] == cup_players[0]
+    )
+    assert alpha_row["exact_dps"] == 1
+    assert alpha_row["correct_scores"] >= 1
+    assert alpha_row["correct_winners"] >= 1
     assert "Test Run Now Open" in predictor.cockfight_cup_open_signal_message(trial)
     assert "GW 10" in predictor.cockfight_cup_open_signal_message(trial)
     assert predictor.cockfight_cup_trial_notice_unread(cup_conn, cup_players[0], trial)
@@ -4076,6 +4105,7 @@ try:
     assert trial["status"] == "COMPLETE"
     complete_cup_context = predictor.cockfight_cup_context(cup_conn, trial)
     assert complete_cup_context["final"]["status"] == "FINISHED"
+    assert {group["status_label"] for group in complete_cup_context["league_fixture_groups"]} == {"Completed"}
     assert all(
         row["position_delta"] is None or isinstance(row["position_delta"], int)
         for row in complete_cup_context["standings"]

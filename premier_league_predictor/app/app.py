@@ -77,7 +77,7 @@ from sportscore import (
     goal_events as sportscore_goal_events,
 )
 from scoring import calculate_points, calculate_prediction_points
-APP_VERSION = "1.8.31"
+APP_VERSION = "1.8.32"
 APP_CHANGELOG_RELEASE_LIMIT = 12
 SEASON = 2026
 UK = ZoneInfo("Europe/London")
@@ -8846,10 +8846,47 @@ def cockfight_cup_standings(conn, trial_id, through_matchday=None):
         row["id"]: {
             "id": row["id"], "name": row["name"], "points": 0,
             "for": 0, "against": 0, "head_to_head_points": 0,
-            "head_to_head_difference": 0,
+            "head_to_head_difference": 0, "exact_dps": 0,
+            "correct_scores": 0, "correct_winners": 0,
         }
         for row in players
     }
+    cup_matchdays = [
+        row["matchday"] for row in conn.execute(
+            """SELECT DISTINCT matchday FROM cockfight_cup_matches
+               WHERE trial_id = ? AND stage = 'LEAGUE'""", (trial_id,)
+        ).fetchall()
+    ]
+    if cup_matchdays:
+        placeholders = ",".join("?" for _ in cup_matchdays)
+        quality_rows = conn.execute(
+            f"""SELECT p.player_id,
+                   COALESCE(SUM(CASE WHEN f.status = 'FINISHED'
+                     AND COALESCE(p.dp, 0) = 1
+                     AND p.home_score = f.home_score AND p.away_score = f.away_score
+                     THEN 1 ELSE 0 END), 0) AS exact_dps,
+                   COALESCE(SUM(CASE WHEN f.status = 'FINISHED'
+                     AND p.home_score = f.home_score AND p.away_score = f.away_score
+                     THEN 1 ELSE 0 END), 0) AS correct_scores,
+                   COALESCE(SUM(CASE WHEN f.status = 'FINISHED' AND (
+                     (f.home_score = f.away_score AND p.home_score = p.away_score)
+                     OR (f.home_score > f.away_score AND p.home_score > p.away_score)
+                     OR (f.home_score < f.away_score AND p.home_score < p.away_score)
+                   ) THEN 1 ELSE 0 END), 0) AS correct_winners
+                FROM predictions p
+                JOIN fixtures f ON f.id = p.fixture_id
+               WHERE f.season = ? AND f.competition = 'premier_league'
+                 AND f.matchday IN ({placeholders})
+               GROUP BY p.player_id""",
+            (SEASON, *cup_matchdays),
+        ).fetchall()
+        for quality in quality_rows:
+            if quality["player_id"] in totals:
+                totals[quality["player_id"]].update({
+                    "exact_dps": quality["exact_dps"],
+                    "correct_scores": quality["correct_scores"],
+                    "correct_winners": quality["correct_winners"],
+                })
     match_query = (
         "SELECT * FROM cockfight_cup_matches "
         "WHERE trial_id = ? AND stage = 'LEAGUE' AND status = 'FINISHED'"
@@ -8885,23 +8922,11 @@ def cockfight_cup_standings(conn, trial_id, through_matchday=None):
             else:
                 home["head_to_head_points"] += 1
                 away["head_to_head_points"] += 1
-    completed_matchday = conn.execute(
-        """SELECT MAX(matchday) FROM fixtures WHERE season = ?
-           AND competition = 'premier_league' AND status = 'FINISHED'""",
-        (SEASON,),
-    ).fetchone()[0] or 0
-    pl_positions = {
-        row["id"]: position
-        for position, row in enumerate(
-            overall_table_at_matchday(conn, completed_matchday, "premier_league"), start=1
-        )
-    }
     rows = sorted(
         totals.values(),
         key=lambda row: (
-            -row["points"], -row["head_to_head_points"],
-            -row["head_to_head_difference"], -row["for"],
-            pl_positions.get(row["id"], 9999), row["name"].casefold(),
+            -row["points"], -(row["for"] - row["against"]), -row["exact_dps"], -row["correct_scores"],
+            -row["correct_winners"], row["name"].casefold(),
         ),
     )
     for position, row in enumerate(rows, start=1): row["position"] = position
@@ -9012,6 +9037,15 @@ def cockfight_cup_context(conn, trial):
     for row in rows:
         match = dict(row)
         match["display_status"] = cockfight_cup_display_status(conn, match)
+        if match["status"] == "FINISHED":
+            if match["home_score"] == match["away_score"]:
+                match["result_outcome"] = "draw"
+            elif match["home_score"] > match["away_score"]:
+                match["result_outcome"] = "home"
+            else:
+                match["result_outcome"] = "away"
+        else:
+            match["result_outcome"] = ""
         if match["stage"] == "FINAL":
             final = match
             continue
@@ -9021,6 +9055,17 @@ def cockfight_cup_context(conn, trial):
             groups_by_matchday[match["matchday"]] = group
             league_fixture_groups.append(group)
         group["matches"].append(match)
+    for group in league_fixture_groups:
+        statuses = {match["display_status"] for match in group["matches"]}
+        if statuses == {"Finished"}:
+            group["status_label"] = "Completed"
+            group["status_class"] = "completed"
+        elif "In Play" in statuses:
+            group["status_label"] = "In Play"
+            group["status_class"] = "in-play"
+        else:
+            group["status_label"] = "Upcoming"
+            group["status_class"] = "upcoming"
     return {
         "trial": dict(trial),
         "league_fixture_groups": league_fixture_groups,
@@ -10097,19 +10142,6 @@ def champions_league_stats():
         refresh_points(conn)
         conn.commit()
         prediction_start_matchday = champions_league_prediction_start_matchday(conn) or 0
-        matchday = conn.execute(
-            """SELECT MAX(matchday) AS matchday FROM fixtures
-               WHERE season = ? AND competition = 'champions_league'""",
-            (SEASON,),
-        ).fetchone()["matchday"] or 0
-        standings = overall_table_at_matchday(
-            conn, matchday, "champions_league"
-        )
-        leader_value = standings[0]["points"] if standings else 0
-        leaders = [
-            row for row in standings if row["points"] == leader_value
-        ]
-
         def record_rows(condition):
             return conn.execute(
                 f"""SELECT pl.id, pl.name, COUNT(*) AS total
@@ -10147,7 +10179,6 @@ def champions_league_stats():
     return render_template(
         "champions_league_stats.html",
         records=[
-            ("CURRENT LEADER", leaders, leader_value, " pts"),
             ("MOST CORRECT DRAWS", exact_draws, exact_draw_value, ""),
             ("MOST CORRECT SCORES", exact_scores, exact_score_value, ""),
             ("MOST CORRECT WINNERS", correct_winners, correct_winner_value, ""),
@@ -10343,20 +10374,6 @@ def stats():
     # --------------------------------------------------------
     # Tie-aware league records
     # --------------------------------------------------------
-
-    leader_rows = overall_table_at_blocks(conn, settled_blocks)
-
-    leader_value = (
-        leader_rows[0]["points"]
-        if leader_rows
-        else 0
-    )
-
-    top_scorers = [
-        row
-        for row in leader_rows
-        if row["points"] == leader_value
-    ]
 
     exact_draw_rows = conn.execute(
         """
@@ -10582,8 +10599,6 @@ def stats():
 
     return render_template(
         "league_stats.html",
-        top_scorers=top_scorers,
-        leader_value=leader_value,
         most_exact_draws=most_exact_draws,
         exact_draw_value=exact_draw_value,
         most_exact_scores=most_exact_scores,

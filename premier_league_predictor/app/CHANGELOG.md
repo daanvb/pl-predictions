@@ -2,6 +2,12 @@
 
 All notable changes to Preddies are documented here.
 
+## [1.8.32] - 2026-09-15
+### Changed
+- Refine MCFG Cockfight Cup fixture states, result highlights, final layout, responsive layout and FA Cup styling.
+- Label Cup league-table positions and remove punctuation from dashboard data sources.
+- Break Cup table ties by GD, Exact Double Points, correct scores, then correct winners.
+- Remove the Current Leader record from Premier League and Champions League statistics.
 ## [1.8.31] - 2026-09-15
 ### Added
 - Add grouped MCFG Cockfight Cup fixtures, live Cup fixture status, position movement and an automatic 1st-v-2nd final.
